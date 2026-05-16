@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0c1222"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="140" y1="120" x2="380" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="200" y1="100" x2="340" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#06b6d4" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+
+  <!-- Subtle glow behind handset -->
+  <ellipse cx="256" cy="270" rx="120" ry="140" fill="url(#glow)"/>
+
+  <!-- Phone handset — modernized, geometric -->
+  <!-- Earpiece (top) -->
+  <path d="M192 148 C192 128, 208 112, 228 112 L244 112 C252 112, 258 118, 258 126 L258 186 C258 194, 252 200, 244 200 L216 200 C200 200, 192 188, 192 176 Z" fill="url(#accent)"/>
+
+  <!-- Mouthpiece (bottom) -->
+  <path d="M254 312 C254 304, 260 298, 268 298 L296 298 C312 298, 320 310, 320 322 L320 364 C320 384, 304 400, 284 400 L268 400 C260 400, 254 394, 254 386 Z" fill="url(#accent)"/>
+
+  <!-- Connecting bar (diagonal spine) -->
+  <rect x="238" y="188" width="36" height="122" rx="18" fill="url(#accent)" transform="rotate(-10 256 249)"/>
+
+  <!-- Signal arcs (3 arcs radiating from top-right) -->
+  <path d="M310 140 C340 110, 380 110, 400 140" stroke="#22d3ee" stroke-width="5" stroke-linecap="round" fill="none" opacity="0.9"/>
+  <path d="M322 108 C360 70, 412 70, 440 108" stroke="#22d3ee" stroke-width="4.5" stroke-linecap="round" fill="none" opacity="0.55"/>
+  <path d="M334 78 C378 34, 440 34, 476 78" stroke="#22d3ee" stroke-width="4" stroke-linecap="round" fill="none" opacity="0.25"/>
+
+  <!-- Small dot at signal origin -->
+  <circle cx="302" cy="148" r="5" fill="#22d3ee" opacity="0.8"/>
+</svg>

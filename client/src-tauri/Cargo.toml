@@ -1,0 +1,16 @@
+[package]
+name = "hotline-modern"
+version = "0.1.0"
+description = "Hotline Modern - Decentralized chat client"
+authors = ["Hotline Modern"]
+license = ""
+repository = ""
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "1.5", features = [] }
+
+[dependencies]
+tauri = { version = "1.6", features = ["dialog-all", "fs-all", "path-all", "http-all", "shell-open"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
