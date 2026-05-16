@@ -73,6 +73,7 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 		case client := <-h.unregister:
+			shouldBroadcast := false
 			h.mu.Lock()
 			if _, ok := h.clients[client.ID]; ok {
 				delete(h.clients, client.ID)
@@ -82,9 +83,12 @@ func (h *Hub) Run() {
 						delete(h.channels[ch], client.ID)
 					}
 				}
-				h.broadcastUserLeft(client)
+				shouldBroadcast = client.PublicKey != ""
 			}
 			h.mu.Unlock()
+			if shouldBroadcast {
+				h.broadcastUserLeft(client)
+			}
 		}
 	}
 }

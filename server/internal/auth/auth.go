@@ -109,7 +109,7 @@ func (m *Manager) VerifyHTTPRequest(publicKeyHex, signatureHex string) error {
 		return fmt.Errorf("invalid signature")
 	}
 
-	if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), pubKeyBytes, sigBytes) {
+	if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), []byte(publicKeyHex), sigBytes) {
 		return fmt.Errorf("signature verification failed")
 	}
 

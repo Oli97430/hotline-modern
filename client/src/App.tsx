@@ -23,6 +23,7 @@ export default function App() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const prevMessagesLenRef = useRef(0);
+  const activeChannelRef = useRef(activeChannel);
 
   const handleError = useCallback((msg: string) => {
     setError(msg);
@@ -89,15 +90,23 @@ export default function App() {
   );
 
   useEffect(() => {
+    activeChannelRef.current = activeChannel;
+  }, [activeChannel]);
+
+  useEffect(() => {
     if (ws.messages.length > prevMessagesLenRef.current) {
       const newMsgs = ws.messages.slice(prevMessagesLenRef.current);
-      const counts = { ...unreadCounts };
-      for (const msg of newMsgs) {
-        if (msg.channel !== activeChannel && msg.userId !== ws.serverInfo?.userId) {
-          counts[msg.channel] = (counts[msg.channel] || 0) + 1;
+      const currentChannel = activeChannelRef.current;
+      const currentUserId = ws.serverInfo?.userId;
+      setUnreadCounts((prev) => {
+        const counts = { ...prev };
+        for (const msg of newMsgs) {
+          if (msg.channel !== currentChannel && msg.userId !== currentUserId) {
+            counts[msg.channel] = (counts[msg.channel] || 0) + 1;
+          }
         }
-      }
-      setUnreadCounts(counts);
+        return counts;
+      });
     }
     prevMessagesLenRef.current = ws.messages.length;
   }, [ws.messages]);

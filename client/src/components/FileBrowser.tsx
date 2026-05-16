@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Folder, File, ArrowUp, Upload, Download } from "lucide-react";
 import { FileEntry } from "../lib/protocol";
@@ -85,9 +85,13 @@ export function FileBrowser({ serverAddress, publicKey, signature, canUpload, ca
     }).format(bytes);
   };
 
-  if (entries.length === 0 && !loading && !path) {
-    fetchFiles("");
-  }
+  const initialFetchDone = useRef(false);
+  useEffect(() => {
+    if (!initialFetchDone.current) {
+      initialFetchDone.current = true;
+      fetchFiles("");
+    }
+  }, []);
 
   return (
     <div className="file-browser">
