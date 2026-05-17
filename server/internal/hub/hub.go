@@ -27,16 +27,17 @@ type Message struct {
 }
 
 type Client struct {
-	ID        string
-	PublicKey string
-	Nickname  string
-	Role      string
-	Status    string // "available", "away", "busy"
-	Channels  map[string]bool
-	Conn      *websocket.Conn
-	Send      chan []byte
-	Hub       *Hub
-	mu        sync.Mutex
+	ID           string
+	PublicKey    string
+	BoxPublicKey string // Curve25519 encryption key for E2E DMs
+	Nickname     string
+	Role         string
+	Status       string // "available", "away", "busy"
+	Channels     map[string]bool
+	Conn         *websocket.Conn
+	Send         chan []byte
+	Hub          *Hub
+	mu           sync.Mutex
 	// Rate limiting
 	tokens     float64
 	lastRefill time.Time
@@ -309,15 +310,18 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleChannelMembers(client, msg)
 	case "chat.history":
 		h.handleChatHistory(client, msg)
+	case "chat.read":
+		h.handleChatRead(client, msg)
 	}
 }
 
 func (h *Hub) handleAuth(client *Client, msg Message) {
 	var payload struct {
-		PublicKey string `json:"publicKey"`
-		Signature string `json:"signature"`
-		Nonce     string `json:"nonce"`
-		Nickname  string `json:"nickname"`
+		PublicKey    string `json:"publicKey"`
+		BoxPublicKey string `json:"boxPublicKey"`
+		Signature   string `json:"signature"`
+		Nonce       string `json:"nonce"`
+		Nickname    string `json:"nickname"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		h.sendError(client, "invalid auth payload")
@@ -350,6 +354,7 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 	}
 	// Register in pubkey index for O(1) lookups
 	client.PublicKey = payload.PublicKey
+	client.BoxPublicKey = payload.BoxPublicKey
 	client.Nickname = payload.Nickname
 	client.Role = role
 	h.pubKeyIndex[payload.PublicKey] = client
@@ -386,6 +391,7 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 		Channel string `json:"channel"`
 		Content string `json:"content"`
 		ReplyTo string `json:"replyTo"`
+		MsgType string `json:"msgType"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return
@@ -412,7 +418,7 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 	}
 
 	msgID := uuid.New().String()
-	h.chat.SaveMessage(msgID, payload.Channel, client.PublicKey, client.Nickname, payload.Content, payload.ReplyTo)
+	h.chat.SaveMessage(msgID, payload.Channel, client.PublicKey, client.Nickname, payload.Content, payload.ReplyTo, payload.MsgType)
 
 	chatPayload := map[string]interface{}{
 		"channel":  payload.Channel,
@@ -423,6 +429,9 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 	}
 	if payload.ReplyTo != "" {
 		chatPayload["replyTo"] = payload.ReplyTo
+	}
+	if payload.MsgType != "" {
+		chatPayload["msgType"] = payload.MsgType
 	}
 
 	chatMsg := Message{
@@ -521,10 +530,11 @@ func (h *Hub) handleUserList(client *Client) {
 			continue
 		}
 		users = append(users, map[string]string{
-			"userId":   c.PublicKey,
-			"nickname": c.Nickname,
-			"role":     c.Role,
-			"status":   c.Status,
+			"userId":       c.PublicKey,
+			"nickname":     c.Nickname,
+			"role":         c.Role,
+			"status":       c.Status,
+			"boxPublicKey": c.BoxPublicKey,
 		})
 	}
 	h.mu.RUnlock()
@@ -601,9 +611,10 @@ func (h *Hub) broadcastUserJoined(client *Client) {
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
-			"userId":   client.PublicKey,
-			"nickname": client.Nickname,
-			"role":     client.Role,
+			"userId":       client.PublicKey,
+			"nickname":     client.Nickname,
+			"role":         client.Role,
+			"boxPublicKey": client.BoxPublicKey,
 		}),
 	}
 	h.broadcastAll(msg)
@@ -690,6 +701,9 @@ func (h *Hub) sendHistory(client *Client, channel string) {
 		}
 		if m.ReplyTo != "" {
 			payload["replyTo"] = m.ReplyTo
+		}
+		if m.MsgType != "" {
+			payload["msgType"] = m.MsgType
 		}
 		h.sendToClient(client, Message{
 			Type:      "chat.message",
@@ -847,8 +861,12 @@ func (h *Hub) handleDMSend(client *Client, msg Message) {
 	}
 
 	var payload struct {
-		TargetId string `json:"targetId"`
-		Content  string `json:"content"`
+		TargetId        string `json:"targetId"`
+		Content         string `json:"content"`
+		Encrypted       bool   `json:"encrypted"`
+		Ciphertext      string `json:"ciphertext"`
+		Nonce           string `json:"nonce"`
+		SenderBoxPubKey string `json:"senderBoxPublicKey"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return
@@ -858,21 +876,35 @@ func (h *Hub) handleDMSend(client *Client, msg Message) {
 		return
 	}
 
+	// For storage: save ciphertext if encrypted, otherwise plaintext
+	storageContent := payload.Content
+	if payload.Encrypted {
+		storageContent = "[encrypted]"
+	}
 	dmCh := dmChannelKey(client.PublicKey, payload.TargetId)
 	msgID := uuid.New().String()
-	h.chat.SaveMessage(msgID, dmCh, client.PublicKey, client.Nickname, payload.Content, "")
+	h.chat.SaveMessage(msgID, dmCh, client.PublicKey, client.Nickname, storageContent, "", "")
+
+	// Build the outgoing payload, passing through encryption fields
+	outPayload := map[string]interface{}{
+		"from":     client.PublicKey,
+		"to":       payload.TargetId,
+		"nickname": client.Nickname,
+		"content":  payload.Content,
+		"role":     client.Role,
+	}
+	if payload.Encrypted {
+		outPayload["encrypted"] = true
+		outPayload["ciphertext"] = payload.Ciphertext
+		outPayload["nonce"] = payload.Nonce
+		outPayload["senderBoxPublicKey"] = payload.SenderBoxPubKey
+	}
 
 	dmMsg := Message{
 		Type:      "dm.message",
 		ID:        msgID,
 		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"from":     client.PublicKey,
-			"to":       payload.TargetId,
-			"nickname": client.Nickname,
-			"content":  payload.Content,
-			"role":     client.Role,
-		}),
+		Payload:   mustMarshal(outPayload),
 	}
 
 	data, _ := json.Marshal(dmMsg)
@@ -1514,6 +1546,9 @@ func (h *Hub) handleChatHistory(client *Client, msg Message) {
 		if m.ReplyTo != "" {
 			p["replyTo"] = m.ReplyTo
 		}
+		if m.MsgType != "" {
+			p["msgType"] = m.MsgType
+		}
 		msgs = append(msgs, map[string]interface{}{
 			"id":        m.ID,
 			"timestamp": m.Timestamp.UnixMilli(),
@@ -1529,6 +1564,34 @@ func (h *Hub) handleChatHistory(client *Client, msg Message) {
 			"channel":  payload.Channel,
 			"messages": msgs,
 			"hasMore":  len(messages) >= payload.Limit,
+		}),
+	})
+}
+
+func (h *Hub) handleChatRead(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+	var payload struct {
+		Channel   string `json:"channel"`
+		MessageId string `json:"messageId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	if payload.Channel == "" || payload.MessageId == "" {
+		return
+	}
+	// Broadcast read receipt to channel members
+	h.broadcastToChannel(payload.Channel, Message{
+		Type:      "chat.read_receipt",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"channel":   payload.Channel,
+			"messageId": payload.MessageId,
+			"userId":    client.PublicKey,
+			"nickname":  client.Nickname,
 		}),
 	})
 }

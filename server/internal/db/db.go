@@ -35,6 +35,7 @@ type Message struct {
 	Nickname  string
 	Content   string
 	ReplyTo   string
+	MsgType   string
 	Timestamp time.Time
 }
 
@@ -81,6 +82,7 @@ func migrate(conn *sql.DB) error {
 		nickname TEXT NOT NULL,
 		content TEXT NOT NULL,
 		reply_to TEXT NOT NULL DEFAULT '',
+		msg_type TEXT NOT NULL DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (channel) REFERENCES channels(name),
 		FOREIGN KEY (user_key) REFERENCES users(public_key)
@@ -115,7 +117,14 @@ func migrate(conn *sql.DB) error {
 	INSERT OR IGNORE INTO channels (name, topic, created_by) VALUES ('lobby', 'Welcome to the server', 'system');
 	`
 	_, err := conn.Exec(schema)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Migration: add msg_type column for existing databases that lack it
+	conn.Exec("ALTER TABLE messages ADD COLUMN msg_type TEXT NOT NULL DEFAULT ''")
+
+	return nil
 }
 
 func (d *DB) GetUser(publicKey string) (*User, error) {
@@ -242,15 +251,15 @@ func (d *DB) ChannelExists(name string) (bool, error) {
 
 func (d *DB) SaveMessage(msg Message) error {
 	_, err := d.conn.Exec(
-		"INSERT INTO messages (id, channel, user_key, nickname, content, reply_to, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
-		msg.ID, msg.Channel, msg.UserKey, msg.Nickname, msg.Content, msg.ReplyTo, msg.Timestamp,
+		"INSERT INTO messages (id, channel, user_key, nickname, content, reply_to, msg_type, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+		msg.ID, msg.Channel, msg.UserKey, msg.Nickname, msg.Content, msg.ReplyTo, msg.MsgType, msg.Timestamp,
 	)
 	return err
 }
 
 func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 	rows, err := d.conn.Query(
-		"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
+		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
 		channel, limit,
 	)
 	if err != nil {
@@ -261,7 +270,7 @@ func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.MsgType, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -411,7 +420,7 @@ func (d *DB) UnpinMessage(messageId string) error {
 
 func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
 	rows, err := d.conn.Query(
-		`SELECT m.id, m.channel, m.user_key, m.nickname, m.content, m.reply_to, m.timestamp
+		`SELECT m.id, m.channel, m.user_key, m.nickname, m.content, m.reply_to, m.msg_type, m.timestamp
 		 FROM pinned_messages p JOIN messages m ON p.message_id = m.id
 		 WHERE p.channel = ? ORDER BY p.pinned_at DESC`,
 		channel,
@@ -424,7 +433,7 @@ func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.MsgType, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -435,8 +444,8 @@ func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
 func (d *DB) GetMessageById(id string) (*Message, error) {
 	var m Message
 	err := d.conn.QueryRow(
-		"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE id = ?", id,
-	).Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp)
+		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE id = ?", id,
+	).Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.MsgType, &m.Timestamp)
 	if err != nil {
 		return nil, err
 	}
@@ -448,12 +457,12 @@ func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message,
 	var err error
 	if channel != "" {
 		rows, err = d.conn.Query(
-			"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?",
+			"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?",
 			channel, "%"+query+"%", limit,
 		)
 	} else {
 		rows, err = d.conn.Query(
-			"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?",
+			"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?",
 			"%"+query+"%", limit,
 		)
 	}
@@ -465,7 +474,7 @@ func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message,
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.MsgType, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -521,7 +530,7 @@ func (d *DB) IsBanned(publicKey string) (bool, error) {
 
 func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]Message, error) {
 	rows, err := d.conn.Query(
-		"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?",
+		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?",
 		channel, before, limit,
 	)
 	if err != nil {
@@ -532,7 +541,7 @@ func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]M
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.MsgType, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)

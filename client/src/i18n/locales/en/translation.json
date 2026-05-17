@@ -169,7 +169,7 @@
   "e2e.encrypted": "End-to-end encrypted",
   "e2e.notEncrypted": "Not encrypted",
   "e2e.title": "End-to-End Encryption",
-  "e2e.description": "Messages are encrypted with Ed25519 keys. Only you and the recipient can read them.",
+  "e2e.description": "Messages are encrypted with Curve25519 keys using NaCl box. Only you and the recipient can read them.",
   "e2e.yourKey": "Your key",
   "e2e.peerKey": "Peer key",
   "customEmoji.title": "Custom Emojis",
@@ -207,5 +207,7 @@
   "agreement.accept": "Accept",
   "agreement.decline": "Decline",
   "system.userJoined": "{{name}} joined",
-  "system.userLeft": "{{name}} left"
+  "system.userLeft": "{{name}} left",
+  "chat.seenBy": "Seen by {{names}}",
+  "chat.seen": "Seen"
 }

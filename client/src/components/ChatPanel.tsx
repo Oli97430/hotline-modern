@@ -6,6 +6,7 @@ import { EmojiPicker } from "./EmojiPicker";
 import { MentionSuggestions } from "./MentionSuggestions";
 import { FormatToolbar } from "./FormatToolbar";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { E2EIndicator } from "./E2EIndicator";
 import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
 
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
@@ -27,7 +28,7 @@ interface ChatPanelProps {
   currentUserId: string;
   currentRole?: string;
   typingUsers: TypingUser[];
-  dmMode?: { peerId: string; peerNick: string };
+  dmMode?: { peerId: string; peerNick: string; e2eEnabled: boolean; ownFingerprint?: string; peerFingerprint?: string };
   onSendMessage: (channel: string, content: string) => void;
   onSlashCommand?: (command: string, args: string[]) => void;
   onTyping?: () => void;
@@ -43,7 +44,7 @@ interface ChatPanelProps {
   onLoadHistory?: (channel: string, beforeTimestamp: number) => void;
   historyLoading?: boolean;
   hasMoreHistory?: boolean;
-  onFileUpload?: (file: File) => void;
+  onFileUpload?: (file: File, msgType?: string) => void;
   canUpload?: boolean;
   users?: { userId: string; nickname: string; role: string; status: string }[];
   onPinsOpen?: () => void;
@@ -59,9 +60,11 @@ interface ChatPanelProps {
   onQuoteClear?: () => void;
   onThreadOpen?: (messageId: string) => void;
   onForward?: (messageId: string) => void;
+  readReceipts?: Record<string, string[]>;
+  onSendReadReceipt?: (channel: string, messageId: string) => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick, lastReadMessageId, pinnedMessageIds, onQuote, quotedText, onQuoteClear, onThreadOpen, onForward }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick, lastReadMessageId, pinnedMessageIds, onQuote, quotedText, onQuoteClear, onThreadOpen, onForward, readReceipts, onSendReadReceipt }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -78,6 +81,19 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
   const prevScrollHeightRef = useRef(0);
   const isLoadingHistoryRef = useRef(false);
   const prevMsgCountRef = useRef(0);
+  const lastSentReceiptRef = useRef<string>("");
+
+  // Send read receipt when at bottom and new messages arrive or user scrolls down
+  useEffect(() => {
+    if (!onSendReadReceipt || dmMode || isScrolledUp) return;
+    const chMsgs = messages.filter((m) => m.channel === activeChannel && !m.system && m.userId !== currentUserId);
+    if (chMsgs.length === 0) return;
+    const lastMsg = chMsgs[chMsgs.length - 1];
+    if (lastMsg && lastMsg.id !== lastSentReceiptRef.current) {
+      lastSentReceiptRef.current = lastMsg.id;
+      onSendReadReceipt(activeChannel, lastMsg.id);
+    }
+  }, [messages, activeChannel, isScrolledUp, dmMode, currentUserId, onSendReadReceipt]);
 
   // Handle quoted text injection
   useEffect(() => {
@@ -259,6 +275,15 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           {dmMode ? `@ ${dmMode.peerNick}` : `# ${activeChannel}`}
         </span>
         {!dmMode && channelTopic && <span className="chat-topic" onClick={onChannelSettings} style={{ cursor: "pointer" }}>{channelTopic}</span>}
+        {dmMode && (
+          <div style={{ position: "relative", marginLeft: 8 }}>
+            <E2EIndicator
+              enabled={dmMode.e2eEnabled}
+              ownFingerprint={dmMode.ownFingerprint}
+              peerFingerprint={dmMode.peerFingerprint}
+            />
+          </div>
+        )}
         <div className="chat-header-actions">
           {onPinsOpen && (
             <button className="chat-header-btn" onClick={onPinsOpen} title={t("pins.title")}>
@@ -344,6 +369,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
                 currentUserId={currentUserId}
                 canModerate={canMod}
                 system={msg.system}
+                msgType={msg.msgType}
                 onReact={onReact}
                 onRemoveReact={onRemoveReact}
                 onEdit={onEdit}
@@ -360,6 +386,21 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
                 onThreadOpen={hasThread ? () => onThreadOpen!(msg.replyTo!) : undefined}
                 onForward={onForward}
               />
+              {msg.userId === currentUserId && !msg.system && readReceipts && (() => {
+                const readers = (readReceipts[msg.id] || []).filter((uid) => uid !== currentUserId);
+                if (readers.length === 0) return null;
+                const names = readers
+                  .map((uid) => users?.find((u) => u.userId === uid)?.nickname || uid.slice(0, 6))
+                  .slice(0, 5);
+                const label = readers.length <= 5
+                  ? t("chat.seenBy", { names: names.join(", ") })
+                  : t("chat.seenBy", { names: names.join(", ") + ` +${readers.length - 5}` });
+                return (
+                  <div className="chat-read-receipt">
+                    <span>{label}</span>
+                  </div>
+                );
+              })()}
             </div>
           );
         })}
@@ -401,9 +442,9 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         <div className="chat-voice-area">
           <VoiceRecorder
             onSend={(blob, _duration) => {
-              // Send as a file upload message
+              // Send as a voice message (msgType: "voice")
               const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm" });
-              onFileUpload?.(file);
+              onFileUpload?.(file, "voice");
               setShowVoiceRecorder(false);
             }}
             onCancel={() => setShowVoiceRecorder(false)}
@@ -810,6 +851,15 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           text-transform: uppercase;
           letter-spacing: 0.5px;
           white-space: nowrap;
+        }
+        .chat-read-receipt {
+          padding: 1px 16px 2px 56px;
+          animation: fadeIn 0.15s ease;
+        }
+        .chat-read-receipt span {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-style: italic;
         }
       `}</style>
     </div>

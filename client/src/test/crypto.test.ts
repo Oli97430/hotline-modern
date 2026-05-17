@@ -6,6 +6,9 @@ import {
   getOrCreateIdentity,
   signMessage,
   getPublicKeyHex,
+  getBoxPublicKeyHex,
+  encryptDM,
+  decryptDM,
   toHex,
   fromHex,
 } from "../lib/crypto";
@@ -40,18 +43,23 @@ describe("crypto", () => {
   });
 
   describe("generateIdentity", () => {
-    it("creates a valid Ed25519 keypair", () => {
+    it("creates a valid Ed25519 keypair and Curve25519 box keypair", () => {
       const identity = generateIdentity();
       expect(identity.publicKey).toBeInstanceOf(Uint8Array);
       expect(identity.secretKey).toBeInstanceOf(Uint8Array);
       expect(identity.publicKey.length).toBe(32);
       expect(identity.secretKey.length).toBe(64);
+      expect(identity.boxPublicKey).toBeInstanceOf(Uint8Array);
+      expect(identity.boxSecretKey).toBeInstanceOf(Uint8Array);
+      expect(identity.boxPublicKey.length).toBe(32);
+      expect(identity.boxSecretKey.length).toBe(32);
     });
 
     it("generates unique keypairs", () => {
       const id1 = generateIdentity();
       const id2 = generateIdentity();
       expect(toHex(id1.publicKey)).not.toBe(toHex(id2.publicKey));
+      expect(toHex(id1.boxPublicKey)).not.toBe(toHex(id2.boxPublicKey));
     });
   });
 
@@ -63,6 +71,8 @@ describe("crypto", () => {
       expect(loaded).not.toBeNull();
       expect(toHex(loaded!.publicKey)).toBe(toHex(identity.publicKey));
       expect(toHex(loaded!.secretKey)).toBe(toHex(identity.secretKey));
+      expect(toHex(loaded!.boxPublicKey)).toBe(toHex(identity.boxPublicKey));
+      expect(toHex(loaded!.boxSecretKey)).toBe(toHex(identity.boxSecretKey));
     });
 
     it("returns null when no identity is stored", () => {
@@ -72,6 +82,24 @@ describe("crypto", () => {
     it("returns null on corrupted data", () => {
       localStorage.setItem("hotline-identity", "not-json");
       expect(loadIdentity()).toBeNull();
+    });
+
+    it("generates box keys for legacy identities missing them", () => {
+      // Simulate an old identity without box keys
+      const kp = nacl.sign.keyPair();
+      const { encodeBase64 } = require("tweetnacl-util");
+      const legacyData = {
+        publicKey: encodeBase64(kp.publicKey),
+        secretKey: encodeBase64(kp.secretKey),
+      };
+      localStorage.setItem("hotline-identity", JSON.stringify(legacyData));
+      const loaded = loadIdentity();
+      expect(loaded).not.toBeNull();
+      expect(loaded!.boxPublicKey.length).toBe(32);
+      expect(loaded!.boxSecretKey.length).toBe(32);
+      // Verify box keys were persisted
+      const reloaded = loadIdentity();
+      expect(toHex(reloaded!.boxPublicKey)).toBe(toHex(loaded!.boxPublicKey));
     });
   });
 
@@ -140,6 +168,91 @@ describe("crypto", () => {
       const hex = getPublicKeyHex(identity);
       expect(hex.length).toBe(64); // 32 bytes = 64 hex chars
       expect(/^[0-9a-f]+$/.test(hex)).toBe(true);
+    });
+  });
+
+  describe("getBoxPublicKeyHex", () => {
+    it("returns hex-encoded box public key", () => {
+      const identity = generateIdentity();
+      const hex = getBoxPublicKeyHex(identity);
+      expect(hex.length).toBe(64); // 32 bytes = 64 hex chars
+      expect(/^[0-9a-f]+$/.test(hex)).toBe(true);
+    });
+  });
+
+  describe("encryptDM / decryptDM", () => {
+    it("encrypts and decrypts a message between two identities", () => {
+      const alice = generateIdentity();
+      const bob = generateIdentity();
+
+      const plaintext = "Hello Bob, this is a secret message!";
+      const aliceBoxPKHex = getBoxPublicKeyHex(alice);
+      const bobBoxPKHex = getBoxPublicKeyHex(bob);
+
+      // Alice encrypts for Bob
+      const { ciphertext, nonce } = encryptDM(plaintext, bobBoxPKHex, alice);
+      expect(ciphertext).toBeTruthy();
+      expect(nonce).toBeTruthy();
+      // Ciphertext should not contain the plaintext
+      expect(ciphertext).not.toContain(plaintext);
+
+      // Bob decrypts using Alice's box public key
+      const decrypted = decryptDM(ciphertext, nonce, aliceBoxPKHex, bob);
+      expect(decrypted).toBe(plaintext);
+    });
+
+    it("fails to decrypt with wrong key", () => {
+      const alice = generateIdentity();
+      const bob = generateIdentity();
+      const charlie = generateIdentity();
+
+      const plaintext = "Secret for Bob only";
+      const bobBoxPKHex = getBoxPublicKeyHex(bob);
+      const aliceBoxPKHex = getBoxPublicKeyHex(alice);
+
+      // Alice encrypts for Bob
+      const { ciphertext, nonce } = encryptDM(plaintext, bobBoxPKHex, alice);
+
+      // Charlie tries to decrypt (should fail)
+      const result = decryptDM(ciphertext, nonce, aliceBoxPKHex, charlie);
+      expect(result).toBeNull();
+    });
+
+    it("handles unicode messages", () => {
+      const alice = generateIdentity();
+      const bob = generateIdentity();
+
+      const plaintext = "Bonjour! Les emojis: \u{1F600}\u{1F389}\u{1F680}";
+      const { ciphertext, nonce } = encryptDM(plaintext, getBoxPublicKeyHex(bob), alice);
+      const decrypted = decryptDM(ciphertext, nonce, getBoxPublicKeyHex(alice), bob);
+      expect(decrypted).toBe(plaintext);
+    });
+
+    it("produces different ciphertexts for same plaintext (random nonce)", () => {
+      const alice = generateIdentity();
+      const bob = generateIdentity();
+
+      const plaintext = "Same message";
+      const bobBoxPKHex = getBoxPublicKeyHex(bob);
+      const enc1 = encryptDM(plaintext, bobBoxPKHex, alice);
+      const enc2 = encryptDM(plaintext, bobBoxPKHex, alice);
+      expect(enc1.ciphertext).not.toBe(enc2.ciphertext);
+      expect(enc1.nonce).not.toBe(enc2.nonce);
+    });
+
+    it("sender can also decrypt their own message using recipient box pk", () => {
+      const alice = generateIdentity();
+      const bob = generateIdentity();
+
+      const plaintext = "I should be able to read my own message";
+      const bobBoxPKHex = getBoxPublicKeyHex(bob);
+
+      // Alice encrypts for Bob
+      const { ciphertext, nonce } = encryptDM(plaintext, bobBoxPKHex, alice);
+
+      // Alice decrypts using Bob's box public key (sender side)
+      const decrypted = decryptDM(ciphertext, nonce, bobBoxPKHex, alice);
+      expect(decrypted).toBe(plaintext);
     });
   });
 });

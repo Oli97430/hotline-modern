@@ -61,6 +61,7 @@ export function ThreadPanel({
             reactions={rootMessage.reactions}
             currentUserId={currentUserId}
             canModerate={canMod}
+            msgType={rootMessage.msgType}
             onReact={onReact}
             onRemoveReact={onRemoveReact}
             onEdit={onEdit}
@@ -97,6 +98,7 @@ export function ThreadPanel({
               reactions={msg.reactions}
               currentUserId={currentUserId}
               canModerate={canMod}
+              msgType={msg.msgType}
               onReact={onReact}
               onRemoveReact={onRemoveReact}
               onEdit={onEdit}

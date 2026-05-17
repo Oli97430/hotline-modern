@@ -7,6 +7,7 @@ import { LinkPreview } from "./LinkPreview";
 import { CodeBlock } from "./CodeBlock";
 import { UserAvatar } from "./UserAvatar";
 import { RichEmbed, isEmbeddableUrl } from "./RichEmbed";
+import { AudioMessage } from "./VoiceRecorder";
 
 const IMAGE_REGEX = /\b(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?)\b/gi;
 const LINK_IN_BRACKETS = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
@@ -84,6 +85,12 @@ function extractEmbedUrls(text: string): string[] {
   return allUrls.filter((u) => isEmbeddableUrl(u)).slice(0, 2);
 }
 
+/** Extract the URL from a markdown link like [filename](url) */
+function extractUrlFromMarkdownLink(text: string): string | null {
+  const match = text.trim().match(/^\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)$/);
+  return match ? match[2] : null;
+}
+
 interface MessageBubbleProps {
   id: string;
   userId: string;
@@ -97,6 +104,7 @@ interface MessageBubbleProps {
   currentUserId: string;
   canModerate?: boolean;
   system?: boolean;
+  msgType?: string;
   onReact?: (messageId: string, emoji: string) => void;
   onRemoveReact?: (messageId: string, emoji: string) => void;
   onEdit?: (messageId: string, content: string) => void;
@@ -116,7 +124,7 @@ interface MessageBubbleProps {
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, userId, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, system, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, isPinned, replyContext, isGrouped, onImageClick, onQuote, onThreadOpen, onForward }: MessageBubbleProps) {
+export function MessageBubble({ id, userId, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, system, msgType, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, isPinned, replyContext, isGrouped, onImageClick, onQuote, onThreadOpen, onForward }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
 
   if (system) {
@@ -225,6 +233,19 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
           <button className="message-edit-save" onClick={handleEditSubmit}>OK</button>
           <button className="message-edit-cancel" onClick={() => setEditing(false)}>ESC</button>
         </div>
+      ) : msgType === "voice" ? (
+        <>
+          {(() => {
+            const voiceUrl = extractUrlFromMarkdownLink(content);
+            return voiceUrl ? (
+              <AudioMessage src={voiceUrl} />
+            ) : (
+              <div className="message-content">
+                {formatMessage(content)}
+              </div>
+            );
+          })()}
+        </>
       ) : (
         <>
           {textContent && (

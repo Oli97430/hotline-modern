@@ -169,7 +169,7 @@
   "e2e.encrypted": "Chiffrement de bout en bout",
   "e2e.notEncrypted": "Non chiffré",
   "e2e.title": "Chiffrement de bout en bout",
-  "e2e.description": "Les messages sont chiffrés avec des clés Ed25519. Seuls vous et le destinataire pouvez les lire.",
+  "e2e.description": "Les messages sont chiffrés avec des clés Curve25519 via NaCl box. Seuls vous et le destinataire pouvez les lire.",
   "e2e.yourKey": "Votre clé",
   "e2e.peerKey": "Clé du pair",
   "customEmoji.title": "Emojis personnalisés",
@@ -207,5 +207,7 @@
   "agreement.accept": "Accepter",
   "agreement.decline": "Refuser",
   "system.userJoined": "{{name}} a rejoint",
-  "system.userLeft": "{{name}} a quitté"
+  "system.userLeft": "{{name}} a quitté",
+  "chat.seenBy": "Vu par {{names}}",
+  "chat.seen": "Vu"
 }

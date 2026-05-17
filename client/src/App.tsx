@@ -36,7 +36,7 @@ import { useChannelMute } from "./hooks/useChannelMute";
 import { useIdleDetection } from "./hooks/useIdleDetection";
 import { useTabNotification } from "./hooks/useTabNotification";
 import { useCompactMode } from "./hooks/useCompactMode";
-import { getFileAuthHeaders } from "./lib/crypto";
+import { getFileAuthHeaders, getBoxPublicKeyHex } from "./lib/crypto";
 import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal, Palette, TrendingUp, Menu, Users as UsersIcon, Clock, Smile as SmileIcon, Filter } from "lucide-react";
 
 export default function App() {
@@ -469,7 +469,7 @@ export default function App() {
     return applyChannelOrder(ws.channels, channelOrder);
   }, [ws.channels, channelOrder]);
 
-  const handleFileUpload = useCallback(async (file: File) => {
+  const handleFileUpload = useCallback(async (file: File, msgType?: string) => {
     try {
       const authHeaders = getFileAuthHeaders(identity);
       const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
@@ -492,7 +492,7 @@ export default function App() {
 
       const result = await resp.json();
       const fileUrl = `${protocol}${base}/files/${result.path}`;
-      ws.sendChat(activeChannel, `[${result.filename}](${fileUrl})`);
+      ws.sendChat(activeChannel, `[${result.filename}](${fileUrl})`, msgType);
     } catch {
       handleError("File upload error");
     }
@@ -666,7 +666,17 @@ export default function App() {
             currentUserId={ws.serverInfo?.userId || ""}
             currentRole={ws.serverInfo?.role}
             typingUsers={ws.typingUsers}
-            dmMode={activeDM ? { peerId: activeDM, peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8) } : undefined}
+            dmMode={activeDM ? (() => {
+              const peerUser = ws.users.find((u) => u.userId === activeDM);
+              const peerBoxPK = peerUser?.boxPublicKey;
+              return {
+                peerId: activeDM,
+                peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8),
+                e2eEnabled: !!peerBoxPK,
+                ownFingerprint: getBoxPublicKeyHex(identity),
+                peerFingerprint: peerBoxPK,
+              };
+            })() : undefined}
             onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : handleSendWithReply}
             onSlashCommand={activeDM ? undefined : handleSlashCommand}
             onTyping={() => activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel)}
@@ -698,6 +708,8 @@ export default function App() {
             onQuoteClear={() => setQuoteText("")}
             onThreadOpen={setThreadRootId}
             onForward={handleForwardMessage}
+            readReceipts={ws.readReceipts}
+            onSendReadReceipt={ws.sendReadReceipt}
           />
 
           {threadRootId && (() => {

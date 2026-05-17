@@ -14,7 +14,7 @@ func New(database *db.DB) *Manager {
 	return &Manager{db: database}
 }
 
-func (m *Manager) SaveMessage(id, channel, userKey, nickname, content, replyTo string) error {
+func (m *Manager) SaveMessage(id, channel, userKey, nickname, content, replyTo, msgType string) error {
 	msg := db.Message{
 		ID:        id,
 		Channel:   channel,
@@ -22,6 +22,7 @@ func (m *Manager) SaveMessage(id, channel, userKey, nickname, content, replyTo s
 		Nickname:  nickname,
 		Content:   content,
 		ReplyTo:   replyTo,
+		MsgType:   msgType,
 		Timestamp: time.Now(),
 	}
 	return m.db.SaveMessage(msg)

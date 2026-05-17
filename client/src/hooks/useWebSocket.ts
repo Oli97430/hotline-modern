@@ -11,7 +11,7 @@ import {
   ErrorPayload,
   createMessage,
 } from "../lib/protocol";
-import { Identity, getPublicKeyHex, signMessage } from "../lib/crypto";
+import { Identity, getPublicKeyHex, getBoxPublicKeyHex, signMessage, encryptDM, decryptDM } from "../lib/crypto";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "authenticating" | "connected" | "reconnecting";
 
@@ -26,6 +26,7 @@ export interface ChatMessage {
   edited?: boolean;
   reactions?: MessageReaction[];
   replyTo?: string;
+  msgType?: string;
   system?: boolean;
 }
 
@@ -97,16 +98,17 @@ export interface UseWebSocketReturn {
   dmMessages: DMMessage[];
   typingUsers: TypingUser[];
   channels: { name: string; topic: string; userCount: number; hasPassword: boolean }[];
-  users: { userId: string; nickname: string; role: string; status: string }[];
+  users: { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string }[];
   searchResults: SearchResult[];
   pinnedMessages: PinnedMessage[];
   channelMembers: ChannelMember[];
+  readReceipts: Record<string, string[]>;
   reconnectIn: number;
   historyLoading: boolean;
   hasMoreHistory: boolean;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
-  sendChat: (channel: string, content: string) => void;
+  sendChat: (channel: string, content: string, msgType?: string) => void;
   sendDM: (targetId: string, content: string) => void;
   sendTyping: (channel: string, targetId?: string) => void;
   joinChannel: (channel: string, password?: string) => void;
@@ -129,13 +131,14 @@ export interface UseWebSocketReturn {
   unpinMessage: (messageId: string, channel: string) => void;
   requestPins: (channel: string) => void;
   changeNickname: (nickname: string) => void;
-  sendChatWithReply: (channel: string, content: string, replyTo: string) => void;
+  sendChatWithReply: (channel: string, content: string, replyTo: string, msgType?: string) => void;
   updateServerSettings: (serverName: string, motd: string) => void;
   requestBanList: () => void;
   unbanUser: (publicKey: string) => void;
   setStatus: (status: string) => void;
   requestChannelMembers: (channel: string) => void;
   loadHistory: (channel: string, beforeTimestamp: number) => void;
+  sendReadReceipt: (channel: string, messageId: string) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -165,10 +168,13 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number; hasPassword: boolean }[]>([]);
-  const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string }[]>([]);
+  const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string; boxPublicKey?: string }[]>([]);
+  const usersRef = useRef(users);
+  usersRef.current = users;
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [channelMembers, setChannelMembers] = useState<ChannelMember[]>([]);
+  const [readReceipts, setReadReceipts] = useState<Record<string, string[]>>({});
   const [reconnectIn, setReconnectIn] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
@@ -184,6 +190,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           const signature = signMessage(nonce, identity.secretKey);
           const authMsg = createMessage("auth", {
             publicKey: getPublicKeyHex(identity),
+            boxPublicKey: getBoxPublicKeyHex(identity),
             signature,
             nonce,
             nickname: nicknameRef.current,
@@ -213,7 +220,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           break;
         }
         case "chat.message": {
-          const payload = msg.payload as ChatMessagePayload & { replyTo?: string };
+          const payload = msg.payload as ChatMessagePayload & { replyTo?: string; msgType?: string };
           setMessages((prev) => insertAndCap(prev, {
             id: msg.id,
             channel: payload.channel,
@@ -223,6 +230,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             role: payload.role,
             timestamp: msg.timestamp,
             replyTo: payload.replyTo,
+            msgType: payload.msgType,
           }, 2000));
           break;
         }
@@ -240,7 +248,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           const payload = msg.payload as UserJoinedPayload;
           setUsers((prev) => {
             const filtered = prev.filter((u) => u.userId !== payload.userId);
-            return [...filtered, { ...payload, status: "online" }];
+            return [...filtered, { ...payload, status: "online", boxPublicKey: payload.boxPublicKey }];
           });
           setMessages((prev) => insertAndCap(prev, {
             id: msg.id,
@@ -277,14 +285,33 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           break;
         }
         case "dm.message": {
-          const payload = msg.payload as { from: string; to: string; nickname: string; content: string; role: string };
+          const payload = msg.payload as {
+            from: string; to: string; nickname: string;
+            content: string; role: string;
+            encrypted?: boolean; ciphertext?: string; nonce?: string;
+            senderBoxPublicKey?: string;
+          };
+          let content = payload.content;
+          if (payload.encrypted && payload.ciphertext && payload.nonce) {
+            // Determine peer's box public key for decryption
+            const peerId = payload.from === getPublicKeyHex(identity) ? payload.to : payload.from;
+            // Use senderBoxPublicKey from payload if available, otherwise look up from users list
+            const peerBoxPK = payload.senderBoxPublicKey
+              || usersRef.current.find((u) => u.userId === peerId)?.boxPublicKey;
+            if (peerBoxPK) {
+              const decrypted = decryptDM(payload.ciphertext, payload.nonce, peerBoxPK, identity);
+              content = decrypted ?? "[Decryption failed]";
+            } else {
+              content = "[Encrypted - missing peer key]";
+            }
+          }
           setDmMessages((prev) =>
             insertAndCap(prev, {
               id: msg.id,
               from: payload.from,
               to: payload.to,
               nickname: payload.nickname,
-              content: payload.content,
+              content,
               role: payload.role,
               timestamp: msg.timestamp,
             }, 1000)
@@ -383,8 +410,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           setChannelMembers(payload.members || []);
           break;
         }
+        case "chat.read_receipt": {
+          const payload = msg.payload as { channel: string; messageId: string; userId: string; nickname: string };
+          setReadReceipts((prev) => {
+            const existing = prev[payload.messageId] || [];
+            if (existing.includes(payload.userId)) return prev;
+            return { ...prev, [payload.messageId]: [...existing, payload.userId] };
+          });
+          break;
+        }
         case "chat.history": {
-          const payload = msg.payload as { channel: string; messages: { id: string; timestamp: number; payload: ChatMessagePayload & { replyTo?: string } }[]; hasMore: boolean };
+          const payload = msg.payload as { channel: string; messages: { id: string; timestamp: number; payload: ChatMessagePayload & { replyTo?: string; msgType?: string } }[]; hasMore: boolean };
           setHistoryLoading(false);
           setHasMoreHistory(payload.hasMore);
           if (payload.messages && payload.messages.length > 0) {
@@ -398,6 +434,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
                 role: m.payload.role,
                 timestamp: m.timestamp,
                 replyTo: m.payload.replyTo,
+                msgType: m.payload.msgType,
               }));
               // Prepend older messages, deduping by id
               const existingIds = new Set(prev.map((m) => m.id));
@@ -491,11 +528,14 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setTypingUsers([]);
     setChannels([]);
     setUsers([]);
+    setReadReceipts({});
   }, []);
 
-  const sendChat = useCallback((channel: string, content: string) => {
+  const sendChat = useCallback((channel: string, content: string, msgType?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("chat.send", { channel, content });
+      const payload: Record<string, string> = { channel, content };
+      if (msgType) payload.msgType = msgType;
+      const msg = createMessage("chat.send", payload);
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
@@ -567,10 +607,26 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
 
   const sendDM = useCallback((targetId: string, content: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("dm.send", { targetId, content });
-      wsRef.current.send(JSON.stringify(msg));
+      const peerBoxPK = usersRef.current.find((u) => u.userId === targetId)?.boxPublicKey;
+      if (peerBoxPK) {
+        // Encrypt the message with the peer's box public key
+        const { ciphertext, nonce } = encryptDM(content, peerBoxPK, identity);
+        const msg = createMessage("dm.send", {
+          targetId,
+          content: "",
+          encrypted: true,
+          ciphertext,
+          nonce,
+          senderBoxPublicKey: getBoxPublicKeyHex(identity),
+        });
+        wsRef.current.send(JSON.stringify(msg));
+      } else {
+        // Fallback: peer doesn't have box key (old client), send plaintext
+        const msg = createMessage("dm.send", { targetId, content });
+        wsRef.current.send(JSON.stringify(msg));
+      }
     }
-  }, []);
+  }, [identity]);
 
   const sendTyping = useCallback((channel: string, targetId?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -653,9 +709,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
-  const sendChatWithReply = useCallback((channel: string, content: string, replyTo: string) => {
+  const sendChatWithReply = useCallback((channel: string, content: string, replyTo: string, msgType?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("chat.send", { channel, content, replyTo });
+      const payload: Record<string, string> = { channel, content, replyTo };
+      if (msgType) payload.msgType = msgType;
+      const msg = createMessage("chat.send", payload);
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
@@ -699,6 +757,13 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       setHistoryLoading(true);
       const msg = createMessage("chat.history", { channel, before: beforeTimestamp, limit: 50 });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const sendReadReceipt = useCallback((channel: string, messageId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("chat.read", { channel, messageId });
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
@@ -767,5 +832,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setStatus: setUserStatus,
     requestChannelMembers,
     loadHistory,
+    readReceipts,
+    sendReadReceipt,
   };
 }
