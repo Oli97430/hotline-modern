@@ -124,21 +124,10 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
       ? t("system.userJoined", { name: nickname })
       : t("system.userLeft", { name: nickname });
     return (
-      <div className="message-system">
-        <span className="message-system-text">{systemText}</span>
-        <style>{`
-          .message-system {
-            display: flex;
-            justify-content: center;
-            padding: 4px 16px;
-          }
-          .message-system-text {
-            font-size: 12px;
-            color: var(--text-muted);
-            font-style: italic;
-            opacity: 0.7;
-          }
-        `}</style>
+      <div style={{ display: "flex", justifyContent: "center", padding: "4px 16px" }}>
+        <span style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", opacity: 0.7 }}>
+          {systemText}
+        </span>
       </div>
     );
   }

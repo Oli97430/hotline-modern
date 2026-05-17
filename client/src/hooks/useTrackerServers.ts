@@ -65,7 +65,7 @@ export function useTrackerServers() {
     );
 
     if (!anySuccess && trackerUrls.length > 0) {
-      setError("Impossible de contacter les trackers");
+      setError("tracker.error");
     }
 
     allServers.sort((a, b) => b.users - a.users);

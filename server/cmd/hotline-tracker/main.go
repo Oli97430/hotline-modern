@@ -40,6 +40,9 @@ func main() {
 			return
 		}
 
+		// Limit request body to 64KB to prevent OOM from malicious clients
+		r.Body = http.MaxBytesReader(w, r.Body, 64*1024)
+
 		var entry tracker.ServerEntry
 		if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -55,6 +58,17 @@ func main() {
 			entry.Name = "Unnamed Server"
 		}
 
+		// Cap field lengths to prevent abuse
+		if len(entry.Name) > 100 {
+			entry.Name = entry.Name[:100]
+		}
+		if len(entry.Description) > 500 {
+			entry.Description = entry.Description[:500]
+		}
+		if len(entry.Address) > 253 {
+			entry.Address = entry.Address[:253]
+		}
+
 		store.Register(entry)
 		log.Printf("Registered: %s (%s:%d) — %d user(s)", entry.Name, entry.Address, entry.Port, entry.Users)
 
@@ -64,11 +78,6 @@ func main() {
 
 	// GET /servers — clients fetch the list
 	mux.HandleFunc("/servers", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "GET only", http.StatusMethodNotAllowed)
-			return
-		}
-
 		// CORS for browser clients
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
@@ -76,6 +85,11 @@ func main() {
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
 

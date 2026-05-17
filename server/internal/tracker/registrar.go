@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -74,16 +75,23 @@ func (r *Registrar) announce() {
 		return
 	}
 
+	// Announce to all trackers in parallel to avoid sequential timeout delays
+	var wg sync.WaitGroup
 	for _, rawURL := range r.trackerURLs {
-		url := strings.TrimRight(rawURL, "/") + "/register"
-		resp, err := r.client.Post(url, "application/json", bytes.NewReader(body))
-		if err != nil {
-			log.Printf("tracker: failed to register with %s: %v", rawURL, err)
-			continue
-		}
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("tracker: %s returned status %d", rawURL, resp.StatusCode)
-		}
+		wg.Add(1)
+		go func(rawURL string) {
+			defer wg.Done()
+			url := strings.TrimRight(rawURL, "/") + "/register"
+			resp, err := r.client.Post(url, "application/json", bytes.NewReader(body))
+			if err != nil {
+				log.Printf("tracker: failed to register with %s: %v", rawURL, err)
+				return
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				log.Printf("tracker: %s returned status %d", rawURL, resp.StatusCode)
+			}
+		}(rawURL)
 	}
+	wg.Wait()
 }

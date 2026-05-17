@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -117,11 +118,7 @@ func main() {
 		// Parse port from addr flag (e.g. ":9998" -> 9998)
 		port := 9998
 		if a := *addr; len(a) > 1 && a[0] == ':' {
-			p := 0
-			for _, c := range a[1:] {
-				p = p*10 + int(c-'0')
-			}
-			if p > 0 {
+			if p, err := strconv.Atoi(a[1:]); err == nil && p > 0 {
 				port = p
 			}
 		}

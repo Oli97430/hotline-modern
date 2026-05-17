@@ -1,6 +1,7 @@
 package tracker
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -30,17 +31,12 @@ func NewStore() *Store {
 	}
 }
 
-// key returns a unique identifier for a server.
-func key(address string, port int) string {
-	return address + ":" + string(rune(port))
-}
-
 // Register adds or updates a server entry.
 func (s *Store) Register(entry ServerEntry) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry.LastSeen = time.Now()
-	k := entry.Address + ":" + itoa(entry.Port)
+	k := fmt.Sprintf("%s:%d", entry.Address, entry.Port)
 	s.servers[k] = &entry
 }
 
@@ -77,18 +73,3 @@ func (s *Store) Count() int {
 	return len(s.servers)
 }
 
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	buf := make([]byte, 0, 6)
-	for n > 0 {
-		buf = append(buf, byte('0'+n%10))
-		n /= 10
-	}
-	// reverse
-	for i, j := 0, len(buf)-1; i < j; i, j = i+1, j-1 {
-		buf[i], buf[j] = buf[j], buf[i]
-	}
-	return string(buf)
-}

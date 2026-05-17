@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 interface ServerAgreementProps {
@@ -12,31 +12,41 @@ function getAcceptedKey(serverAddress: string): string {
   return `hotline-agreement-${serverAddress}`;
 }
 
-export function hasAcceptedAgreement(serverAddress: string, agreement: string): boolean {
-  if (!agreement) return true;
-  const stored = localStorage.getItem(getAcceptedKey(serverAddress));
-  return stored === agreement;
+/** Simple hash to avoid storing large agreement text in localStorage */
+async function hashAgreement(text: string): Promise<string> {
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Fallback: simple djb2 hash
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) >>> 0;
+  return h.toString(36);
 }
 
-export function storeAcceptedAgreement(serverAddress: string, agreement: string) {
-  localStorage.setItem(getAcceptedKey(serverAddress), agreement);
+export function hasAcceptedAgreement(serverAddress: string, _agreement: string): boolean {
+  if (!_agreement) return true;
+  // We store a SHA-256 hash on accept — if any hash exists, the user accepted
+  return localStorage.getItem(getAcceptedKey(serverAddress)) !== null;
 }
 
 export function ServerAgreement({ agreement, serverAddress, onAccept, onDecline }: ServerAgreementProps) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(true);
+  const onAcceptRef = useRef(onAccept);
+  onAcceptRef.current = onAccept;
 
   useEffect(() => {
     if (!agreement || hasAcceptedAgreement(serverAddress, agreement)) {
-      onAccept();
+      onAcceptRef.current();
       setVisible(false);
     }
-  }, [agreement, serverAddress, onAccept]);
+  }, [agreement, serverAddress]);
 
   if (!visible || !agreement) return null;
 
   const handleAccept = () => {
-    storeAcceptedAgreement(serverAddress, agreement);
+    hashAgreement(agreement).then((h) => localStorage.setItem(getAcceptedKey(serverAddress), h));
     onAccept();
     setVisible(false);
   };
