@@ -191,6 +191,7 @@ func (d *DB) GetChannelPasswordHash(name string) (string, error) {
 }
 
 // CheckChannelPassword verifies a password against the stored bcrypt hash.
+// Also handles legacy plaintext passwords (auto-upgrades them to bcrypt on success).
 func (d *DB) CheckChannelPassword(name, password string) (bool, error) {
 	hash, err := d.GetChannelPasswordHash(name)
 	if err != nil {
@@ -202,8 +203,20 @@ func (d *DB) CheckChannelPassword(name, password string) (bool, error) {
 	if password == "" {
 		return false, nil // Password required but not provided
 	}
-	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil, nil
+	// Detect bcrypt hash (starts with "$2a$" or "$2b$")
+	if len(hash) >= 4 && (hash[:4] == "$2a$" || hash[:4] == "$2b$") {
+		err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+		return err == nil, nil
+	}
+	// Legacy plaintext comparison — auto-upgrade to bcrypt on success
+	if hash == password {
+		newHash, hashErr := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if hashErr == nil {
+			d.conn.Exec("UPDATE channels SET password = ? WHERE name = ?", string(newHash), name)
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 // GetChannelPassword kept for backward compat — returns hash (for hasPassword check)
