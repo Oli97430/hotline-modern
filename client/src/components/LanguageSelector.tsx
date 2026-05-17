@@ -45,26 +45,36 @@ export function LanguageSelector() {
           color: var(--text-muted);
         }
         .lang-icon {
-          opacity: 0.6;
+          opacity: 0.5;
+          flex-shrink: 0;
         }
         .lang-selector select {
           font-size: 11px;
           padding: 2px 4px;
           font-weight: 500;
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: color var(--transition-fast);
+        }
+        .lang-selector select:hover {
+          color: var(--text-primary);
         }
         .theme-toggle {
           display: flex;
           align-items: center;
           justify-content: center;
-          width: 26px;
-          height: 26px;
+          width: 28px;
+          height: 28px;
           border-radius: var(--radius-sm);
           color: var(--text-muted);
-          transition: color var(--transition-normal), background var(--transition-normal);
+          transition: color var(--transition-normal), background var(--transition-normal), transform var(--transition-fast);
         }
         .theme-toggle:hover {
           color: var(--accent);
           background: var(--accent-dim);
+          transform: rotate(15deg);
         }
       `}</style>
     </div>

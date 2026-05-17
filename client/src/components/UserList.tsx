@@ -126,6 +126,7 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           display: flex;
           flex-direction: column;
           height: 100%;
+          border-left: 1px solid var(--border-subtle);
         }
         .user-list-header {
           padding: 12px 16px;
@@ -185,10 +186,12 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           border: 1px solid var(--border);
           border-radius: var(--radius-lg);
           padding: 6px;
-          min-width: 140px;
+          min-width: 160px;
           z-index: 200;
           box-shadow: var(--shadow-lg);
           animation: fadeInScale 0.1s ease;
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
         }
         .user-menu-header {
           padding: 8px 10px 6px;

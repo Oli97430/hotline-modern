@@ -10,6 +10,22 @@ interface SearchPanelProps {
   activeChannel: string;
 }
 
+function highlightText(text: string, query: string): (string | JSX.Element)[] {
+  if (!query || query.length < 2) return [text];
+  const parts: (string | JSX.Element)[] = [];
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`, "gi");
+  let last = 0;
+  let match;
+  let key = 0;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    parts.push(<mark key={key++} className="search-highlight">{match[1]}</mark>);
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
 export function SearchPanel({ onSearch, onClose, results, activeChannel }: SearchPanelProps) {
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
@@ -56,6 +72,9 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           onKeyDown={handleKeyDown}
           placeholder={t("search.placeholder")}
         />
+        {results.length > 0 && (
+          <span className="search-count">{results.length}</span>
+        )}
         <label className="search-scope">
           <input
             type="checkbox"
@@ -78,14 +97,17 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
                 <span className="search-result-channel">#{r.channel}</span>
                 <span className="search-result-time">{formatTime(r.timestamp)}</span>
               </div>
-              <div className="search-result-content">{r.content}</div>
+              <div className="search-result-content">{highlightText(r.content, query)}</div>
             </li>
           ))}
         </ul>
       )}
 
       {query.length >= 2 && results.length === 0 && (
-        <div className="search-empty">{t("search.noResults")}</div>
+        <div className="search-empty">
+          <Search size={20} className="search-empty-icon" />
+          <span>{t("search.noResults")}</span>
+        </div>
       )}
 
       <style>{`
@@ -101,11 +123,12 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           max-height: 60%;
           display: flex;
           flex-direction: column;
+          box-shadow: var(--shadow-md);
         }
         .search-header {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           padding: 10px 16px;
           border-bottom: 1px solid var(--border);
           color: var(--text-muted);
@@ -117,9 +140,23 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           color: var(--text-primary);
           font-size: 14px;
           outline: none;
+          font-weight: 450;
         }
         .search-input::placeholder {
           color: var(--text-muted);
+          font-weight: 400;
+        }
+        .search-count {
+          font-size: 10px;
+          font-weight: 700;
+          color: #fff;
+          background: var(--accent);
+          padding: 2px 7px;
+          border-radius: 10px;
+          min-width: 20px;
+          text-align: center;
+          line-height: 1.4;
+          animation: fadeIn 0.15s ease;
         }
         .search-scope {
           display: flex;
@@ -129,6 +166,12 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           color: var(--text-secondary);
           cursor: pointer;
           white-space: nowrap;
+          padding: 4px 8px;
+          border-radius: var(--radius-sm);
+          transition: background var(--transition-fast);
+        }
+        .search-scope:hover {
+          background: var(--bg-tertiary);
         }
         .search-scope input[type="checkbox"] {
           width: 14px;
@@ -137,12 +180,13 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
         }
         .search-close {
           color: var(--text-muted);
-          padding: 4px;
-          border-radius: 4px;
-          transition: color 0.2s;
+          padding: 6px;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-fast), background var(--transition-fast);
         }
         .search-close:hover {
           color: var(--text-primary);
+          background: var(--bg-tertiary);
         }
         .search-results {
           list-style: none;
@@ -150,19 +194,22 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           max-height: 300px;
         }
         .search-result-item {
-          padding: 8px 16px;
-          border-bottom: 1px solid var(--border);
+          padding: 10px 16px;
+          border-bottom: 1px solid var(--border-subtle);
           cursor: pointer;
-          transition: background 0.1s;
+          transition: background var(--transition-fast);
         }
         .search-result-item:hover {
           background: var(--bg-tertiary);
+        }
+        .search-result-item:last-child {
+          border-bottom: none;
         }
         .search-result-meta {
           display: flex;
           align-items: baseline;
           gap: 8px;
-          margin-bottom: 2px;
+          margin-bottom: 3px;
         }
         .search-result-nick {
           font-size: 12px;
@@ -172,6 +219,7 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
         .search-result-channel {
           font-size: 11px;
           color: var(--accent);
+          font-weight: 500;
         }
         .search-result-time {
           font-size: 11px;
@@ -184,12 +232,28 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          line-height: 1.4;
+        }
+        .search-highlight {
+          background: rgba(var(--accent-rgb), 0.2);
+          color: var(--accent);
+          border-radius: 2px;
+          padding: 1px 3px;
+          font-weight: 600;
+          border-bottom: 1px solid rgba(var(--accent-rgb), 0.4);
         }
         .search-empty {
-          padding: 16px;
-          text-align: center;
+          padding: 24px 16px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
           color: var(--text-muted);
           font-size: 13px;
+          animation: fadeIn 0.2s ease;
+        }
+        .search-empty-icon {
+          opacity: 0.4;
         }
       `}</style>
     </div>

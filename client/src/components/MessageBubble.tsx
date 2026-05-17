@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Smile, Pencil, Trash2, Pin, Reply } from "lucide-react";
+import { Smile, Pencil, Trash2, Pin, Reply, Bookmark } from "lucide-react";
 import { MessageReaction } from "../hooks/useWebSocket";
+import { MessageContextMenu } from "./MessageContextMenu";
 
 const IMAGE_REGEX = /\b(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?)\b/gi;
 const LINK_IN_BRACKETS = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
@@ -9,7 +10,7 @@ const LINK_IN_BRACKETS = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 function formatMessage(text: string): (string | JSX.Element)[] {
   const parts: (string | JSX.Element)[] = [];
   let key = 0;
-  const regex = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\b(https?:\/\/[^\s]+))/g;
+  const regex = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(@\w+)|(\b(https?:\/\/[^\s]+))/g;
   let last = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
@@ -23,8 +24,11 @@ function formatMessage(text: string): (string | JSX.Element)[] {
       parts.push(<strong key={key++}>{match[5].slice(2, -2)}</strong>);
     } else if (match[6]) {
       parts.push(<em key={key++}>{match[6].slice(1, -1)}</em>);
-    } else if (match[8]) {
-      parts.push(<a key={key++} className="msg-link" href={match[8]} target="_blank" rel="noopener noreferrer">{match[8]}</a>);
+    } else if (match[7]) {
+      // @mention
+      parts.push(<span key={key++} className="msg-mention">{match[7]}</span>);
+    } else if (match[9]) {
+      parts.push(<a key={key++} className="msg-link" href={match[9]} target="_blank" rel="noopener noreferrer">{match[9]}</a>);
     }
     last = match.index + match[0].length;
   }
@@ -56,23 +60,38 @@ interface MessageBubbleProps {
   onDelete?: (messageId: string) => void;
   onPin?: (messageId: string) => void;
   onReply?: (messageId: string) => void;
+  onBookmark?: (messageId: string) => void;
+  isBookmarked?: boolean;
   replyContext?: { nickname: string; content: string };
   isGrouped?: boolean;
+  onImageClick?: (src: string) => void;
 }
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyContext, isGrouped }: MessageBubbleProps) {
+export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, replyContext, isGrouped, onImageClick }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
   const [showActions, setShowActions] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
   const [showReactPicker, setShowReactPicker] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
 
+  const msgDate = new Date(timestamp);
   const time = new Intl.DateTimeFormat(i18n.language, {
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(timestamp));
+  }).format(msgDate);
+
+  const fullTime = new Intl.DateTimeFormat(i18n.language, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(msgDate);
 
   const roleColor = `var(--role-${role})`;
   const formatted = useMemo(() => formatMessage(content), [content]);
@@ -95,11 +114,17 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
     setShowReactPicker(false);
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY });
+  };
+
   return (
     <div
       className={`message ${isOwn ? "own" : ""} ${isGrouped ? "grouped" : ""}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => { setShowActions(false); setShowReactPicker(false); }}
+      onContextMenu={handleContextMenu}
     >
       {replyContext && (
         <div className="message-reply-context">
@@ -114,13 +139,13 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
           <span className="message-nick" style={{ color: roleColor }}>
             {nickname}
           </span>
-          <span className="message-time">{time}</span>
+          <span className="message-time" title={fullTime}>{time}</span>
           {edited && <span className="message-edited">{t("chat.edited")}</span>}
         </div>
       )}
 
       {isGrouped && showActions && (
-        <span className="message-time-inline">{time}</span>
+        <span className="message-time-inline" title={fullTime}>{time}</span>
       )}
 
       {editing ? (
@@ -141,9 +166,14 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
           {images.length > 0 && (
             <div className="message-images">
               {images.map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
-                  <img src={url} alt="" className="message-img-preview" loading="lazy" />
-                </a>
+                <img
+                  key={i}
+                  src={url}
+                  alt=""
+                  className="message-img-preview"
+                  loading="lazy"
+                  onClick={() => onImageClick ? onImageClick(url) : window.open(url, "_blank")}
+                />
               ))}
             </div>
           )}
@@ -170,6 +200,11 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         <div className="message-actions">
           <button onClick={() => onReply?.(id)} title="Reply"><Reply size={13} /></button>
           <button onClick={() => setShowReactPicker((v) => !v)} title="React"><Smile size={13} /></button>
+          {onBookmark && (
+            <button className={isBookmarked ? "action-bookmarked" : ""} onClick={() => onBookmark(id)} title="Bookmark">
+              <Bookmark size={13} />
+            </button>
+          )}
           {isOwn && <button onClick={() => { setEditing(true); setEditContent(content); }} title="Edit"><Pencil size={13} /></button>}
           {(isOwn || canModerate) && <button className="action-danger" onClick={() => onDelete?.(id)} title="Delete"><Trash2 size={13} /></button>}
           {canModerate && <button onClick={() => onPin?.(id)} title="Pin"><Pin size={13} /></button>}
@@ -182,6 +217,26 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
             <button key={e} onClick={() => handleReactionClick(e)}>{e}</button>
           ))}
         </div>
+      )}
+
+      {contextMenu && (
+        <MessageContextMenu
+          position={contextMenu}
+          messageId={id}
+          content={content}
+          isOwn={isOwn}
+          canModerate={canModerate || false}
+          isBookmarked={isBookmarked}
+          onClose={() => setContextMenu(null)}
+          onReply={onReply}
+          onReact={() => { setShowReactPicker(true); setContextMenu(null); }}
+          onEdit={isOwn ? () => { setEditing(true); setEditContent(content); setContextMenu(null); } : undefined}
+          onDelete={onDelete}
+          onPin={onPin}
+          onBookmark={onBookmark}
+          onCopyText={() => { navigator.clipboard.writeText(content); setContextMenu(null); }}
+          onQuote={() => {}}
+        />
       )}
 
       <style>{`
@@ -286,6 +341,17 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         .msg-link:hover {
           text-decoration: underline;
         }
+        .msg-mention {
+          color: var(--accent);
+          background: var(--accent-dim);
+          padding: 1px 4px;
+          border-radius: 3px;
+          font-weight: 500;
+          cursor: pointer;
+        }
+        .msg-mention:hover {
+          background: rgba(var(--accent-rgb), 0.15);
+        }
         .message-images {
           margin-top: 8px;
           display: flex;
@@ -363,6 +429,9 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         .message-actions button.action-danger:hover {
           color: var(--danger);
           background: var(--danger-dim);
+        }
+        .message-actions button.action-bookmarked {
+          color: var(--accent);
         }
         .message-react-picker {
           position: absolute;

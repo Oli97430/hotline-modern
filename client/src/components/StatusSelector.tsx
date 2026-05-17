@@ -40,6 +40,8 @@ export function StatusSelector({ currentStatus, onStatusChange }: StatusSelector
           height: 7px;
           border-radius: 50%;
           flex-shrink: 0;
+          transition: background-color var(--transition-normal);
+          box-shadow: 0 0 4px currentColor;
         }
         .status-select {
           font-size: 11px;
@@ -75,6 +77,7 @@ export function StatusDot({ status }: { status: string }) {
           border-radius: 50%;
           flex-shrink: 0;
           box-shadow: 0 0 0 2px var(--bg-secondary);
+          transition: background-color var(--transition-normal);
         }
       `}</style>
     </span>

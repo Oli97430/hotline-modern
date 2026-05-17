@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Smile, Search, Upload, Loader } from "lucide-react";
+import { Send, Smile, Search, Upload, Loader, Pin, Bookmark, ArrowDown } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { EmojiPicker } from "./EmojiPicker";
+import { MentionSuggestions } from "./MentionSuggestions";
+import { FormatToolbar } from "./FormatToolbar";
 import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
 
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
@@ -42,25 +44,44 @@ interface ChatPanelProps {
   hasMoreHistory?: boolean;
   onFileUpload?: (file: File) => void;
   canUpload?: boolean;
+  users?: { userId: string; nickname: string; role: string; status: string }[];
+  onPinsOpen?: () => void;
+  onBookmarksOpen?: () => void;
+  onBookmark?: (messageId: string) => void;
+  isBookmarked?: (messageId: string) => boolean;
+  onChannelSettings?: () => void;
+  onImageClick?: (src: string) => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [newMsgCount, setNewMsgCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingThrottleRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const prevScrollHeightRef = useRef(0);
   const isLoadingHistoryRef = useRef(false);
+  const prevMsgCountRef = useRef(0);
 
   const channelMessages = messages.filter((m) => m.channel === activeChannel);
 
-  // Scroll to top = load more history
+  // Scroll to top = load more history; track scroll position
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
-    if (!container || historyLoading || !hasMoreHistory || !onLoadHistory || isLoadingHistoryRef.current) return;
+    if (!container) return;
+
+    // Check if user has scrolled up
+    const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+    setIsScrolledUp(distFromBottom > 80);
+    if (distFromBottom <= 80) setNewMsgCount(0);
+
+    if (historyLoading || !hasMoreHistory || !onLoadHistory || isLoadingHistoryRef.current) return;
     if (container.scrollTop < 100 && channelMessages.length > 0) {
       isLoadingHistoryRef.current = true;
       prevScrollHeightRef.current = container.scrollHeight;
@@ -107,8 +128,15 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
   }, [channelMessages, t]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [channelMessages.length]);
+    if (channelMessages.length > prevMsgCountRef.current) {
+      if (!isScrolledUp) {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      } else {
+        setNewMsgCount((c) => c + (channelMessages.length - prevMsgCountRef.current));
+      }
+    }
+    prevMsgCountRef.current = channelMessages.length;
+  }, [channelMessages.length, isScrolledUp]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -123,7 +151,49 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
     setInput("");
   };
 
+  const handleInputChange = (value: string) => {
+    setInput(value);
+    // Detect @mention
+    const cursorPos = value.length; // simplified: use end of input
+    const textBefore = value.slice(0, cursorPos);
+    const atMatch = textBefore.match(/@(\w*)$/);
+    if (atMatch && users && users.length > 0) {
+      setMentionFilter(atMatch[1]);
+      setMentionIndex(0);
+    } else {
+      setMentionFilter(null);
+    }
+  };
+
+  const handleMentionSelect = (nickname: string) => {
+    const regex = /@(\w*)$/;
+    setInput((prev) => prev.replace(regex, `@${nickname} `));
+    setMentionFilter(null);
+  };
+
+  const handleFormat = useCallback((wrapper: string, prefix?: string, suffix?: string) => {
+    if (prefix && suffix) {
+      setInput((prev) => prev + prefix + "text" + suffix);
+    } else {
+      setInput((prev) => prev + wrapper + "text" + wrapper);
+    }
+  }, []);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Handle mention navigation
+    if (mentionFilter !== null) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => i + 1); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => Math.max(0, i - 1)); return; }
+      if (e.key === "Tab" || e.key === "Enter") {
+        e.preventDefault();
+        const filtered = (users || []).filter((u) => u.nickname.toLowerCase().startsWith((mentionFilter || "").toLowerCase())).slice(0, 6);
+        const idx = mentionIndex % Math.max(filtered.length, 1);
+        if (filtered[idx]) handleMentionSelect(filtered[idx].nickname);
+        return;
+      }
+      if (e.key === "Escape") { setMentionFilter(null); return; }
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -154,15 +224,27 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
   return (
     <div className="chat-panel">
       <div className="chat-header">
-        <span className="chat-channel-name">
+        <span className="chat-channel-name" onClick={!dmMode ? onChannelSettings : undefined} style={!dmMode ? { cursor: "pointer" } : undefined}>
           {dmMode ? `@ ${dmMode.peerNick}` : `# ${activeChannel}`}
         </span>
-        {!dmMode && channelTopic && <span className="chat-topic">{channelTopic}</span>}
-        {onSearchOpen && (
-          <button className="chat-search-btn" onClick={onSearchOpen} title={t("search.title")}>
-            <Search size={16} />
-          </button>
-        )}
+        {!dmMode && channelTopic && <span className="chat-topic" onClick={onChannelSettings} style={{ cursor: "pointer" }}>{channelTopic}</span>}
+        <div className="chat-header-actions">
+          {onPinsOpen && (
+            <button className="chat-header-btn" onClick={onPinsOpen} title={t("pins.title")}>
+              <Pin size={15} />
+            </button>
+          )}
+          {onBookmarksOpen && (
+            <button className="chat-header-btn" onClick={onBookmarksOpen} title={t("bookmarks.title")}>
+              <Bookmark size={15} />
+            </button>
+          )}
+          {onSearchOpen && (
+            <button className="chat-header-btn" onClick={onSearchOpen} title={t("search.title")}>
+              <Search size={15} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
@@ -176,7 +258,10 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           <div className="chat-history-end">{t("chat.historyStart")}</div>
         )}
         {channelMessages.length === 0 && (
-          <div className="chat-empty">{t("chat.noMessages")}</div>
+          <div className="chat-empty">
+            <div className="chat-empty-icon">💬</div>
+            <span>{t("chat.noMessages")}</span>
+          </div>
         )}
         {messagesWithDates.map((item) => {
           if ("type" in item && item.type === "separator") {
@@ -214,24 +299,49 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
               onDelete={onDelete}
               onPin={onPin}
               onReply={onReply}
+              onBookmark={onBookmark}
+              isBookmarked={isBookmarked?.(msg.id)}
               replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
               isGrouped={isGrouped}
+              onImageClick={onImageClick}
             />
           );
         })}
         <div ref={messagesEndRef} />
       </div>
 
-      {typingText && <div className="chat-typing">{typingText}</div>}
+      {isScrolledUp && (
+        <button
+          className="scroll-to-bottom"
+          onClick={() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            setIsScrolledUp(false);
+            setNewMsgCount(0);
+          }}
+        >
+          <ArrowDown size={14} />
+          {newMsgCount > 0 && <span className="scroll-badge">{newMsgCount}</span>}
+        </button>
+      )}
+
+      {typingText && (
+        <div className="chat-typing">
+          <span className="typing-dots"><span /><span /><span /></span>
+          {typingText}
+        </div>
+      )}
 
       {replyTo && (
         <div className="chat-reply-preview">
           <span className="reply-label">{t("chat.replyingTo")} <strong>{replyTo.nickname}</strong></span>
           <span className="reply-content">{replyTo.content.slice(0, 80)}</span>
-          <button className="reply-cancel" onClick={onCancelReply}>&times;</button>
+          <button className="reply-cancel" onClick={onCancelReply} title="Cancel">
+            <span>×</span>
+          </button>
         </div>
       )}
 
+      <FormatToolbar onFormat={handleFormat} />
       <div className="chat-input-area">
         {canUpload && onFileUpload && (
           <>
@@ -242,10 +352,18 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           </>
         )}
         <div className="chat-input-wrapper">
+          {mentionFilter !== null && users && (
+            <MentionSuggestions
+              users={users}
+              filter={mentionFilter}
+              onSelect={handleMentionSelect}
+              selectedIndex={mentionIndex}
+            />
+          )}
           <textarea
             className="chat-input"
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={dmMode ? t("chat.dmPlaceholder", { name: dmMode.peerNick }) : t("chat.placeholder")}
             rows={1}
@@ -269,6 +387,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           flex-direction: column;
           height: 100%;
           min-width: 0;
+          position: relative;
         }
         .chat-header {
           padding: 12px 16px;
@@ -277,15 +396,21 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           align-items: center;
           gap: 12px;
         }
-        .chat-search-btn {
+        .chat-header-actions {
           margin-left: auto;
-          color: var(--text-muted);
-          padding: 4px;
-          border-radius: 4px;
-          transition: color 0.2s;
+          display: flex;
+          align-items: center;
+          gap: 2px;
         }
-        .chat-search-btn:hover {
+        .chat-header-btn {
+          color: var(--text-muted);
+          padding: 5px;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-fast), background var(--transition-fast);
+        }
+        .chat-header-btn:hover {
           color: var(--accent);
+          background: var(--accent-dim);
         }
         .chat-channel-name {
           font-size: 15px;
@@ -305,18 +430,46 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         }
         .chat-empty {
           display: flex;
+          flex-direction: column;
           align-items: center;
           justify-content: center;
           height: 100%;
           color: var(--text-muted);
           font-size: 14px;
+          gap: 8px;
+          animation: fadeIn 0.3s ease;
+        }
+        .chat-empty-icon {
+          font-size: 40px;
+          opacity: 0.4;
+          margin-bottom: 4px;
         }
         .chat-typing {
-          padding: 2px 16px 0;
+          padding: 4px 16px;
           font-size: 12px;
           color: var(--text-muted);
-          font-style: italic;
+          display: flex;
+          align-items: center;
+          gap: 6px;
           animation: fadeIn 0.15s ease;
+        }
+        .typing-dots {
+          display: inline-flex;
+          gap: 3px;
+          align-items: center;
+        }
+        .typing-dots span {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: var(--text-muted);
+          animation: typingBounce 1.4s ease-in-out infinite;
+        }
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typingBounce {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+          30% { transform: translateY(-4px); opacity: 1; }
         }
         .chat-reply-preview {
           display: flex;
@@ -341,16 +494,18 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         }
         .reply-cancel {
           color: var(--text-muted);
-          font-size: 18px;
-          padding: 0 4px;
+          font-size: 16px;
+          padding: 2px 6px;
           line-height: 1;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-fast), background var(--transition-fast);
         }
         .reply-cancel:hover {
           color: var(--danger);
+          background: var(--danger-dim);
         }
         .chat-input-area {
           padding: 12px 16px;
-          border-top: 1px solid var(--border);
           display: flex;
           gap: 8px;
         }
@@ -401,10 +556,15 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           border-radius: var(--radius);
           display: flex;
           align-items: center;
-          transition: background 0.2s;
+          transition: background var(--transition-normal), transform var(--transition-fast), box-shadow var(--transition-fast);
         }
         .chat-send-btn:hover:not(:disabled) {
           background: var(--accent-hover);
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3);
+        }
+        .chat-send-btn:active:not(:disabled) {
+          transform: translateY(0);
         }
         .chat-send-btn:disabled {
           opacity: 0.4;
@@ -413,19 +573,24 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         .chat-date-separator {
           display: flex;
           align-items: center;
-          justify-content: center;
-          padding: 8px 16px;
+          padding: 12px 16px;
           margin: 4px 0;
+          gap: 12px;
+        }
+        .chat-date-separator::before,
+        .chat-date-separator::after {
+          content: "";
+          flex: 1;
+          height: 1px;
+          background: var(--border);
         }
         .chat-date-separator span {
-          font-size: 11px;
+          font-size: 10px;
           font-weight: 600;
           color: var(--text-muted);
-          background: var(--bg-secondary);
-          padding: 2px 10px;
-          border-radius: 10px;
           text-transform: uppercase;
-          letter-spacing: 0.3px;
+          letter-spacing: 0.5px;
+          white-space: nowrap;
         }
         .chat-history-loading {
           display: flex;
@@ -444,19 +609,70 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         }
         .chat-history-end {
           text-align: center;
-          padding: 12px;
+          padding: 16px 16px 8px;
           font-size: 11px;
           color: var(--text-muted);
-          font-style: italic;
+          font-weight: 500;
+          letter-spacing: 0.3px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          justify-content: center;
+        }
+        .chat-history-end::before,
+        .chat-history-end::after {
+          content: "";
+          width: 24px;
+          height: 1px;
+          background: var(--border);
         }
         .chat-upload-btn {
           padding: 8px;
           color: var(--text-muted);
           border-radius: var(--radius);
-          transition: color 0.2s;
+          transition: color var(--transition-normal), transform var(--transition-fast);
         }
         .chat-upload-btn:hover {
           color: var(--accent);
+          transform: translateY(-1px);
+        }
+        .chat-upload-btn:active {
+          transform: translateY(0);
+        }
+        .scroll-to-bottom {
+          position: absolute;
+          bottom: 80px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 7px 14px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 20px;
+          box-shadow: var(--shadow-md);
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background var(--transition-fast), box-shadow var(--transition-fast);
+          animation: fadeIn 0.15s ease;
+          z-index: 10;
+        }
+        .scroll-to-bottom:hover {
+          background: var(--bg-tertiary);
+          box-shadow: var(--shadow-lg);
+        }
+        .scroll-badge {
+          background: var(--accent);
+          color: #fff;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 1px 6px;
+          border-radius: 10px;
+          min-width: 18px;
+          text-align: center;
         }
       `}</style>
     </div>

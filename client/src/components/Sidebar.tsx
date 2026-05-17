@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Hash, Plus, LogOut, MessageSquare, Trash2, Lock } from "lucide-react";
+import { Hash, Plus, LogOut, MessageSquare, Trash2, Lock, BellOff, Settings } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
 
 interface DMConversation {
@@ -25,6 +25,9 @@ interface SidebarProps {
   nickname: string;
   role: string;
   userStatus?: string;
+  mutedChannels?: string[];
+  onToggleMute?: (channel: string) => void;
+  onAdminPanel?: () => void;
 }
 
 export function Sidebar({
@@ -43,6 +46,9 @@ export function Sidebar({
   nickname,
   role,
   userStatus,
+  mutedChannels,
+  onToggleMute,
+  onAdminPanel,
 }: SidebarProps) {
   const { t } = useTranslation();
 
@@ -50,9 +56,16 @@ export function Sidebar({
     <aside className="sidebar">
       <div className="sidebar-header">
         <h2>{serverName}</h2>
-        <button className="sidebar-disconnect" onClick={onDisconnect} title={t("sidebar.disconnect")}>
-          <LogOut size={16} />
-        </button>
+        <div className="sidebar-header-actions">
+          {onAdminPanel && (role === "admin") && (
+            <button className="sidebar-admin" onClick={onAdminPanel} title={t("admin.title")}>
+              <Settings size={15} />
+            </button>
+          )}
+          <button className="sidebar-disconnect" onClick={onDisconnect} title={t("sidebar.disconnect")}>
+            <LogOut size={16} />
+          </button>
+        </div>
       </div>
 
       <div className="sidebar-section">
@@ -77,7 +90,19 @@ export function Sidebar({
               {(unreadCounts[ch.name] || 0) > 0 && (
                 <span className="channel-unread">{unreadCounts[ch.name]}</span>
               )}
+              {mutedChannels?.includes(ch.name) && (
+                <BellOff size={11} className="channel-muted-icon" />
+              )}
               <span className="channel-count">{ch.userCount}</span>
+              {onToggleMute && (
+                <button
+                  className="channel-mute-btn"
+                  onClick={(e) => { e.stopPropagation(); onToggleMute(ch.name); }}
+                  title={mutedChannels?.includes(ch.name) ? t("sidebar.unmute") : t("sidebar.mute")}
+                >
+                  <BellOff size={11} />
+                </button>
+              )}
               {canCreateChannel && ch.name !== "lobby" && (
                 <button
                   className="channel-delete"
@@ -136,7 +161,7 @@ export function Sidebar({
           border-bottom: 1px solid var(--border);
           display: flex;
           align-items: center;
-          justify-content: space-between;
+          gap: 8px;
         }
         .sidebar-header h2 {
           font-size: 15px;
@@ -145,6 +170,23 @@ export function Sidebar({
           overflow: hidden;
           text-overflow: ellipsis;
           letter-spacing: -0.2px;
+          flex: 1;
+        }
+        .sidebar-header-actions {
+          display: flex;
+          align-items: center;
+          gap: 2px;
+          flex-shrink: 0;
+        }
+        .sidebar-admin {
+          color: var(--text-muted);
+          padding: 6px;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-normal), background var(--transition-normal);
+        }
+        .sidebar-admin:hover {
+          color: var(--accent);
+          background: var(--accent-dim);
         }
         .sidebar-disconnect {
           color: var(--text-muted);
@@ -210,9 +252,11 @@ export function Sidebar({
         .channel-item.active {
           background: var(--accent-dim);
           color: var(--accent);
+          font-weight: 500;
         }
         .channel-item.active .channel-icon {
           color: var(--accent);
+          opacity: 1;
         }
         .channel-icon {
           flex-shrink: 0;
@@ -232,6 +276,24 @@ export function Sidebar({
           padding: 1px 6px;
           border-radius: 10px;
           font-weight: 500;
+        }
+        .channel-muted-icon {
+          color: var(--text-muted);
+          opacity: 0.5;
+          flex-shrink: 0;
+        }
+        .channel-mute-btn {
+          opacity: 0;
+          color: var(--text-muted);
+          padding: 3px;
+          border-radius: var(--radius-sm);
+          transition: opacity var(--transition-fast), color var(--transition-fast);
+        }
+        .channel-item:hover .channel-mute-btn {
+          opacity: 1;
+        }
+        .channel-mute-btn:hover {
+          color: var(--accent);
         }
         .channel-delete {
           opacity: 0;
@@ -256,6 +318,8 @@ export function Sidebar({
           min-width: 18px;
           text-align: center;
           line-height: 1.5;
+          animation: fadeInScale 0.2s ease;
+          box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
         }
         .sidebar-footer {
           padding: 12px 16px;

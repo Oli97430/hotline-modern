@@ -107,7 +107,7 @@ export interface UseWebSocketReturn {
   sendChat: (channel: string, content: string) => void;
   sendDM: (targetId: string, content: string) => void;
   sendTyping: (channel: string, targetId?: string) => void;
-  joinChannel: (channel: string) => void;
+  joinChannel: (channel: string, password?: string) => void;
   leaveChannel: (channel: string) => void;
   createChannel: (name: string, topic: string, password?: string) => void;
   deleteChannel: (name: string) => void;
@@ -473,9 +473,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
-  const joinChannel = useCallback((channel: string) => {
+  const joinChannel = useCallback((channel: string, password?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.join", { channel });
+      const payload: Record<string, string> = { channel };
+      if (password) payload.password = password;
+      const msg = createMessage("channel.join", payload);
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);

@@ -12,10 +12,23 @@ import { SearchPanel } from "./components/SearchPanel";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { NotificationSettings, NotifPrefs, loadNotifPrefs } from "./components/NotificationSettings";
 import { StatusSelector } from "./components/StatusSelector";
+import { PinnedMessagesPanel } from "./components/PinnedMessagesPanel";
+import { BookmarksPanel, BookmarkedMessage, loadBookmarks, addBookmark, removeBookmark, isBookmarked } from "./components/BookmarksPanel";
+import { ChannelSettingsModal } from "./components/ChannelSettingsModal";
+import { DragDropOverlay } from "./components/DragDropOverlay";
+import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
+import { AdminPanel } from "./components/AdminPanel";
+import { ChannelPasswordPrompt } from "./components/ChannelPasswordPrompt";
+import { ImageLightbox } from "./components/ImageLightbox";
+import { ToastContainer, useToasts } from "./components/ToastContainer";
 import { useIdentity } from "./hooks/useIdentity";
 import { useWebSocket } from "./hooks/useWebSocket";
+import { useChannelMute } from "./hooks/useChannelMute";
+import { useIdleDetection } from "./hooks/useIdleDetection";
+import { useTabNotification } from "./hooks/useTabNotification";
+import { useCompactMode } from "./hooks/useCompactMode";
 import { getPublicKeyHex, signMessage } from "./lib/crypto";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal } from "lucide-react";
 
 export default function App() {
   const { t } = useTranslation();
@@ -27,10 +40,19 @@ export default function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [showPins, setShowPins] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const [showChannelSettings, setShowChannelSettings] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [showPasswordPrompt, setShowPasswordPrompt] = useState<string | null>(null);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [bookmarks, setBookmarks] = useState<BookmarkedMessage[]>(loadBookmarks);
   const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [dmUnreadCounts, setDmUnreadCounts] = useState<Record<string, number>>({});
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(loadNotifPrefs);
+  const [statusBeforeIdle, setStatusBeforeIdle] = useState<string | null>(null);
   const prevMessagesLenRef = useRef(0);
   const prevDmLenRef = useRef(0);
   const activeChannelRef = useRef(activeChannel);
@@ -46,15 +68,84 @@ export default function App() {
     onError: handleError,
   });
 
+  const { mutedChannels, toggleMute, isMuted } = useChannelMute();
+  const { compact, toggleCompact } = useCompactMode();
+  const { toasts, addToast, dismissToast } = useToasts();
+
+  // Tab title notifications
+  const totalUnread = useMemo(() => {
+    return Object.values(unreadCounts).reduce((sum, v) => sum + v, 0) +
+      Object.values(dmUnreadCounts).reduce((sum, v) => sum + v, 0);
+  }, [unreadCounts, dmUnreadCounts]);
+  useTabNotification(totalUnread);
+
+  // Track user join/leave for toasts
+  const prevUsersRef = useRef<{ id: string; nick: string }[]>([]);
+  useEffect(() => {
+    if (ws.status !== "connected") return;
+    const currentIds = ws.users.map(u => u.userId);
+    const prevEntries = prevUsersRef.current;
+    const prevIds = prevEntries.map(e => e.id);
+    if (prevIds.length > 0) {
+      // New joins
+      for (const u of ws.users) {
+        if (!prevIds.includes(u.userId)) {
+          addToast("join", `${u.nickname} joined`);
+        }
+      }
+      // Leaves
+      for (const entry of prevEntries) {
+        if (!currentIds.includes(entry.id)) {
+          addToast("leave", `${entry.nick} left`);
+        }
+      }
+    }
+    prevUsersRef.current = ws.users.map(u => ({ id: u.userId, nick: u.nickname }));
+  }, [ws.users, ws.status, addToast]);
+
+  // Idle detection: auto-away after 5 min inactivity
+  useIdleDetection({
+    timeout: 5 * 60 * 1000,
+    onIdle: useCallback(() => {
+      const current = ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status;
+      if (current && current !== "away") {
+        setStatusBeforeIdle(current);
+        ws.setStatus("away");
+      }
+    }, [ws]),
+    onActive: useCallback(() => {
+      if (statusBeforeIdle) {
+        ws.setStatus(statusBeforeIdle);
+        setStatusBeforeIdle(null);
+      }
+    }, [ws, statusBeforeIdle]),
+    enabled: ws.status === "connected",
+  });
+
   const handleConnect = (address: string, nick: string) => {
     setServerAddress(address);
     ws.connect(address, nick);
   };
 
   const handleSelectChannel = (channel: string) => {
+    // Check if channel is password-protected
+    const ch = ws.channels.find((c) => c.name === channel);
+    if (ch?.hasPassword && channel !== activeChannel) {
+      setShowPasswordPrompt(channel);
+      return;
+    }
     setActiveDM("");
     setActiveChannel(channel);
     ws.joinChannel(channel);
+  };
+
+  const handlePasswordSubmit = (password: string) => {
+    if (showPasswordPrompt) {
+      setActiveDM("");
+      setActiveChannel(showPasswordPrompt);
+      ws.joinChannel(showPasswordPrompt, password);
+      setShowPasswordPrompt(null);
+    }
   };
 
   const handleSelectDM = (peerId: string) => {
@@ -157,7 +248,7 @@ export default function App() {
         for (const msg of newMsgs) {
           if (msg.channel !== currentChannel && msg.userId !== currentUserId) {
             counts[msg.channel] = (counts[msg.channel] || 0) + 1;
-            hasUnread = true;
+            if (!isMuted(msg.channel)) hasUnread = true;
           }
         }
         return counts;
@@ -165,11 +256,13 @@ export default function App() {
       if (hasUnread) {
         playNotifSound();
         const last = newMsgs[newMsgs.length - 1];
-        if (last && last.userId !== currentUserId) showDesktopNotif(last.nickname, last.content);
+        if (last && last.userId !== currentUserId && !isMuted(last.channel)) {
+          showDesktopNotif(last.nickname, last.content);
+        }
       }
     }
     prevMessagesLenRef.current = ws.messages.length;
-  }, [ws.messages]);
+  }, [ws.messages, isMuted]);
 
   useEffect(() => {
     if (ws.dmMessages.length > prevDmLenRef.current) {
@@ -254,18 +347,28 @@ export default function App() {
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInput = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT";
+
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
         setShowSearch((v) => !v);
       }
+      if (e.key === "?" && !isInput) {
+        e.preventDefault();
+        setShowShortcuts((v) => !v);
+      }
       if (e.key === "Escape") {
+        if (showShortcuts) { setShowShortcuts(false); return; }
         if (showSearch) { handleSearchClose(); return; }
+        if (showPins) { setShowPins(false); return; }
+        if (showBookmarks) { setShowBookmarks(false); return; }
         if (replyTo) { setReplyTo(null); return; }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showSearch, replyTo]);
+  }, [showSearch, replyTo, showShortcuts, showPins, showBookmarks]);
 
   const handleReply = (messageId: string) => {
     const msg = (activeDM ? dmMessagesAsChatMessages : ws.messages).find((m) => m.id === messageId);
@@ -318,6 +421,27 @@ export default function App() {
     }
   }, [serverAddress, activeChannel, ws, handleError, identity]);
 
+  const handleBookmark = useCallback((messageId: string) => {
+    if (isBookmarked(messageId)) {
+      setBookmarks(removeBookmark(messageId));
+    } else {
+      const msg = ws.messages.find((m) => m.id === messageId);
+      if (msg) {
+        setBookmarks(addBookmark({
+          id: msg.id,
+          channel: msg.channel,
+          nickname: msg.nickname,
+          content: msg.content,
+          timestamp: msg.timestamp,
+        }));
+      }
+    }
+  }, [ws.messages]);
+
+  const handleRemoveBookmark = useCallback((messageId: string) => {
+    setBookmarks(removeBookmark(messageId));
+  }, []);
+
   const pubKeyHex = getPublicKeyHex(identity);
   const sig = signMessage(pubKeyHex, identity.secretKey);
 
@@ -345,10 +469,16 @@ export default function App() {
           nickname={ws.serverInfo?.userId ? (ws.users.find(u => u.userId === ws.serverInfo?.userId)?.nickname || "") : ""}
           role={ws.serverInfo?.role || ""}
           userStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status}
+          mutedChannels={mutedChannels}
+          onToggleMute={toggleMute}
+          onAdminPanel={() => setShowAdmin(true)}
         />
         <div className="app-sidebar-bottom">
           <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />
           <NotificationSettings prefs={notifPrefs} onChange={setNotifPrefs} />
+          <button className="compact-toggle" onClick={toggleCompact} title={compact ? "Comfortable view" : "Compact view"}>
+            {compact ? <StretchHorizontal size={14} /> : <Rows3 size={14} />}
+          </button>
           <LanguageSelector />
         </div>
       </div>
@@ -368,6 +498,23 @@ export default function App() {
               onClose={handleSearchClose}
               results={ws.searchResults}
               activeChannel={activeChannel}
+            />
+          )}
+          {showPins && (
+            <PinnedMessagesPanel
+              messages={ws.pinnedMessages}
+              onRequestPins={ws.requestPins}
+              onUnpin={canCreateChannel ? ws.unpinMessage : undefined}
+              onClose={() => setShowPins(false)}
+              activeChannel={activeChannel}
+              canModerate={canCreateChannel}
+            />
+          )}
+          {showBookmarks && (
+            <BookmarksPanel
+              bookmarks={bookmarks}
+              onRemove={handleRemoveBookmark}
+              onClose={() => setShowBookmarks(false)}
             />
           )}
           <ChatPanel
@@ -395,6 +542,13 @@ export default function App() {
             hasMoreHistory={ws.hasMoreHistory}
             onFileUpload={canUpload ? handleFileUpload : undefined}
             canUpload={canUpload}
+            users={ws.users}
+            onPinsOpen={() => setShowPins((v) => !v)}
+            onBookmarksOpen={() => setShowBookmarks((v) => !v)}
+            onBookmark={handleBookmark}
+            isBookmarked={isBookmarked}
+            onChannelSettings={() => setShowChannelSettings(true)}
+            onImageClick={setLightboxSrc}
           />
 
           <button
@@ -433,6 +587,49 @@ export default function App() {
           onClose={() => setShowCreateModal(false)}
         />
       )}
+
+      {showChannelSettings && activeCh && (
+        <ChannelSettingsModal
+          channel={activeCh}
+          onSetTopic={ws.setTopic}
+          onClose={() => setShowChannelSettings(false)}
+          canEdit={canCreateChannel}
+        />
+      )}
+
+      {showShortcuts && (
+        <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />
+      )}
+
+      {showAdmin && ws.serverInfo && (
+        <AdminPanel
+          serverName={ws.serverInfo.name}
+          motd={ws.serverInfo.motd}
+          onUpdateSettings={ws.updateServerSettings}
+          onRequestBanList={ws.requestBanList}
+          onUnban={ws.unbanUser}
+          onClose={() => setShowAdmin(false)}
+        />
+      )}
+
+      {showPasswordPrompt && (
+        <ChannelPasswordPrompt
+          channelName={showPasswordPrompt}
+          onSubmit={handlePasswordSubmit}
+          onCancel={() => setShowPasswordPrompt(null)}
+        />
+      )}
+
+      {lightboxSrc && (
+        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
+
+      <DragDropOverlay
+        onDrop={canUpload ? handleFileUpload : () => {}}
+        enabled={canUpload}
+      />
+
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
       <style>{`
         .app-layout {
@@ -506,6 +703,16 @@ export default function App() {
           font-weight: 500;
           text-align: center;
           animation: slideDown 0.2s ease;
+        }
+        .compact-toggle {
+          color: var(--text-muted);
+          padding: 5px;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-fast), background var(--transition-fast);
+        }
+        .compact-toggle:hover {
+          color: var(--accent);
+          background: var(--accent-dim);
         }
       `}</style>
     </div>

@@ -60,7 +60,10 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
               {t("connect.connecting")}
             </>
           ) : (
-            t("connect.button")
+            <>
+              {t("connect.button")}
+              <kbd className="connect-kbd">↵</kbd>
+            </>
           )}
         </button>
       </form>
@@ -111,6 +114,11 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
           height: 72px;
           border-radius: 16px;
           box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.2);
+          animation: logoFloat 3s ease-in-out infinite;
+        }
+        @keyframes logoFloat {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-4px); }
         }
         .connect-logo h1 {
           font-size: 22px;
@@ -151,14 +159,16 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
           font-weight: 600;
           font-size: 14px;
           margin-top: 4px;
-          transition: background var(--transition-normal), transform var(--transition-fast);
+          transition: background var(--transition-normal), transform var(--transition-fast), box-shadow var(--transition-fast);
         }
         .connect-btn:hover:not(:disabled) {
           background: var(--accent-hover);
-          transform: translateY(-1px);
+          transform: translateY(-2px);
+          box-shadow: 0 6px 20px rgba(var(--accent-rgb), 0.35);
         }
         .connect-btn:active:not(:disabled) {
           transform: translateY(0);
+          box-shadow: none;
         }
         .connect-btn:disabled {
           opacity: 0.5;
@@ -166,6 +176,15 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
         }
         .connect-spinner {
           animation: spin 1s linear infinite;
+        }
+        .connect-kbd {
+          font-size: 11px;
+          font-weight: 500;
+          opacity: 0.6;
+          background: rgba(255, 255, 255, 0.1);
+          padding: 1px 6px;
+          border-radius: 3px;
+          margin-left: 4px;
         }
       `}</style>
     </div>
