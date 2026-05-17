@@ -29,6 +29,7 @@ import { NotificationFilters as NotifFiltersPanel, loadNotifFilters as loadNotif
 import { MessageScheduler, ScheduledMessage, loadScheduledMessages, saveScheduledMessages } from "./components/MessageScheduler";
 import { applyChannelOrder, loadChannelOrder, saveChannelOrder } from "./components/ChannelDragReorder";
 import { ToastContainer, useToasts } from "./components/ToastContainer";
+import { ServerAgreement, hasAcceptedAgreement } from "./components/ServerAgreement";
 import { useIdentity } from "./hooks/useIdentity";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { useChannelMute } from "./hooks/useChannelMute";
@@ -67,6 +68,7 @@ export default function App() {
   const [customEmojis, setCustomEmojis] = useState(loadCustomEmojis);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
   const [channelOrder, setChannelOrder] = useState<string[]>(loadChannelOrder);
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [lastReadIds, setLastReadIds] = useState<Record<string, string>>({});
@@ -519,6 +521,20 @@ export default function App() {
 
   if (ws.status === "disconnected" || ws.status === "connecting") {
     return <ConnectDialog onConnect={handleConnect} isConnecting={ws.status === "connecting"} />;
+  }
+
+  // Show server agreement modal if needed
+  const agreementText = ws.serverInfo?.agreement || "";
+  const needsAgreement = agreementText && !agreementAccepted && !hasAcceptedAgreement(serverAddress, agreementText);
+  if (needsAgreement) {
+    return (
+      <ServerAgreement
+        agreement={agreementText}
+        serverAddress={serverAddress}
+        onAccept={() => setAgreementAccepted(true)}
+        onDecline={() => { ws.disconnect(); setAgreementAccepted(false); }}
+      />
+    );
   }
 
   const handleSearchOpen = () => setShowSearch(true);

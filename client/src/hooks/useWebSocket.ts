@@ -26,6 +26,7 @@ export interface ChatMessage {
   edited?: boolean;
   reactions?: MessageReaction[];
   replyTo?: string;
+  system?: boolean;
 }
 
 export interface DMMessage {
@@ -51,6 +52,7 @@ export interface ServerInfo {
   motd: string;
   userId: string;
   role: string;
+  agreement: string;
 }
 
 interface UseWebSocketOptions {
@@ -197,6 +199,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             motd: payload.motd,
             userId: payload.userId,
             role: payload.role,
+            agreement: payload.agreement || "",
           });
           const clMsg = createMessage("channel.list", {});
           wsRef.current?.send(JSON.stringify(clMsg));
@@ -239,11 +242,31 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             const filtered = prev.filter((u) => u.userId !== payload.userId);
             return [...filtered, { ...payload, status: "online" }];
           });
+          setMessages((prev) => insertAndCap(prev, {
+            id: msg.id,
+            channel: "__system__",
+            userId: payload.userId,
+            nickname: payload.nickname,
+            content: "joined",
+            role: payload.role,
+            timestamp: msg.timestamp,
+            system: true,
+          }, 2000));
           break;
         }
         case "user.left": {
           const payload = msg.payload as UserLeftPayload;
           setUsers((prev) => prev.filter((u) => u.userId !== payload.userId));
+          setMessages((prev) => insertAndCap(prev, {
+            id: msg.id,
+            channel: "__system__",
+            userId: payload.userId,
+            nickname: payload.nickname,
+            content: "left",
+            role: "",
+            timestamp: msg.timestamp,
+            system: true,
+          }, 2000));
           break;
         }
         case "user.role_changed": {

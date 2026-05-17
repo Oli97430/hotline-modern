@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader, Star, X, Zap } from "lucide-react";
 import { useServerFavorites, ServerFavorite } from "../hooks/useServerFavorites";
+import { ServerBrowser } from "./ServerBrowser";
 
 interface ConnectDialogProps {
   onConnect: (address: string, nickname: string) => void;
@@ -30,6 +31,10 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
   const handleFavoriteConnect = (fav: ServerFavorite) => {
     addFavorite(fav.address, fav.nickname);
     onConnect(fav.address, fav.nickname);
+  };
+
+  const handleBrowserConnect = (addr: string) => {
+    setAddress(addr);
   };
 
   return (
@@ -79,6 +84,8 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
             </>
           )}
         </button>
+
+        <ServerBrowser onConnect={handleBrowserConnect} />
 
         {favorites.length > 0 && (
           <div className="connect-favorites">

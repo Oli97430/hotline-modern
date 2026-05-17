@@ -87,7 +87,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
     }
   }, [quotedText, onQuoteClear]);
 
-  const channelMessages = messages.filter((m) => m.channel === activeChannel);
+  const channelMessages = messages.filter((m) => m.channel === activeChannel || m.system);
 
   // Scroll to top = load more history; track scroll position + sticky date
   const handleScroll = useCallback(() => {
@@ -315,7 +315,9 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           const isGrouped = prev !== undefined
             && prev.userId === msg.userId
             && (msg.timestamp - prev.timestamp) < 120000
-            && !msg.replyTo;
+            && !msg.replyTo
+            && !msg.system
+            && !prev.system;
 
           // Unread marker: show before first unread message
           const showUnreadMarker = lastReadMessageId && prev?.id === lastReadMessageId && msg.userId !== currentUserId;
@@ -341,6 +343,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
                 reactions={msg.reactions}
                 currentUserId={currentUserId}
                 canModerate={canMod}
+                system={msg.system}
                 onReact={onReact}
                 onRemoveReact={onRemoveReact}
                 onEdit={onEdit}

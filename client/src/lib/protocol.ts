@@ -17,6 +17,7 @@ export interface AuthOkPayload {
   role: string;
   serverName: string;
   motd: string;
+  agreement: string;
 }
 
 export interface AuthNoncePayload {

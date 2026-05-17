@@ -74,12 +74,13 @@ type Hub struct {
 	permissions  *permissions.Manager
 	serverName   string
 	motd         string
+	agreement    string
 	mu           sync.RWMutex
 }
 
 const maxMessageLength = 4000 // Max chat message content length in bytes
 
-func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Manager, serverName, motd string) *Hub {
+func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Manager, serverName, motd, agreement string) *Hub {
 	return &Hub{
 		clients:     make(map[string]*Client),
 		pubKeyIndex: make(map[string]*Client),
@@ -91,7 +92,21 @@ func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Mana
 		permissions: permMgr,
 		serverName:  serverName,
 		motd:        motd,
+		agreement:   agreement,
 	}
+}
+
+// ClientCount returns the number of authenticated clients.
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	count := 0
+	for _, c := range h.clients {
+		if c.PublicKey != "" {
+			count++
+		}
+	}
+	return count
 }
 
 func (h *Hub) Run() {
@@ -352,6 +367,7 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 			"role":       role,
 			"serverName": h.serverName,
 			"motd":       h.motd,
+			"agreement":  h.agreement,
 		}),
 	})
 

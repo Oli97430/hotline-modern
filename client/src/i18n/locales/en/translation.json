@@ -191,5 +191,21 @@
   "scheduler.placeholder": "Type your scheduled message...",
   "scheduler.schedule": "Schedule",
   "scheduler.pending": "Scheduled",
-  "scheduler.otherChannels": "Other channels"
+  "scheduler.otherChannels": "Other channels",
+  "tracker.browseServers": "Browse Servers",
+  "tracker.noServers": "No servers found",
+  "tracker.loading": "Searching for servers...",
+  "tracker.error": "Could not reach trackers",
+  "tracker.refresh": "Refresh",
+  "tracker.connect": "Connect",
+  "tracker.settings": "Tracker settings",
+  "tracker.addTracker": "Add tracker",
+  "tracker.trackerPlaceholder": "http://tracker:9997",
+  "tracker.removeTracker": "Remove",
+  "notif.newMessage": "New message from {{name}}",
+  "agreement.title": "Server Agreement",
+  "agreement.accept": "Accept",
+  "agreement.decline": "Decline",
+  "system.userJoined": "{{name}} joined",
+  "system.userLeft": "{{name}} left"
 }

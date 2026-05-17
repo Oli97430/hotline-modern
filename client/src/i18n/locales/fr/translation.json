@@ -191,5 +191,21 @@
   "scheduler.placeholder": "Tapez votre message programmé...",
   "scheduler.schedule": "Programmer",
   "scheduler.pending": "Programmés",
-  "scheduler.otherChannels": "Autres salons"
+  "scheduler.otherChannels": "Autres salons",
+  "tracker.browseServers": "Parcourir les serveurs",
+  "tracker.noServers": "Aucun serveur trouvé",
+  "tracker.loading": "Recherche de serveurs...",
+  "tracker.error": "Impossible de contacter les trackers",
+  "tracker.refresh": "Actualiser",
+  "tracker.connect": "Connexion",
+  "tracker.settings": "Paramètres du tracker",
+  "tracker.addTracker": "Ajouter un tracker",
+  "tracker.trackerPlaceholder": "http://tracker:9997",
+  "tracker.removeTracker": "Supprimer",
+  "notif.newMessage": "Nouveau message de {{name}}",
+  "agreement.title": "Accord du serveur",
+  "agreement.accept": "Accepter",
+  "agreement.decline": "Refuser",
+  "system.userJoined": "{{name}} a rejoint",
+  "system.userLeft": "{{name}} a quitté"
 }

@@ -13,6 +13,9 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "i18next": "^23.11.0",
     "i18next-browser-languagedetector": "^7.2.0",
     "lucide-react": "^0.372.0",
@@ -34,6 +37,7 @@
     "@vitejs/plugin-react": "^4.2.1",
     "happy-dom": "^20.9.0",
     "jsdom": "^29.1.1",
+    "sharp": "^0.34.5",
     "typescript": "^5.4.5",
     "vite": "^5.2.11",
     "vitest": "^4.1.6"

@@ -96,6 +96,7 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId: string;
   canModerate?: boolean;
+  system?: boolean;
   onReact?: (messageId: string, emoji: string) => void;
   onRemoveReact?: (messageId: string, emoji: string) => void;
   onEdit?: (messageId: string, content: string) => void;
@@ -115,8 +116,32 @@ interface MessageBubbleProps {
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, userId, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, isPinned, replyContext, isGrouped, onImageClick, onQuote, onThreadOpen, onForward }: MessageBubbleProps) {
+export function MessageBubble({ id, userId, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, system, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, isPinned, replyContext, isGrouped, onImageClick, onQuote, onThreadOpen, onForward }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
+
+  if (system) {
+    const systemText = content === "joined"
+      ? t("system.userJoined", { name: nickname })
+      : t("system.userLeft", { name: nickname });
+    return (
+      <div className="message-system">
+        <span className="message-system-text">{systemText}</span>
+        <style>{`
+          .message-system {
+            display: flex;
+            justify-content: center;
+            padding: 4px 16px;
+          }
+          .message-system-text {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-style: italic;
+            opacity: 0.7;
+          }
+        `}</style>
+      </div>
+    );
+  }
   const [showActions, setShowActions] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(content);
