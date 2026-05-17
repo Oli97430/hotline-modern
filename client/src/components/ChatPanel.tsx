@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Smile, Search, Upload, Loader, Pin, Bookmark, ArrowDown } from "lucide-react";
+import { Send, Smile, Search, Upload, Loader, Pin, Bookmark, ArrowDown, Mic } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { EmojiPicker } from "./EmojiPicker";
 import { MentionSuggestions } from "./MentionSuggestions";
 import { FormatToolbar } from "./FormatToolbar";
+import { VoiceRecorder } from "./VoiceRecorder";
 import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
 
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
@@ -51,9 +52,16 @@ interface ChatPanelProps {
   isBookmarked?: (messageId: string) => boolean;
   onChannelSettings?: () => void;
   onImageClick?: (src: string) => void;
+  lastReadMessageId?: string;
+  pinnedMessageIds?: string[];
+  onQuote?: (text: string, nickname: string) => void;
+  quotedText?: string;
+  onQuoteClear?: () => void;
+  onThreadOpen?: (messageId: string) => void;
+  onForward?: (messageId: string) => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick, lastReadMessageId, pinnedMessageIds, onQuote, quotedText, onQuoteClear, onThreadOpen, onForward }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -61,6 +69,8 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
   const [mentionIndex, setMentionIndex] = useState(0);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const [newMsgCount, setNewMsgCount] = useState(0);
+  const [stickyDate, setStickyDate] = useState<string | null>(null);
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingThrottleRef = useRef(0);
@@ -69,9 +79,17 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
   const isLoadingHistoryRef = useRef(false);
   const prevMsgCountRef = useRef(0);
 
+  // Handle quoted text injection
+  useEffect(() => {
+    if (quotedText) {
+      setInput(quotedText);
+      onQuoteClear?.();
+    }
+  }, [quotedText, onQuoteClear]);
+
   const channelMessages = messages.filter((m) => m.channel === activeChannel);
 
-  // Scroll to top = load more history; track scroll position
+  // Scroll to top = load more history; track scroll position + sticky date
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
@@ -80,6 +98,19 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
     const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     setIsScrolledUp(distFromBottom > 80);
     if (distFromBottom <= 80) setNewMsgCount(0);
+
+    // Sticky date header: find the topmost visible date separator
+    const separators = container.querySelectorAll(".chat-date-separator");
+    let activeDateStr: string | null = null;
+    for (let i = separators.length - 1; i >= 0; i--) {
+      const rect = separators[i].getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      if (rect.top <= containerRect.top + 10) {
+        activeDateStr = separators[i].textContent || null;
+        break;
+      }
+    }
+    setStickyDate(distFromBottom > 80 ? activeDateStr : null);
 
     if (historyLoading || !hasMoreHistory || !onLoadHistory || isLoadingHistoryRef.current) return;
     if (container.scrollTop < 100 && channelMessages.length > 0) {
@@ -248,6 +279,11 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
       </div>
 
       <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
+        {stickyDate && (
+          <div className="chat-sticky-date">
+            <span>{stickyDate}</span>
+          </div>
+        )}
         {historyLoading && (
           <div className="chat-history-loading">
             <Loader size={14} className="spinner" />
@@ -259,7 +295,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         )}
         {channelMessages.length === 0 && (
           <div className="chat-empty">
-            <div className="chat-empty-icon">💬</div>
+            <div className="chat-empty-icon">��</div>
             <span>{t("chat.noMessages")}</span>
           </div>
         )}
@@ -280,31 +316,48 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
             && prev.userId === msg.userId
             && (msg.timestamp - prev.timestamp) < 120000
             && !msg.replyTo;
+
+          // Unread marker: show before first unread message
+          const showUnreadMarker = lastReadMessageId && prev?.id === lastReadMessageId && msg.userId !== currentUserId;
+          // Thread: check if message has replies
+          const hasThread = msg.replyTo && onThreadOpen;
+
           return (
-            <MessageBubble
-              key={msg.id}
-              id={msg.id}
-              nickname={msg.nickname}
-              content={msg.content}
-              role={msg.role}
-              timestamp={msg.timestamp}
-              isOwn={msg.userId === currentUserId}
-              edited={msg.edited}
-              reactions={msg.reactions}
-              currentUserId={currentUserId}
-              canModerate={canMod}
-              onReact={onReact}
-              onRemoveReact={onRemoveReact}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onPin={onPin}
-              onReply={onReply}
-              onBookmark={onBookmark}
-              isBookmarked={isBookmarked?.(msg.id)}
-              replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
-              isGrouped={isGrouped}
-              onImageClick={onImageClick}
-            />
+            <div key={msg.id}>
+              {showUnreadMarker && (
+                <div className="chat-unread-marker">
+                  <span>{t("chat.newMessages")}</span>
+                </div>
+              )}
+              <MessageBubble
+                id={msg.id}
+                userId={msg.userId}
+                nickname={msg.nickname}
+                content={msg.content}
+                role={msg.role}
+                timestamp={msg.timestamp}
+                isOwn={msg.userId === currentUserId}
+                edited={msg.edited}
+                reactions={msg.reactions}
+                currentUserId={currentUserId}
+                canModerate={canMod}
+                onReact={onReact}
+                onRemoveReact={onRemoveReact}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onPin={onPin}
+                onReply={onReply}
+                onBookmark={onBookmark}
+                isBookmarked={isBookmarked?.(msg.id)}
+                isPinned={pinnedMessageIds?.includes(msg.id)}
+                replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
+                isGrouped={isGrouped}
+                onImageClick={onImageClick}
+                onQuote={onQuote}
+                onThreadOpen={hasThread ? () => onThreadOpen!(msg.replyTo!) : undefined}
+                onForward={onForward}
+              />
+            </div>
           );
         })}
         <div ref={messagesEndRef} />
@@ -341,6 +394,19 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         </div>
       )}
 
+      {showVoiceRecorder && (
+        <div className="chat-voice-area">
+          <VoiceRecorder
+            onSend={(blob, _duration) => {
+              // Send as a file upload message
+              const file = new File([blob], `voice-${Date.now()}.webm`, { type: "audio/webm" });
+              onFileUpload?.(file);
+              setShowVoiceRecorder(false);
+            }}
+            onCancel={() => setShowVoiceRecorder(false)}
+          />
+        </div>
+      )}
       <FormatToolbar onFormat={handleFormat} />
       <div className="chat-input-area">
         {canUpload && onFileUpload && (
@@ -375,9 +441,15 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
             <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />
           )}
         </div>
-        <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim()}>
-          <Send size={18} />
-        </button>
+        {!input.trim() && canUpload ? (
+          <button className="chat-mic-btn" onClick={() => setShowVoiceRecorder(true)} title={t("voice.record")}>
+            <Mic size={18} />
+          </button>
+        ) : (
+          <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim()}>
+            <Send size={18} />
+          </button>
+        )}
       </div>
 
       <style>{`
@@ -626,6 +698,22 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           height: 1px;
           background: var(--border);
         }
+        .chat-voice-area {
+          padding: 8px 16px 0;
+        }
+        .chat-mic-btn {
+          padding: 8px 12px;
+          color: var(--text-muted);
+          border-radius: var(--radius);
+          display: flex;
+          align-items: center;
+          transition: color var(--transition-normal), background var(--transition-fast), transform var(--transition-fast);
+        }
+        .chat-mic-btn:hover {
+          color: var(--accent);
+          background: var(--accent-dim);
+          transform: translateY(-1px);
+        }
         .chat-upload-btn {
           padding: 8px;
           color: var(--text-muted);
@@ -673,6 +761,51 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           border-radius: 10px;
           min-width: 18px;
           text-align: center;
+        }
+        .chat-sticky-date {
+          position: sticky;
+          top: 0;
+          z-index: 5;
+          display: flex;
+          justify-content: center;
+          padding: 6px 0;
+          pointer-events: none;
+        }
+        .chat-sticky-date span {
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          padding: 3px 12px;
+          box-shadow: var(--shadow-sm);
+          animation: fadeIn 0.15s ease;
+        }
+        .chat-unread-marker {
+          display: flex;
+          align-items: center;
+          padding: 8px 16px;
+          margin: 4px 0;
+          gap: 12px;
+        }
+        .chat-unread-marker::before,
+        .chat-unread-marker::after {
+          content: "";
+          flex: 1;
+          height: 1px;
+          background: var(--danger);
+          opacity: 0.5;
+        }
+        .chat-unread-marker span {
+          font-size: 10px;
+          font-weight: 700;
+          color: var(--danger);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          white-space: nowrap;
         }
       `}</style>
     </div>

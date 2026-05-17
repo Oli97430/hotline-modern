@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Loader } from "lucide-react";
+import { Loader, Star, X, Zap } from "lucide-react";
+import { useServerFavorites, ServerFavorite } from "../hooks/useServerFavorites";
 
 interface ConnectDialogProps {
   onConnect: (address: string, nickname: string) => void;
@@ -11,12 +12,24 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
   const { t } = useTranslation();
   const [address, setAddress] = useState("localhost:9998");
   const [nickname, setNickname] = useState("");
+  const { favorites, addFavorite, removeFavorite } = useServerFavorites();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (address && nickname.trim()) {
+      addFavorite(address, nickname.trim());
       onConnect(address, nickname.trim());
     }
+  };
+
+  const handleFavoriteClick = (fav: ServerFavorite) => {
+    setAddress(fav.address);
+    setNickname(fav.nickname);
+  };
+
+  const handleFavoriteConnect = (fav: ServerFavorite) => {
+    addFavorite(fav.address, fav.nickname);
+    onConnect(fav.address, fav.nickname);
   };
 
   return (
@@ -66,6 +79,31 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
             </>
           )}
         </button>
+
+        {favorites.length > 0 && (
+          <div className="connect-favorites">
+            <div className="connect-favorites-header">
+              <Star size={12} />
+              <span>{t("connect.recentServers")}</span>
+            </div>
+            <ul className="connect-favorites-list">
+              {favorites.slice(0, 5).map((fav) => (
+                <li key={fav.id} className="connect-fav-item">
+                  <button className="connect-fav-btn" onClick={() => handleFavoriteClick(fav)} title={fav.address}>
+                    <span className="connect-fav-addr">{fav.address}</span>
+                    <span className="connect-fav-nick">{fav.nickname}</span>
+                  </button>
+                  <button className="connect-fav-quick" onClick={() => handleFavoriteConnect(fav)} title={t("connect.quickConnect")}>
+                    <Zap size={11} />
+                  </button>
+                  <button className="connect-fav-remove" onClick={() => removeFavorite(fav.id)} title={t("connect.removeFavorite")}>
+                    <X size={11} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </form>
 
       <style>{`
@@ -185,6 +223,85 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
           padding: 1px 6px;
           border-radius: 3px;
           margin-left: 4px;
+        }
+        .connect-favorites {
+          border-top: 1px solid var(--border);
+          padding-top: 16px;
+          margin-top: 4px;
+        }
+        .connect-favorites-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          color: var(--text-muted);
+          margin-bottom: 8px;
+        }
+        .connect-favorites-list {
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .connect-fav-item {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          animation: fadeIn 0.15s ease;
+        }
+        .connect-fav-btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          border-radius: var(--radius-sm);
+          background: var(--bg-tertiary);
+          border: 1px solid transparent;
+          transition: all var(--transition-fast);
+          cursor: pointer;
+          min-width: 0;
+        }
+        .connect-fav-btn:hover {
+          background: var(--accent-dim);
+          border-color: var(--accent);
+        }
+        .connect-fav-addr {
+          font-size: 12px;
+          font-weight: 500;
+          color: var(--text-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .connect-fav-nick {
+          font-size: 11px;
+          color: var(--text-muted);
+          flex-shrink: 0;
+          margin-left: 8px;
+        }
+        .connect-fav-quick {
+          padding: 6px;
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          transition: color var(--transition-fast), background var(--transition-fast);
+        }
+        .connect-fav-quick:hover {
+          color: var(--accent);
+          background: var(--accent-dim);
+        }
+        .connect-fav-remove {
+          padding: 6px;
+          border-radius: var(--radius-sm);
+          color: var(--text-muted);
+          transition: color var(--transition-fast), background var(--transition-fast);
+        }
+        .connect-fav-remove:hover {
+          color: var(--danger);
+          background: var(--danger-dim);
         }
       `}</style>
     </div>

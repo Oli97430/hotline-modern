@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Shield, Star, User, Eye } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
+import { UserAvatar } from "./UserAvatar";
 
 interface UserListProps {
   users: { userId: string; nickname: string; role: string; status: string }[];
@@ -74,7 +75,10 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
             className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""} ${user.userId === currentUserId ? "self" : ""}`}
             onClick={(e) => handleUserClick(user.userId, e)}
           >
-            <StatusDot status={user.status} />
+            <div className="user-entry-avatar">
+              <UserAvatar userId={user.userId} nickname={user.nickname} size={22} />
+              <StatusDot status={user.status} />
+            </div>
             <RoleIcon role={user.role} />
             <span className="user-nick" style={{ color: `var(--role-${user.role})` }}>
               {user.nickname}
@@ -165,6 +169,17 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           margin: 1px 6px;
           border-radius: var(--radius-sm);
           transition: background var(--transition-fast);
+        }
+        .user-entry-avatar {
+          position: relative;
+          flex-shrink: 0;
+        }
+        .user-entry-avatar .status-dot {
+          position: absolute;
+          bottom: -1px;
+          right: -1px;
+          border: 1.5px solid var(--bg-secondary);
+          border-radius: 50%;
         }
         .user-nick {
           overflow: hidden;

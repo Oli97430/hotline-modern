@@ -20,6 +20,14 @@ import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
 import { AdminPanel } from "./components/AdminPanel";
 import { ChannelPasswordPrompt } from "./components/ChannelPasswordPrompt";
 import { ImageLightbox } from "./components/ImageLightbox";
+import { ThreadPanel } from "./components/ThreadPanel";
+import { ThemeEditor, loadSavedTheme } from "./components/ThemeEditor";
+import { ServerStats } from "./components/ServerStats";
+import { MessageForwardDialog } from "./components/MessageForwardDialog";
+import { CustomEmojiUpload, loadCustomEmojis, saveCustomEmojis } from "./components/CustomEmojiUpload";
+import { NotificationFilters as NotifFiltersPanel, loadNotifFilters as loadNotifFiltersFull, saveNotifFilters as _saveNF } from "./components/NotificationFilters";
+import { MessageScheduler, ScheduledMessage, loadScheduledMessages, saveScheduledMessages } from "./components/MessageScheduler";
+import { applyChannelOrder, loadChannelOrder, saveChannelOrder } from "./components/ChannelDragReorder";
 import { ToastContainer, useToasts } from "./components/ToastContainer";
 import { useIdentity } from "./hooks/useIdentity";
 import { useWebSocket } from "./hooks/useWebSocket";
@@ -28,7 +36,7 @@ import { useIdleDetection } from "./hooks/useIdleDetection";
 import { useTabNotification } from "./hooks/useTabNotification";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { getPublicKeyHex, signMessage } from "./lib/crypto";
-import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal } from "lucide-react";
+import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal, Palette, TrendingUp, Menu, Users as UsersIcon, Clock, Smile as SmileIcon, Filter } from "lucide-react";
 
 export default function App() {
   const { t } = useTranslation();
@@ -47,9 +55,21 @@ export default function App() {
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPasswordPrompt, setShowPasswordPrompt] = useState<string | null>(null);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [threadRootId, setThreadRootId] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<BookmarkedMessage[]>(loadBookmarks);
+  const [showThemeEditor, setShowThemeEditor] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [forwardMsg, setForwardMsg] = useState<{ content: string; author: string } | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [showCustomEmoji, setShowCustomEmoji] = useState(false);
+  const [showNotifFilters, setShowNotifFilters] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
+  const [customEmojis, setCustomEmojis] = useState(loadCustomEmojis);
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
+  const [channelOrder, setChannelOrder] = useState<string[]>(loadChannelOrder);
   const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [lastReadIds, setLastReadIds] = useState<Record<string, string>>({});
   const [dmUnreadCounts, setDmUnreadCounts] = useState<Record<string, number>>({});
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(loadNotifPrefs);
   const [statusBeforeIdle, setStatusBeforeIdle] = useState<string | null>(null);
@@ -57,6 +77,9 @@ export default function App() {
   const prevDmLenRef = useRef(0);
   const activeChannelRef = useRef(activeChannel);
   const activeDMRef = useRef(activeDM);
+
+  // Load saved custom theme on mount
+  useEffect(() => { loadSavedTheme(); }, []);
 
   const handleError = useCallback((msg: string) => {
     setError(msg);
@@ -133,6 +156,11 @@ export default function App() {
     if (ch?.hasPassword && channel !== activeChannel) {
       setShowPasswordPrompt(channel);
       return;
+    }
+    // Mark the last message in the current channel as read
+    const currentMsgs = ws.messages.filter((m) => m.channel === activeChannel);
+    if (currentMsgs.length > 0) {
+      setLastReadIds((prev) => ({ ...prev, [activeChannel]: currentMsgs[currentMsgs.length - 1].id }));
     }
     setActiveDM("");
     setActiveChannel(channel);
@@ -375,6 +403,82 @@ export default function App() {
     if (msg) setReplyTo({ id: msg.id, nickname: msg.nickname, content: msg.content });
   };
 
+  const [quoteText, setQuoteText] = useState("");
+  const handleQuote = useCallback((text: string, nickname: string) => {
+    const quoted = text.split("\n").map((l) => `> ${l}`).join("\n");
+    setQuoteText(`${quoted}\n@${nickname} `);
+  }, []);
+
+  const handleForward = useCallback((targetChannel: string, comment?: string) => {
+    if (!forwardMsg) return;
+    const fwdContent = comment
+      ? `${comment}\n\n> **Forwarded from ${forwardMsg.author}:**\n> ${forwardMsg.content}`
+      : `> **Forwarded from ${forwardMsg.author}:**\n> ${forwardMsg.content}`;
+    ws.sendChat(targetChannel, fwdContent);
+    setForwardMsg(null);
+    addToast("info", t("forward.sent"));
+  }, [forwardMsg, ws, addToast, t]);
+
+  const handleForwardMessage = useCallback((messageId: string) => {
+    const msg = ws.messages.find((m) => m.id === messageId);
+    if (msg) setForwardMsg({ content: msg.content, author: msg.nickname });
+  }, [ws.messages]);
+
+  // Custom emoji handlers
+  const handleEmojiUpload = useCallback((name: string, file: File) => {
+    const url = URL.createObjectURL(file);
+    const emoji = { id: Date.now().toString(36), name, url };
+    const updated = [...customEmojis, emoji];
+    setCustomEmojis(updated);
+    saveCustomEmojis(updated);
+  }, [customEmojis]);
+
+  const handleEmojiDelete = useCallback((id: string) => {
+    const updated = customEmojis.filter((e) => e.id !== id);
+    setCustomEmojis(updated);
+    saveCustomEmojis(updated);
+  }, [customEmojis]);
+
+  // Scheduled message handlers
+  const handleScheduleMessage = useCallback((msg: ScheduledMessage) => {
+    const updated = [...scheduledMessages, msg];
+    setScheduledMessages(updated);
+    saveScheduledMessages(updated);
+  }, [scheduledMessages]);
+
+  const handleDeleteScheduled = useCallback((id: string) => {
+    const updated = scheduledMessages.filter((m) => m.id !== id);
+    setScheduledMessages(updated);
+    saveScheduledMessages(updated);
+  }, [scheduledMessages]);
+
+  // Process scheduled messages every 30s
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const due = scheduledMessages.filter((m) => m.scheduledTime <= now);
+      if (due.length === 0) return;
+      for (const msg of due) {
+        ws.sendChat(msg.channel, msg.content);
+        addToast("info", `Scheduled message sent to #${msg.channel}`);
+      }
+      const remaining = scheduledMessages.filter((m) => m.scheduledTime > now);
+      setScheduledMessages(remaining);
+      saveScheduledMessages(remaining);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [scheduledMessages, ws, addToast]);
+
+  // Channel reorder (used via drag in Sidebar)
+  const handleChannelReorder = useCallback((newOrder: string[]) => {
+    setChannelOrder(newOrder);
+    saveChannelOrder(newOrder);
+  }, []);
+
+  const orderedChannels = useMemo(() => {
+    return applyChannelOrder(ws.channels, channelOrder);
+  }, [ws.channels, channelOrder]);
+
   const handleSendWithReply = (channel: string, content: string) => {
     if (replyTo) {
       ws.sendChatWithReply(channel, content, replyTo.id);
@@ -452,10 +556,11 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      <div className="app-sidebar-col">
+      {mobileSidebarOpen && <div className="mobile-sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />}
+      <div className={`app-sidebar-col ${mobileSidebarOpen ? "mobile-open" : ""}`}>
         <Sidebar
           serverName={ws.serverInfo?.name || t("app.name")}
-          channels={ws.channels}
+          channels={orderedChannels}
           activeChannel={activeChannel}
           activeDM={activeDM}
           dmConversations={dmConversations}
@@ -472,6 +577,8 @@ export default function App() {
           mutedChannels={mutedChannels}
           onToggleMute={toggleMute}
           onAdminPanel={() => setShowAdmin(true)}
+          typingChannels={ws.typingUsers.filter(t => t.userId !== ws.serverInfo?.userId).map(t => t.channel).filter(Boolean)}
+          onReorderChannels={handleChannelReorder}
         />
         <div className="app-sidebar-bottom">
           <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />
@@ -479,11 +586,37 @@ export default function App() {
           <button className="compact-toggle" onClick={toggleCompact} title={compact ? "Comfortable view" : "Compact view"}>
             {compact ? <StretchHorizontal size={14} /> : <Rows3 size={14} />}
           </button>
+          <button className="compact-toggle" onClick={() => setShowThemeEditor(true)} title={t("theme.title")}>
+            <Palette size={14} />
+          </button>
+          <button className="compact-toggle" onClick={() => setShowStats(true)} title={t("stats.title")}>
+            <TrendingUp size={14} />
+          </button>
+          <button className="compact-toggle" onClick={() => setShowScheduler(true)} title={t("scheduler.title")}>
+            <Clock size={14} />
+          </button>
+          <button className="compact-toggle" onClick={() => setShowCustomEmoji(true)} title={t("customEmoji.title")}>
+            <SmileIcon size={14} />
+          </button>
+          <button className="compact-toggle" onClick={() => setShowNotifFilters(true)} title={t("notifFilters.title")}>
+            <Filter size={14} />
+          </button>
           <LanguageSelector />
         </div>
       </div>
 
       <main className="app-main">
+        <div className="mobile-header">
+          <button className="mobile-header-btn" onClick={() => setMobileSidebarOpen(true)}>
+            <Menu size={18} />
+          </button>
+          <span className="mobile-header-channel">
+            {activeDM ? dmConversations.find(d => d.peerId === activeDM)?.peerNick || "DM" : `#${activeChannel}`}
+          </span>
+          <button className="mobile-header-btn" onClick={() => setRightPanelOpen(v => !v)}>
+            <UsersIcon size={18} />
+          </button>
+        </div>
         <ConnectionStatus status={ws.status} reconnectIn={ws.reconnectIn} />
         {ws.serverInfo?.motd && <ServerBanner motd={ws.serverInfo.motd} />}
 
@@ -549,7 +682,36 @@ export default function App() {
             isBookmarked={isBookmarked}
             onChannelSettings={() => setShowChannelSettings(true)}
             onImageClick={setLightboxSrc}
+            lastReadMessageId={lastReadIds[activeChannel]}
+            pinnedMessageIds={ws.pinnedMessages.map((p) => p.id)}
+            onQuote={handleQuote}
+            quotedText={quoteText}
+            onQuoteClear={() => setQuoteText("")}
+            onThreadOpen={setThreadRootId}
+            onForward={handleForwardMessage}
           />
+
+          {threadRootId && (() => {
+            const rootMsg = ws.messages.find((m) => m.id === threadRootId);
+            if (!rootMsg) return null;
+            const threadReplies = ws.messages.filter((m) => m.replyTo === threadRootId);
+            return (
+              <ThreadPanel
+                rootMessage={rootMsg}
+                replies={threadReplies}
+                currentUserId={ws.serverInfo?.userId || ""}
+                currentRole={ws.serverInfo?.role}
+                onClose={() => setThreadRootId(null)}
+                onReact={ws.addReaction}
+                onRemoveReact={ws.removeReaction}
+                onEdit={ws.editMessage}
+                onDelete={ws.deleteMessage}
+                onBookmark={handleBookmark}
+                isBookmarked={isBookmarked}
+                onImageClick={setLightboxSrc}
+              />
+            );
+          })()}
 
           <button
             className="panel-toggle"
@@ -622,6 +784,60 @@ export default function App() {
 
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+      )}
+
+      {showThemeEditor && (
+        <ThemeEditor onClose={() => setShowThemeEditor(false)} />
+      )}
+
+      {showStats && (
+        <ServerStats
+          messages={ws.messages}
+          userCount={ws.users.length}
+          channelCount={ws.channels.length}
+          serverName={ws.serverInfo?.name || t("app.name")}
+          onClose={() => setShowStats(false)}
+        />
+      )}
+
+      {forwardMsg && (
+        <MessageForwardDialog
+          messageContent={forwardMsg.content}
+          messageAuthor={forwardMsg.author}
+          channels={ws.channels}
+          currentChannel={activeChannel}
+          onForward={handleForward}
+          onClose={() => setForwardMsg(null)}
+        />
+      )}
+
+      {showCustomEmoji && (
+        <CustomEmojiUpload
+          emojis={customEmojis}
+          onUpload={handleEmojiUpload}
+          onDelete={handleEmojiDelete}
+          onClose={() => setShowCustomEmoji(false)}
+        />
+      )}
+
+      {showNotifFilters && (
+        <NotifFiltersPanel
+          filters={loadNotifFiltersFull()}
+          channels={ws.channels.map((c) => c.name)}
+          users={ws.users}
+          onChange={(f) => { _saveNF(f); }}
+          onClose={() => setShowNotifFilters(false)}
+        />
+      )}
+
+      {showScheduler && (
+        <MessageScheduler
+          activeChannel={activeChannel}
+          scheduledMessages={scheduledMessages}
+          onSchedule={handleScheduleMessage}
+          onDelete={handleDeleteScheduled}
+          onClose={() => setShowScheduler(false)}
+        />
       )}
 
       <DragDropOverlay

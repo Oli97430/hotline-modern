@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, Reply, Smile, Pin, Pencil, Trash2, Bookmark, Quote } from "lucide-react";
+import { Copy, Reply, Smile, Pin, Pencil, Trash2, Bookmark, Quote, Forward } from "lucide-react";
 
 interface MessageContextMenuProps {
   position: { x: number; y: number };
@@ -18,6 +18,7 @@ interface MessageContextMenuProps {
   onBookmark?: (messageId: string) => void;
   onCopyText?: () => void;
   onQuote?: () => void;
+  onForward?: (messageId: string) => void;
 }
 
 export function MessageContextMenu({
@@ -34,8 +35,9 @@ export function MessageContextMenu({
   onDelete,
   onPin,
   onBookmark,
-  onCopyText,
+  onCopyText: _onCopyText,
   onQuote,
+  onForward,
 }: MessageContextMenuProps) {
   const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -93,6 +95,12 @@ export function MessageContextMenu({
         <Quote size={14} />
         <span>{t("ctx.quote")}</span>
       </button>
+      {onForward && (
+        <button className="ctx-item" onClick={() => { onForward(messageId); onClose(); }}>
+          <Forward size={14} />
+          <span>{t("forward.title")}</span>
+        </button>
+      )}
       {onBookmark && (
         <button className={`ctx-item ${isBookmarked ? "active" : ""}`} onClick={() => { onBookmark(messageId); onClose(); }}>
           <Bookmark size={14} />

@@ -3,14 +3,20 @@ import { useTranslation } from "react-i18next";
 import { Smile, Pencil, Trash2, Pin, Reply, Bookmark } from "lucide-react";
 import { MessageReaction } from "../hooks/useWebSocket";
 import { MessageContextMenu } from "./MessageContextMenu";
+import { LinkPreview } from "./LinkPreview";
+import { CodeBlock } from "./CodeBlock";
+import { UserAvatar } from "./UserAvatar";
+import { RichEmbed, isEmbeddableUrl } from "./RichEmbed";
 
 const IMAGE_REGEX = /\b(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?)\b/gi;
 const LINK_IN_BRACKETS = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+const CODE_BLOCK_REGEX = /```(\w*)\n([\s\S]*?)```/g;
+const BARE_URL_REGEX = /\bhttps?:\/\/[^\s]+/g;
 
 function formatMessage(text: string): (string | JSX.Element)[] {
   const parts: (string | JSX.Element)[] = [];
   let key = 0;
-  const regex = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(@\w+)|(\b(https?:\/\/[^\s]+))/g;
+  const regex = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\~\~[^~]+\~\~)|(@\w+)|(\b(https?:\/\/[^\s]+))/g;
   let last = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
@@ -25,10 +31,13 @@ function formatMessage(text: string): (string | JSX.Element)[] {
     } else if (match[6]) {
       parts.push(<em key={key++}>{match[6].slice(1, -1)}</em>);
     } else if (match[7]) {
+      // ~~strikethrough~~
+      parts.push(<del key={key++}>{match[7].slice(2, -2)}</del>);
+    } else if (match[8]) {
       // @mention
-      parts.push(<span key={key++} className="msg-mention">{match[7]}</span>);
-    } else if (match[9]) {
-      parts.push(<a key={key++} className="msg-link" href={match[9]} target="_blank" rel="noopener noreferrer">{match[9]}</a>);
+      parts.push(<span key={key++} className="msg-mention">{match[8]}</span>);
+    } else if (match[10]) {
+      parts.push(<a key={key++} className="msg-link" href={match[10]} target="_blank" rel="noopener noreferrer">{match[10]}</a>);
     }
     last = match.index + match[0].length;
   }
@@ -36,15 +45,48 @@ function formatMessage(text: string): (string | JSX.Element)[] {
   return parts;
 }
 
+function hasCodeBlock(text: string): boolean {
+  return /```[\s\S]*?```/.test(text);
+}
+
+function extractCodeBlocks(text: string): { language: string; code: string }[] {
+  const blocks: { language: string; code: string }[] = [];
+  let match;
+  const regex = /```(\w*)\n([\s\S]*?)```/g;
+  while ((match = regex.exec(text)) !== null) {
+    blocks.push({ language: match[1] || "", code: match[2].trimEnd() });
+  }
+  return blocks;
+}
+
+function getTextWithoutCodeBlocks(text: string): string {
+  return text.replace(CODE_BLOCK_REGEX, "").trim();
+}
+
 function extractImages(text: string): string[] {
   // Don't extract images from markdown links [name](url)
-  const cleaned = text.replace(LINK_IN_BRACKETS, "");
+  const cleaned = text.replace(LINK_IN_BRACKETS, "").replace(CODE_BLOCK_REGEX, "");
   const matches = cleaned.match(IMAGE_REGEX);
   return matches ? [...new Set(matches)] : [];
 }
 
+function extractPreviewUrls(text: string): string[] {
+  // Extract URLs that aren't images, aren't embeddable, and aren't in markdown links
+  const cleaned = text.replace(LINK_IN_BRACKETS, "").replace(CODE_BLOCK_REGEX, "");
+  const allUrls = cleaned.match(BARE_URL_REGEX) || [];
+  const imageUrls = extractImages(text);
+  return allUrls.filter((u) => !imageUrls.includes(u) && !isEmbeddableUrl(u)).slice(0, 3);
+}
+
+function extractEmbedUrls(text: string): string[] {
+  const cleaned = text.replace(LINK_IN_BRACKETS, "").replace(CODE_BLOCK_REGEX, "");
+  const allUrls = cleaned.match(BARE_URL_REGEX) || [];
+  return allUrls.filter((u) => isEmbeddableUrl(u)).slice(0, 2);
+}
+
 interface MessageBubbleProps {
   id: string;
+  userId: string;
   nickname: string;
   content: string;
   role: string;
@@ -62,14 +104,18 @@ interface MessageBubbleProps {
   onReply?: (messageId: string) => void;
   onBookmark?: (messageId: string) => void;
   isBookmarked?: boolean;
+  isPinned?: boolean;
   replyContext?: { nickname: string; content: string };
   isGrouped?: boolean;
   onImageClick?: (src: string) => void;
+  onQuote?: (text: string, nickname: string) => void;
+  onThreadOpen?: (messageId: string) => void;
+  onForward?: (messageId: string) => void;
 }
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, replyContext, isGrouped, onImageClick }: MessageBubbleProps) {
+export function MessageBubble({ id, userId, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, isPinned, replyContext, isGrouped, onImageClick, onQuote, onThreadOpen, onForward }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
   const [showActions, setShowActions] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -94,8 +140,11 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
   }).format(msgDate);
 
   const roleColor = `var(--role-${role})`;
-  const formatted = useMemo(() => formatMessage(content), [content]);
+  const codeBlocks = useMemo(() => extractCodeBlocks(content), [content]);
+  const textContent = useMemo(() => hasCodeBlock(content) ? getTextWithoutCodeBlocks(content) : content, [content]);
   const images = useMemo(() => extractImages(content), [content]);
+  const previewUrls = useMemo(() => extractPreviewUrls(content), [content]);
+  const embedUrls = useMemo(() => extractEmbedUrls(content), [content]);
 
   const handleEditSubmit = () => {
     if (editContent.trim() && editContent !== content) {
@@ -127,7 +176,7 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
       onContextMenu={handleContextMenu}
     >
       {replyContext && (
-        <div className="message-reply-context">
+        <div className="message-reply-context" onClick={() => onThreadOpen?.(id)} style={onThreadOpen ? { cursor: "pointer" } : undefined}>
           <Reply size={10} className="reply-icon" />
           <span className="reply-context-nick">{replyContext.nickname}</span>
           <span className="reply-context-text">{replyContext.content.slice(0, 60)}</span>
@@ -136,11 +185,13 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
 
       {!isGrouped && (
         <div className="message-header">
+          <UserAvatar userId={userId} nickname={nickname} size={28} />
           <span className="message-nick" style={{ color: roleColor }}>
             {nickname}
           </span>
           <span className="message-time" title={fullTime}>{time}</span>
           {edited && <span className="message-edited">{t("chat.edited")}</span>}
+          {isPinned && <Pin size={11} className="message-pin-badge" />}
         </div>
       )}
 
@@ -162,7 +213,19 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         </div>
       ) : (
         <>
-          <div className="message-content">{formatted}</div>
+          {textContent && (
+            <div className="message-content">
+              {textContent.split("\n").map((line, i) => {
+                if (line.startsWith("> ")) {
+                  return <div key={i} className="msg-blockquote">{formatMessage(line.slice(2))}</div>;
+                }
+                return <span key={i}>{i > 0 && "\n"}{formatMessage(line)}</span>;
+              })}
+            </div>
+          )}
+          {codeBlocks.map((block, i) => (
+            <CodeBlock key={`cb-${i}`} code={block.code} language={block.language} />
+          ))}
           {images.length > 0 && (
             <div className="message-images">
               {images.map((url, i) => (
@@ -174,6 +237,20 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
                   loading="lazy"
                   onClick={() => onImageClick ? onImageClick(url) : window.open(url, "_blank")}
                 />
+              ))}
+            </div>
+          )}
+          {embedUrls.length > 0 && (
+            <div className="message-embeds">
+              {embedUrls.map((url, i) => (
+                <RichEmbed key={`embed-${i}`} url={url} />
+              ))}
+            </div>
+          )}
+          {previewUrls.length > 0 && (
+            <div className="message-link-previews">
+              {previewUrls.map((url, i) => (
+                <LinkPreview key={`lp-${i}`} url={url} />
               ))}
             </div>
           )}
@@ -235,7 +312,8 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
           onPin={onPin}
           onBookmark={onBookmark}
           onCopyText={() => { navigator.clipboard.writeText(content); setContextMenu(null); }}
-          onQuote={() => {}}
+          onQuote={() => { onQuote?.(content, nickname); setContextMenu(null); }}
+          onForward={onForward}
         />
       )}
 
@@ -318,12 +396,116 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
           color: var(--text-muted);
           font-style: italic;
         }
+        .message-pin-badge {
+          color: var(--accent);
+          opacity: 0.6;
+          flex-shrink: 0;
+        }
         .message-content {
           font-size: 14px;
           color: var(--text-primary);
           line-height: 1.45;
           word-break: break-word;
           white-space: pre-wrap;
+        }
+        .msg-blockquote {
+          border-left: 3px solid var(--accent);
+          padding-left: 10px;
+          margin: 4px 0;
+          color: var(--text-secondary);
+          font-style: italic;
+          font-size: 13px;
+        }
+        .message-embeds {
+          margin-top: 6px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .rich-embed {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border-subtle);
+          border-left: 3px solid var(--danger);
+          border-radius: var(--radius);
+          text-decoration: none;
+          max-width: 360px;
+          transition: background var(--transition-fast), transform var(--transition-fast);
+          animation: fadeIn 0.15s ease;
+        }
+        .rich-embed:hover {
+          background: var(--bg-hover);
+          transform: translateX(2px);
+        }
+        .rich-embed-youtube { border-left-color: #ff0000; }
+        .rich-embed-twitter { border-left-color: #1d9bf0; }
+        .rich-embed-thumb {
+          position: relative;
+          width: 80px;
+          height: 45px;
+          border-radius: var(--radius-sm);
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+        .rich-embed-thumb img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .rich-embed-play {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0,0,0,0.3);
+          transition: background var(--transition-fast);
+        }
+        .rich-embed:hover .rich-embed-play {
+          background: rgba(0,0,0,0.5);
+        }
+        .rich-embed-info {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+        .rich-embed-source {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-secondary);
+        }
+        .rich-embed-id {
+          font-size: 10px;
+          color: var(--text-muted);
+          font-family: var(--font-mono);
+        }
+        .rich-embed-twitter-icon {
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
+          background: var(--bg-secondary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          color: var(--text-primary);
+        }
+        .rich-embed-ext {
+          flex-shrink: 0;
+          color: var(--text-muted);
+          opacity: 0;
+          transition: opacity var(--transition-fast);
+        }
+        .rich-embed:hover .rich-embed-ext {
+          opacity: 1;
         }
         .msg-code {
           font-family: var(--font-mono);

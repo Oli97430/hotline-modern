@@ -28,6 +28,8 @@ interface SidebarProps {
   mutedChannels?: string[];
   onToggleMute?: (channel: string) => void;
   onAdminPanel?: () => void;
+  typingChannels?: string[];
+  onReorderChannels?: (order: string[]) => void;
 }
 
 export function Sidebar({
@@ -49,6 +51,8 @@ export function Sidebar({
   mutedChannels,
   onToggleMute,
   onAdminPanel,
+  typingChannels,
+  onReorderChannels,
 }: SidebarProps) {
   const { t } = useTranslation();
 
@@ -79,14 +83,30 @@ export function Sidebar({
         </div>
 
         <ul className="channel-list">
-          {channels.map((ch) => (
+          {channels.map((ch, idx) => (
             <li
               key={ch.name}
               className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
               onClick={() => onSelectChannel(ch.name)}
+              draggable={!!onReorderChannels}
+              onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(idx)); }}
+              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); }}
+              onDragLeave={(e) => { e.currentTarget.classList.remove("drag-over"); }}
+              onDrop={(e) => {
+                e.currentTarget.classList.remove("drag-over");
+                const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
+                if (isNaN(fromIdx) || fromIdx === idx || !onReorderChannels) return;
+                const names = channels.map(c => c.name);
+                const [removed] = names.splice(fromIdx, 1);
+                names.splice(idx, 0, removed);
+                onReorderChannels(names);
+              }}
             >
               {ch.hasPassword ? <Lock size={14} className="channel-icon" /> : <Hash size={14} className="channel-icon" />}
               <span className="channel-name">{ch.name}</span>
+              {typingChannels?.includes(ch.name) && (
+                <span className="channel-typing-dot" />
+              )}
               {(unreadCounts[ch.name] || 0) > 0 && (
                 <span className="channel-unread">{unreadCounts[ch.name]}</span>
               )}
@@ -254,6 +274,10 @@ export function Sidebar({
           color: var(--accent);
           font-weight: 500;
         }
+        .channel-item.drag-over {
+          border-top: 2px solid var(--accent);
+          padding-top: 4px;
+        }
         .channel-item.active .channel-icon {
           color: var(--accent);
           opacity: 1;
@@ -307,6 +331,18 @@ export function Sidebar({
         }
         .channel-delete:hover {
           color: var(--danger);
+        }
+        .channel-typing-dot {
+          width: 6px;
+          height: 6px;
+          border-radius: 50%;
+          background: var(--accent);
+          animation: typingPulse 1.2s ease-in-out infinite;
+          flex-shrink: 0;
+        }
+        @keyframes typingPulse {
+          0%, 100% { opacity: 0.4; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.2); }
         }
         .channel-unread {
           font-size: 10px;
