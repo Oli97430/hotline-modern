@@ -2,16 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Folder, File, ArrowUp, Upload, Download, FolderOpen } from "lucide-react";
 import { FileEntry } from "../lib/protocol";
+import { Identity, getFileAuthHeaders } from "../lib/crypto";
 
 interface FileBrowserProps {
   serverAddress: string;
-  publicKey: string;
-  signature: string;
+  identity: Identity;
   canUpload: boolean;
   canDownload: boolean;
 }
 
-export function FileBrowser({ serverAddress, publicKey, signature, canUpload, canDownload }: FileBrowserProps) {
+export function FileBrowser({ serverAddress, identity, canUpload, canDownload }: FileBrowserProps) {
   const { t } = useTranslation();
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -25,10 +25,7 @@ export function FileBrowser({ serverAddress, publicKey, signature, canUpload, ca
     try {
       const url = `${baseUrl}/files/${dirPath}`;
       const res = await fetch(url, {
-        headers: {
-          "X-Hotline-PublicKey": publicKey,
-          "X-Hotline-Signature": signature,
-        },
+        headers: getFileAuthHeaders(identity),
       });
       if (res.ok) {
         const data = await res.json();
@@ -68,10 +65,7 @@ export function FileBrowser({ serverAddress, publicKey, signature, canUpload, ca
     const uploadPath = path ? `${path}/${file.name}` : file.name;
     await fetch(`${baseUrl}/files/${uploadPath}`, {
       method: "POST",
-      headers: {
-        "X-Hotline-PublicKey": publicKey,
-        "X-Hotline-Signature": signature,
-      },
+      headers: getFileAuthHeaders(identity),
       body: formData,
     });
 

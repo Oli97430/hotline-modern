@@ -70,4 +70,20 @@ export function getPublicKeyHex(identity: Identity): string {
   return toHex(identity.publicKey);
 }
 
+/**
+ * Generate auth headers for HTTP file requests.
+ * Signs "publicKey:timestamp" for replay protection (60s validity window).
+ */
+export function getFileAuthHeaders(identity: Identity): Record<string, string> {
+  const pk = toHex(identity.publicKey);
+  const timestamp = Date.now().toString();
+  const message = `${pk}:${timestamp}`;
+  const signature = signMessage(message, identity.secretKey);
+  return {
+    "X-Hotline-PublicKey": pk,
+    "X-Hotline-Signature": signature,
+    "X-Hotline-Timestamp": timestamp,
+  };
+}
+
 export { toHex, fromHex };

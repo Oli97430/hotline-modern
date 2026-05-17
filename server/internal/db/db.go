@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -167,17 +168,47 @@ func (d *DB) GetChannels() ([]Channel, error) {
 }
 
 func (d *DB) CreateChannel(name, topic, createdBy, password string) error {
+	hashedPw := ""
+	if password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
+		hashedPw = string(hash)
+	}
 	_, err := d.conn.Exec(
 		"INSERT INTO channels (name, topic, created_by, password) VALUES (?, ?, ?, ?)",
-		name, topic, createdBy, password,
+		name, topic, createdBy, hashedPw,
 	)
 	return err
 }
 
-func (d *DB) GetChannelPassword(name string) (string, error) {
+// GetChannelPasswordHash returns the bcrypt hash stored for the channel password.
+func (d *DB) GetChannelPasswordHash(name string) (string, error) {
 	var pw string
 	err := d.conn.QueryRow("SELECT password FROM channels WHERE name = ?", name).Scan(&pw)
 	return pw, err
+}
+
+// CheckChannelPassword verifies a password against the stored bcrypt hash.
+func (d *DB) CheckChannelPassword(name, password string) (bool, error) {
+	hash, err := d.GetChannelPasswordHash(name)
+	if err != nil {
+		return false, err
+	}
+	if hash == "" {
+		return true, nil // No password set
+	}
+	if password == "" {
+		return false, nil // Password required but not provided
+	}
+	err = bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil, nil
+}
+
+// GetChannelPassword kept for backward compat — returns hash (for hasPassword check)
+func (d *DB) GetChannelPassword(name string) (string, error) {
+	return d.GetChannelPasswordHash(name)
 }
 
 func (d *DB) SetChannelTopic(name, topic string) error {

@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/hotline-modern/server/internal/auth"
 	"github.com/hotline-modern/server/internal/chat"
@@ -21,6 +25,8 @@ func main() {
 	dataDir := flag.String("data", "./data", "Data directory (database + files)")
 	serverName := flag.String("name", "Hotline Server", "Server name")
 	motd := flag.String("motd", "Welcome to Hotline Modern!", "Message of the day")
+	tlsCert := flag.String("tls-cert", "", "TLS certificate file (enables HTTPS/WSS)")
+	tlsKey := flag.String("tls-key", "", "TLS private key file")
 	flag.Parse()
 
 	if err := os.MkdirAll(*dataDir, 0755); err != nil {
@@ -46,21 +52,60 @@ func main() {
 	h := hub.New(authManager, chatManager, permManager, *serverName, *motd)
 	go h.Run()
 
-	http.HandleFunc("/ws", h.HandleWebSocket)
-	fileServer.RegisterRoutes(http.DefaultServeMux)
+	// WebSocket server
+	wsMux := http.NewServeMux()
+	wsMux.HandleFunc("/ws", h.HandleWebSocket)
+
+	// File server
+	fileMux := http.NewServeMux()
+	fileServer.RegisterRoutes(fileMux)
+
+	useTLS := *tlsCert != "" && *tlsKey != ""
 
 	log.Printf("Hotline Modern server '%s' starting", *serverName)
-	log.Printf("WebSocket: %s | HTTP files: %s", *addr, *httpAddr)
+	if useTLS {
+		log.Printf("TLS enabled — WSS: %s | HTTPS files: %s", *addr, *httpAddr)
+	} else {
+		log.Printf("WebSocket: %s | HTTP files: %s", *addr, *httpAddr)
+	}
+
+	wsServer := &http.Server{Addr: *addr, Handler: wsMux}
+	fileHTTPServer := &http.Server{Addr: *httpAddr, Handler: fileMux}
 
 	go func() {
-		fileMux := http.NewServeMux()
-		fileServer.RegisterRoutes(fileMux)
-		if err := http.ListenAndServe(*httpAddr, fileMux); err != nil {
-			log.Fatalf("HTTP file server error: %v", err)
+		if useTLS {
+			if err := fileHTTPServer.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTPS file server error: %v", err)
+			}
+		} else {
+			if err := fileHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("HTTP file server error: %v", err)
+			}
 		}
 	}()
 
-	if err := http.ListenAndServe(*addr, nil); err != nil {
-		log.Fatalf("WebSocket server error: %v", err)
-	}
+	go func() {
+		if useTLS {
+			if err := wsServer.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("WSS server error: %v", err)
+			}
+		} else {
+			if err := wsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("WebSocket server error: %v", err)
+			}
+		}
+	}()
+
+	// Graceful shutdown on SIGINT/SIGTERM
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	wsServer.Shutdown(ctx)
+	fileHTTPServer.Shutdown(ctx)
+	log.Println("Server stopped.")
 }

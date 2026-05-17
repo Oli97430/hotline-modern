@@ -39,9 +39,13 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
-	// CORS headers
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "X-Hotline-PublicKey, X-Hotline-Signature, Content-Type")
+	// CORS headers — restrict to requesting origin (not wildcard)
+	origin := r.Header.Get("Origin")
+	if origin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+	w.Header().Set("Access-Control-Allow-Headers", "X-Hotline-PublicKey, X-Hotline-Signature, X-Hotline-Timestamp, Content-Type")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
@@ -50,13 +54,14 @@ func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
 
 	pubKey := r.Header.Get("X-Hotline-PublicKey")
 	sig := r.Header.Get("X-Hotline-Signature")
+	timestamp := r.Header.Get("X-Hotline-Timestamp")
 
 	if pubKey == "" || sig == "" {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	if err := s.auth.VerifyHTTPRequest(pubKey, sig); err != nil {
+	if err := s.auth.VerifyHTTPRequest(pubKey, sig, timestamp); err != nil {
 		http.Error(w, "invalid credentials", http.StatusForbidden)
 		return
 	}

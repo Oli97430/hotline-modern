@@ -49,6 +49,10 @@ func (m *Manager) GetChannelPassword(name string) (string, error) {
 	return m.db.GetChannelPassword(name)
 }
 
+func (m *Manager) CheckChannelPassword(name, password string) (bool, error) {
+	return m.db.CheckChannelPassword(name, password)
+}
+
 func (m *Manager) ChannelExists(name string) (bool, error) {
 	return m.db.ChannelExists(name)
 }

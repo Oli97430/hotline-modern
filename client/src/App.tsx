@@ -35,7 +35,7 @@ import { useChannelMute } from "./hooks/useChannelMute";
 import { useIdleDetection } from "./hooks/useIdleDetection";
 import { useTabNotification } from "./hooks/useTabNotification";
 import { useCompactMode } from "./hooks/useCompactMode";
-import { getPublicKeyHex, signMessage } from "./lib/crypto";
+import { getFileAuthHeaders } from "./lib/crypto";
 import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal, Palette, TrendingUp, Menu, Users as UsersIcon, Clock, Smile as SmileIcon, Filter } from "lucide-react";
 
 export default function App() {
@@ -494,8 +494,7 @@ export default function App() {
 
   const handleFileUpload = useCallback(async (file: File) => {
     try {
-      const pk = getPublicKeyHex(identity);
-      const s = signMessage(pk, identity.secretKey);
+      const authHeaders = getFileAuthHeaders(identity);
       const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
       const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "").replace(/:9998/, ":9999");
       const uploadUrl = `${protocol}${base}/files/uploads/`;
@@ -505,10 +504,7 @@ export default function App() {
 
       const resp = await fetch(uploadUrl, {
         method: "POST",
-        headers: {
-          "X-Hotline-PublicKey": pk,
-          "X-Hotline-Signature": s,
-        },
+        headers: authHeaders,
         body: formData,
       });
 
@@ -546,8 +542,6 @@ export default function App() {
     setBookmarks(removeBookmark(messageId));
   }, []);
 
-  const pubKeyHex = getPublicKeyHex(identity);
-  const sig = signMessage(pubKeyHex, identity.secretKey);
 
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canUpload = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
@@ -736,8 +730,7 @@ export default function App() {
         />
         <FileBrowser
           serverAddress={serverAddress}
-          publicKey={pubKeyHex}
-          signature={sig}
+          identity={identity}
           canUpload={canUpload}
           canDownload={canDownload}
         />

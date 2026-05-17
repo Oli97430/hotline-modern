@@ -5,7 +5,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"sync"
+	"time"
 
 	"github.com/hotline-modern/server/internal/db"
 	"github.com/hotline-modern/server/internal/permissions"
@@ -52,6 +54,11 @@ func (m *Manager) Verify(connID, publicKeyHex, signatureHex, nonce, nickname str
 		return "", fmt.Errorf("nonce mismatch")
 	}
 
+	// Validate nickname at auth time (same rules as nick change: 1-32 chars)
+	if len(nickname) < 1 || len(nickname) > 32 {
+		return "", fmt.Errorf("nickname must be 1-32 characters")
+	}
+
 	pubKeyBytes, err := hex.DecodeString(publicKeyHex)
 	if err != nil {
 		return "", fmt.Errorf("invalid public key hex: %w", err)
@@ -72,6 +79,15 @@ func (m *Manager) Verify(connID, publicKeyHex, signatureHex, nonce, nickname str
 	m.mu.Lock()
 	delete(m.nonces, connID)
 	m.mu.Unlock()
+
+	// Check if user is banned BEFORE granting access
+	banned, err := m.db.IsBanned(publicKeyHex)
+	if err != nil {
+		return "", fmt.Errorf("database error: %w", err)
+	}
+	if banned {
+		return "", fmt.Errorf("you are banned from this server")
+	}
 
 	hasUsers, err := m.db.HasAnyUser()
 	if err != nil {
@@ -95,7 +111,9 @@ func (m *Manager) Verify(connID, publicKeyHex, signatureHex, nonce, nickname str
 	return role, nil
 }
 
-func (m *Manager) VerifyHTTPRequest(publicKeyHex, signatureHex string) error {
+// VerifyHTTPRequest verifies file server requests using timestamp-based signatures.
+// The signature must be over "publicKey:timestamp" and the timestamp must be within 60 seconds.
+func (m *Manager) VerifyHTTPRequest(publicKeyHex, signatureHex, timestamp string) error {
 	pubKeyBytes, err := hex.DecodeString(publicKeyHex)
 	if err != nil {
 		return fmt.Errorf("invalid public key")
@@ -109,7 +127,27 @@ func (m *Manager) VerifyHTTPRequest(publicKeyHex, signatureHex string) error {
 		return fmt.Errorf("invalid signature")
 	}
 
-	if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), []byte(publicKeyHex), sigBytes) {
+	// Validate timestamp freshness (reject if older than 60 seconds)
+	if timestamp == "" {
+		// Fallback: accept legacy static signature for backwards compat (sign pubkey only)
+		if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), []byte(publicKeyHex), sigBytes) {
+			return fmt.Errorf("signature verification failed")
+		}
+		return nil
+	}
+
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid timestamp")
+	}
+	now := time.Now().UnixMilli()
+	if abs(now-ts) > 60000 { // 60 second window
+		return fmt.Errorf("request expired")
+	}
+
+	// Verify signature over "publicKey:timestamp"
+	message := publicKeyHex + ":" + timestamp
+	if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), []byte(message), sigBytes) {
 		return fmt.Errorf("signature verification failed")
 	}
 
@@ -120,4 +158,11 @@ func (m *Manager) CleanupNonce(connID string) {
 	m.mu.Lock()
 	delete(m.nonces, connID)
 	m.mu.Unlock()
+}
+
+func abs(x int64) int64 {
+	if x < 0 {
+		return -x
+	}
+	return x
 }

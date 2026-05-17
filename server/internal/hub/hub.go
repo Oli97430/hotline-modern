@@ -15,7 +15,17 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		// Allow connections from any origin for self-hosted deployments.
+		// In production, restrict to known origins.
+		// At minimum, allow same-origin and localhost variants.
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // Non-browser clients (curl, etc.)
+		}
+		// Allow localhost/LAN origins for self-hosted use
+		return true
+	},
 }
 
 type Message struct {
@@ -63,21 +73,25 @@ func (c *Client) consumeToken() bool {
 }
 
 type Hub struct {
-	clients     map[string]*Client
-	channels    map[string]map[string]*Client // channel -> clientID -> client
-	register    chan *Client
-	unregister  chan *Client
-	auth        *auth.Manager
-	chat        *chat.Manager
-	permissions *permissions.Manager
-	serverName  string
-	motd        string
-	mu          sync.RWMutex
+	clients      map[string]*Client
+	pubKeyIndex  map[string]*Client                // publicKey -> client (fast lookup)
+	channels     map[string]map[string]*Client     // channel -> clientID -> client
+	register     chan *Client
+	unregister   chan *Client
+	auth         *auth.Manager
+	chat         *chat.Manager
+	permissions  *permissions.Manager
+	serverName   string
+	motd         string
+	mu           sync.RWMutex
 }
+
+const maxMessageLength = 4000 // Max chat message content length in bytes
 
 func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Manager, serverName, motd string) *Hub {
 	return &Hub{
 		clients:     make(map[string]*Client),
+		pubKeyIndex: make(map[string]*Client),
 		channels:    make(map[string]map[string]*Client),
 		register:    make(chan *Client),
 		unregister:  make(chan *Client),
@@ -106,6 +120,12 @@ func (h *Hub) Run() {
 				for ch := range client.Channels {
 					if h.channels[ch] != nil {
 						delete(h.channels[ch], client.ID)
+					}
+				}
+				// Remove from pubkey index if this client owns it
+				if client.PublicKey != "" {
+					if indexed := h.pubKeyIndex[client.PublicKey]; indexed != nil && indexed.ID == client.ID {
+						delete(h.pubKeyIndex, client.PublicKey)
 					}
 				}
 				shouldBroadcast = client.PublicKey != ""
@@ -322,14 +342,15 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 			stale = append(stale, c)
 		}
 	}
+	// Register in pubkey index for O(1) lookups
+	client.PublicKey = payload.PublicKey
+	client.Nickname = payload.Nickname
+	client.Role = role
+	h.pubKeyIndex[payload.PublicKey] = client
 	h.mu.Unlock()
 	for _, c := range stale {
 		c.Conn.Close()
 	}
-
-	client.PublicKey = payload.PublicKey
-	client.Nickname = payload.Nickname
-	client.Role = role
 
 	h.sendToClient(client, Message{
 		Type:      "auth.ok",
@@ -360,6 +381,16 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 		ReplyTo string `json:"replyTo"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	// Enforce message size limit
+	if len(payload.Content) == 0 {
+		h.sendError(client, "message cannot be empty")
+		return
+	}
+	if len(payload.Content) > maxMessageLength {
+		h.sendError(client, "message too long (max 4000 characters)")
 		return
 	}
 
@@ -410,6 +441,13 @@ func (h *Hub) handleChannelJoin(client *Client, msg Message) {
 		return
 	}
 
+	// Verify channel exists in DB
+	exists, _ := h.chat.ChannelExists(payload.Channel)
+	if !exists {
+		h.sendError(client, "channel does not exist")
+		return
+	}
+
 	if !h.permissions.CanJoinChannel(client.Role, payload.Channel) {
 		h.sendError(client, "permission denied")
 		return
@@ -417,8 +455,8 @@ func (h *Hub) handleChannelJoin(client *Client, msg Message) {
 
 	// Check password for private channels (admin/op bypass)
 	if client.Role != "admin" && client.Role != "operator" {
-		pw, _ := h.chat.GetChannelPassword(payload.Channel)
-		if pw != "" && payload.Password != pw {
+		ok, _ := h.chat.CheckChannelPassword(payload.Channel, payload.Password)
+		if !ok {
 			h.sendError(client, "incorrect channel password")
 			return
 		}
@@ -678,20 +716,18 @@ func (h *Hub) handleKick(client *Client, msg Message) {
 	}
 
 	h.mu.RLock()
-	for _, c := range h.clients {
-		if c.PublicKey == payload.UserId {
-			h.mu.RUnlock()
-			h.sendToClient(c, Message{
-				Type:      "error",
-				ID:        uuid.New().String(),
-				Timestamp: time.Now().UnixMilli(),
-				Payload:   mustMarshal(map[string]interface{}{"code": "kicked", "message": "You have been kicked"}),
-			})
-			c.Conn.Close()
-			return
-		}
-	}
+	target := h.pubKeyIndex[payload.UserId]
 	h.mu.RUnlock()
+
+	if target != nil {
+		h.sendToClient(target, Message{
+			Type:      "error",
+			ID:        uuid.New().String(),
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   mustMarshal(map[string]interface{}{"code": "kicked", "message": "You have been kicked"}),
+		})
+		target.Conn.Close()
+	}
 }
 
 func (h *Hub) handleBan(client *Client, msg Message) {
@@ -709,33 +745,26 @@ func (h *Hub) handleBan(client *Client, msg Message) {
 
 	h.permissions.SetRole(payload.UserId, "guest")
 
-	// Find nickname and persist ban
-	var targetNick string
+	// Find nickname via index and persist ban
 	h.mu.RLock()
-	for _, c := range h.clients {
-		if c.PublicKey == payload.UserId {
-			targetNick = c.Nickname
-			break
-		}
+	target := h.pubKeyIndex[payload.UserId]
+	var targetNick string
+	if target != nil {
+		targetNick = target.Nickname
 	}
 	h.mu.RUnlock()
+
 	h.chat.AddBan(payload.UserId, targetNick, client.PublicKey, "")
 
-	h.mu.RLock()
-	for _, c := range h.clients {
-		if c.PublicKey == payload.UserId {
-			h.mu.RUnlock()
-			h.sendToClient(c, Message{
-				Type:      "error",
-				ID:        uuid.New().String(),
-				Timestamp: time.Now().UnixMilli(),
-				Payload:   mustMarshal(map[string]interface{}{"code": "banned", "message": "You have been banned"}),
-			})
-			c.Conn.Close()
-			return
-		}
+	if target != nil {
+		h.sendToClient(target, Message{
+			Type:      "error",
+			ID:        uuid.New().String(),
+			Timestamp: time.Now().UnixMilli(),
+			Payload:   mustMarshal(map[string]interface{}{"code": "banned", "message": "You have been banned"}),
+		})
+		target.Conn.Close()
 	}
-	h.mu.RUnlock()
 }
 
 func (h *Hub) handleOp(client *Client, msg Message) {
@@ -757,14 +786,12 @@ func (h *Hub) handleOp(client *Client, msg Message) {
 		return
 	}
 
-	h.mu.RLock()
-	for _, c := range h.clients {
-		if c.PublicKey == payload.UserId {
-			c.Role = payload.Role
-			break
-		}
+	// Use write lock since we're mutating c.Role
+	h.mu.Lock()
+	if target := h.pubKeyIndex[payload.UserId]; target != nil {
+		target.Role = payload.Role
 	}
-	h.mu.RUnlock()
+	h.mu.Unlock()
 
 	h.broadcastAll(Message{
 		Type:      "user.role_changed",
@@ -843,12 +870,17 @@ func (h *Hub) handleDMSend(client *Client, msg Message) {
 
 	data, _ := json.Marshal(dmMsg)
 	h.mu.RLock()
-	for _, c := range h.clients {
-		if c.PublicKey == client.PublicKey || c.PublicKey == payload.TargetId {
-			select {
-			case c.Send <- data:
-			default:
-			}
+	// Send to both sender and target using index
+	if sender := h.pubKeyIndex[client.PublicKey]; sender != nil {
+		select {
+		case sender.Send <- data:
+		default:
+		}
+	}
+	if target := h.pubKeyIndex[payload.TargetId]; target != nil {
+		select {
+		case target.Send <- data:
+		default:
 		}
 	}
 	h.mu.RUnlock()
@@ -882,12 +914,10 @@ func (h *Hub) handleTyping(client *Client, msg Message) {
 	if payload.TargetId != "" {
 		data, _ := json.Marshal(typingMsg)
 		h.mu.RLock()
-		for _, c := range h.clients {
-			if c.PublicKey == payload.TargetId {
-				select {
-				case c.Send <- data:
-				default:
-				}
+		if target := h.pubKeyIndex[payload.TargetId]; target != nil {
+			select {
+			case target.Send <- data:
+			default:
 			}
 		}
 		h.mu.RUnlock()

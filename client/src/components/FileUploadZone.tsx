@@ -1,16 +1,16 @@
 import { useState, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload, FileIcon } from "lucide-react";
+import { Identity, getFileAuthHeaders } from "../lib/crypto";
 
 interface FileUploadZoneProps {
   serverAddress: string;
-  publicKey: string;
-  signature: string;
+  identity: Identity;
   onFileUploaded: (url: string, filename: string) => void;
   children: React.ReactNode;
 }
 
-export function FileUploadZone({ serverAddress, publicKey, signature, onFileUploaded, children }: FileUploadZoneProps) {
+export function FileUploadZone({ serverAddress, identity, onFileUploaded, children }: FileUploadZoneProps) {
   const { t } = useTranslation();
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -54,10 +54,7 @@ export function FileUploadZone({ serverAddress, publicKey, signature, onFileUplo
 
       const resp = await fetch(uploadUrl, {
         method: "POST",
-        headers: {
-          "X-Hotline-PublicKey": publicKey,
-          "X-Hotline-Signature": signature,
-        },
+        headers: getFileAuthHeaders(identity),
         body: formData,
       });
 
@@ -74,7 +71,7 @@ export function FileUploadZone({ serverAddress, publicKey, signature, onFileUplo
       setUploading(false);
       setUploadProgress("");
     }
-  }, [serverAddress, publicKey, signature, onFileUploaded]);
+  }, [serverAddress, identity, onFileUploaded]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
