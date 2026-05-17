@@ -4,23 +4,27 @@ import { Smile, Pencil, Trash2, Pin, Reply } from "lucide-react";
 import { MessageReaction } from "../hooks/useWebSocket";
 
 const IMAGE_REGEX = /\b(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?)\b/gi;
+const LINK_IN_BRACKETS = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 
 function formatMessage(text: string): (string | JSX.Element)[] {
   const parts: (string | JSX.Element)[] = [];
   let key = 0;
-  const regex = /(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\b(https?:\/\/[^\s]+))/g;
+  const regex = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\b(https?:\/\/[^\s]+))/g;
   let last = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index));
     if (match[1]) {
-      parts.push(<code key={key++} className="msg-code">{match[1].slice(1, -1)}</code>);
-    } else if (match[2]) {
-      parts.push(<strong key={key++}>{match[2].slice(2, -2)}</strong>);
-    } else if (match[3]) {
-      parts.push(<em key={key++}>{match[3].slice(1, -1)}</em>);
+      // [text](url) markdown link
+      parts.push(<a key={key++} className="msg-link" href={match[3]} target="_blank" rel="noopener noreferrer">{match[2]}</a>);
+    } else if (match[4]) {
+      parts.push(<code key={key++} className="msg-code">{match[4].slice(1, -1)}</code>);
     } else if (match[5]) {
-      parts.push(<a key={key++} className="msg-link" href={match[5]} target="_blank" rel="noopener noreferrer">{match[5]}</a>);
+      parts.push(<strong key={key++}>{match[5].slice(2, -2)}</strong>);
+    } else if (match[6]) {
+      parts.push(<em key={key++}>{match[6].slice(1, -1)}</em>);
+    } else if (match[8]) {
+      parts.push(<a key={key++} className="msg-link" href={match[8]} target="_blank" rel="noopener noreferrer">{match[8]}</a>);
     }
     last = match.index + match[0].length;
   }
@@ -29,7 +33,9 @@ function formatMessage(text: string): (string | JSX.Element)[] {
 }
 
 function extractImages(text: string): string[] {
-  const matches = text.match(IMAGE_REGEX);
+  // Don't extract images from markdown links [name](url)
+  const cleaned = text.replace(LINK_IN_BRACKETS, "");
+  const matches = cleaned.match(IMAGE_REGEX);
   return matches ? [...new Set(matches)] : [];
 }
 
@@ -51,11 +57,12 @@ interface MessageBubbleProps {
   onPin?: (messageId: string) => void;
   onReply?: (messageId: string) => void;
   replyContext?: { nickname: string; content: string };
+  isGrouped?: boolean;
 }
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyContext }: MessageBubbleProps) {
+export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyContext, isGrouped }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
   const [showActions, setShowActions] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -90,23 +97,31 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
 
   return (
     <div
-      className={`message ${isOwn ? "own" : ""}`}
+      className={`message ${isOwn ? "own" : ""} ${isGrouped ? "grouped" : ""}`}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => { setShowActions(false); setShowReactPicker(false); }}
     >
       {replyContext && (
         <div className="message-reply-context">
+          <Reply size={10} className="reply-icon" />
           <span className="reply-context-nick">{replyContext.nickname}</span>
           <span className="reply-context-text">{replyContext.content.slice(0, 60)}</span>
         </div>
       )}
-      <div className="message-header">
-        <span className="message-nick" style={{ color: roleColor }}>
-          {nickname}
-        </span>
-        <span className="message-time">{time}</span>
-        {edited && <span className="message-edited">{t("chat.edited")}</span>}
-      </div>
+
+      {!isGrouped && (
+        <div className="message-header">
+          <span className="message-nick" style={{ color: roleColor }}>
+            {nickname}
+          </span>
+          <span className="message-time">{time}</span>
+          {edited && <span className="message-edited">{t("chat.edited")}</span>}
+        </div>
+      )}
+
+      {isGrouped && showActions && (
+        <span className="message-time-inline">{time}</span>
+      )}
 
       {editing ? (
         <div className="message-edit-area">
@@ -153,11 +168,11 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
 
       {showActions && !editing && (
         <div className="message-actions">
-          <button onClick={() => onReply?.(id)} title="Reply"><Reply size={14} /></button>
-          <button onClick={() => setShowReactPicker((v) => !v)} title="React"><Smile size={14} /></button>
-          {isOwn && <button onClick={() => { setEditing(true); setEditContent(content); }} title="Edit"><Pencil size={14} /></button>}
-          {(isOwn || canModerate) && <button onClick={() => onDelete?.(id)} title="Delete"><Trash2 size={14} /></button>}
-          {canModerate && <button onClick={() => onPin?.(id)} title="Pin"><Pin size={14} /></button>}
+          <button onClick={() => onReply?.(id)} title="Reply"><Reply size={13} /></button>
+          <button onClick={() => setShowReactPicker((v) => !v)} title="React"><Smile size={13} /></button>
+          {isOwn && <button onClick={() => { setEditing(true); setEditContent(content); }} title="Edit"><Pencil size={13} /></button>}
+          {(isOwn || canModerate) && <button className="action-danger" onClick={() => onDelete?.(id)} title="Delete"><Trash2 size={13} /></button>}
+          {canModerate && <button onClick={() => onPin?.(id)} title="Pin"><Pin size={13} /></button>}
         </div>
       )}
 
@@ -171,10 +186,16 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
 
       <style>{`
         .message {
-          padding: 4px 16px;
-          transition: background 0.1s;
-          animation: fadeIn 0.15s ease;
+          padding: 6px 16px;
+          transition: background var(--transition-fast);
           position: relative;
+        }
+        .message:not(.grouped) {
+          padding-top: 10px;
+        }
+        .message.grouped {
+          padding-top: 1px;
+          padding-bottom: 1px;
         }
         .message:hover {
           background: var(--bg-secondary);
@@ -183,14 +204,19 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
           display: flex;
           align-items: center;
           gap: 6px;
-          padding: 2px 0 4px 12px;
+          padding: 3px 0 4px 12px;
           border-left: 2px solid var(--accent);
-          margin-bottom: 2px;
+          margin-bottom: 3px;
           font-size: 12px;
+        }
+        .reply-icon {
+          color: var(--text-muted);
+          flex-shrink: 0;
         }
         .reply-context-nick {
           font-weight: 600;
           color: var(--accent);
+          flex-shrink: 0;
         }
         .reply-context-text {
           color: var(--text-muted);
@@ -209,11 +235,28 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         }
         .message-nick {
           font-size: 13px;
-          font-weight: 500;
+          font-weight: 600;
+          letter-spacing: -0.1px;
         }
         .message-time {
-          font-size: 11px;
+          font-size: 10px;
           color: var(--text-muted);
+          font-weight: 400;
+          opacity: 0.8;
+        }
+        .message-time-inline {
+          position: absolute;
+          left: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          font-size: 9px;
+          color: var(--text-muted);
+          opacity: 0;
+          pointer-events: none;
+          font-variant-numeric: tabular-nums;
+        }
+        .message:hover .message-time-inline {
+          opacity: 0.7;
         }
         .message-edited {
           font-size: 10px;
@@ -223,7 +266,7 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         .message-content {
           font-size: 14px;
           color: var(--text-primary);
-          line-height: 1.4;
+          line-height: 1.45;
           word-break: break-word;
           white-space: pre-wrap;
         }
@@ -231,55 +274,58 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
           font-family: var(--font-mono);
           font-size: 12px;
           background: var(--bg-tertiary);
-          padding: 1px 5px;
-          border-radius: 4px;
+          padding: 2px 6px;
+          border-radius: var(--radius-sm);
           color: var(--accent);
         }
         .msg-link {
           color: var(--accent);
           text-decoration: none;
+          font-weight: 450;
         }
         .msg-link:hover {
           text-decoration: underline;
         }
         .message-images {
-          margin-top: 6px;
+          margin-top: 8px;
           display: flex;
           gap: 8px;
           flex-wrap: wrap;
         }
         .message-img-preview {
-          max-width: 300px;
-          max-height: 200px;
-          border-radius: 8px;
+          max-width: 320px;
+          max-height: 220px;
+          border-radius: var(--radius);
           border: 1px solid var(--border);
           object-fit: cover;
           cursor: pointer;
-          transition: opacity 0.2s;
+          transition: transform var(--transition-fast), box-shadow var(--transition-fast);
         }
         .message-img-preview:hover {
-          opacity: 0.9;
+          transform: scale(1.02);
+          box-shadow: var(--shadow-md);
         }
         .message-reactions {
           display: flex;
           gap: 4px;
-          margin-top: 4px;
+          margin-top: 6px;
           flex-wrap: wrap;
         }
         .reaction-chip {
           display: flex;
           align-items: center;
-          gap: 3px;
-          padding: 2px 6px;
-          border-radius: 10px;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 12px;
           font-size: 13px;
           background: var(--bg-tertiary);
           border: 1px solid var(--border);
-          transition: background 0.1s, border-color 0.1s;
+          transition: all var(--transition-fast);
           cursor: pointer;
         }
         .reaction-chip:hover {
           background: var(--bg-hover);
+          transform: scale(1.05);
         }
         .reaction-chip.own {
           border-color: var(--accent);
@@ -287,59 +333,66 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         }
         .reaction-count {
           font-size: 11px;
+          font-weight: 500;
           color: var(--text-muted);
         }
         .message-actions {
           position: absolute;
-          top: 0;
+          top: -4px;
           right: 16px;
           display: flex;
-          gap: 2px;
+          gap: 1px;
           background: var(--bg-secondary);
           border: 1px solid var(--border);
-          border-radius: 6px;
-          padding: 2px;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-          animation: fadeIn 0.1s ease;
+          border-radius: var(--radius);
+          padding: 3px;
+          box-shadow: var(--shadow-md);
+          animation: fadeIn 0.08s ease;
+          z-index: 5;
         }
         .message-actions button {
-          padding: 4px 6px;
-          border-radius: 4px;
+          padding: 5px 7px;
+          border-radius: var(--radius-sm);
           color: var(--text-muted);
-          transition: color 0.15s, background 0.15s;
+          transition: color var(--transition-fast), background var(--transition-fast);
         }
         .message-actions button:hover {
           color: var(--text-primary);
           background: var(--bg-tertiary);
         }
+        .message-actions button.action-danger:hover {
+          color: var(--danger);
+          background: var(--danger-dim);
+        }
         .message-react-picker {
           position: absolute;
-          top: -32px;
+          top: -36px;
           right: 16px;
           display: flex;
           gap: 2px;
           background: var(--bg-secondary);
           border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 4px;
-          box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+          border-radius: var(--radius);
+          padding: 4px 6px;
+          box-shadow: var(--shadow-lg);
           animation: fadeInScale 0.1s ease;
           z-index: 10;
         }
         .message-react-picker button {
           font-size: 18px;
-          padding: 4px;
-          border-radius: 4px;
-          transition: background 0.1s;
+          padding: 4px 5px;
+          border-radius: var(--radius-sm);
+          transition: background var(--transition-fast), transform var(--transition-fast);
         }
         .message-react-picker button:hover {
           background: var(--bg-tertiary);
+          transform: scale(1.15);
         }
         .message-edit-area {
           display: flex;
           gap: 6px;
           align-items: center;
-          margin-top: 2px;
+          margin-top: 4px;
         }
         .message-edit-input {
           flex: 1;
@@ -348,14 +401,19 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         }
         .message-edit-save, .message-edit-cancel {
           font-size: 11px;
-          padding: 4px 8px;
-          border-radius: 4px;
+          font-weight: 600;
+          padding: 4px 10px;
+          border-radius: var(--radius-sm);
           background: var(--bg-tertiary);
           color: var(--text-secondary);
+          transition: all var(--transition-fast);
         }
         .message-edit-save:hover {
           background: var(--accent);
-          color: var(--bg-primary);
+          color: #fff;
+        }
+        .message-edit-cancel:hover {
+          background: var(--bg-hover);
         }
       `}</style>
     </div>

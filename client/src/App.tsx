@@ -344,6 +344,7 @@ export default function App() {
           unreadCounts={unreadCounts}
           nickname={ws.serverInfo?.userId ? (ws.users.find(u => u.userId === ws.serverInfo?.userId)?.nickname || "") : ""}
           role={ws.serverInfo?.role || ""}
+          userStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status}
         />
         <div className="app-sidebar-bottom">
           <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />
@@ -448,8 +449,8 @@ export default function App() {
         .app-sidebar-bottom {
           display: flex;
           align-items: center;
-          justify-content: space-between;
-          padding: 8px 12px;
+          gap: 8px;
+          padding: 10px 12px;
           border-top: 1px solid var(--border);
         }
         .app-main {
@@ -469,13 +470,14 @@ export default function App() {
           right: 8px;
           top: 10px;
           color: var(--text-muted);
-          padding: 4px;
-          border-radius: 4px;
+          padding: 5px;
+          border-radius: var(--radius-sm);
           z-index: 2;
-          transition: color 0.2s;
+          transition: color var(--transition-normal), background var(--transition-normal);
         }
         .panel-toggle:hover {
           color: var(--accent);
+          background: var(--accent-dim);
         }
         .app-right-panel {
           display: flex;
@@ -484,7 +486,9 @@ export default function App() {
           min-width: 200px;
           border-left: 1px solid var(--border);
           background: var(--bg-secondary);
-          transition: width 0.25s ease, min-width 0.25s ease, opacity 0.2s ease;
+          transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                      min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                      opacity 0.2s ease;
           overflow: hidden;
         }
         .app-right-panel.closed {
@@ -495,16 +499,13 @@ export default function App() {
         }
         .app-error {
           padding: 8px 16px;
-          background: rgba(239, 68, 68, 0.1);
+          background: var(--danger-dim);
           border-bottom: 1px solid var(--danger);
           color: var(--danger);
           font-size: 13px;
+          font-weight: 500;
           text-align: center;
           animation: slideDown 0.2s ease;
-        }
-        @keyframes slideDown {
-          from { transform: translateY(-100%); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
         }
       `}</style>
     </div>

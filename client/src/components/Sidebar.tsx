@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
-import { Hash, Plus, LogOut, Circle, MessageSquare, Trash2, Lock } from "lucide-react";
+import { Hash, Plus, LogOut, MessageSquare, Trash2, Lock } from "lucide-react";
+import { StatusDot } from "./StatusSelector";
 
 interface DMConversation {
   peerId: string;
@@ -23,6 +24,7 @@ interface SidebarProps {
   unreadCounts: Record<string, number>;
   nickname: string;
   role: string;
+  userStatus?: string;
 }
 
 export function Sidebar({
@@ -40,6 +42,7 @@ export function Sidebar({
   unreadCounts,
   nickname,
   role,
+  userStatus,
 }: SidebarProps) {
   const { t } = useTranslation();
 
@@ -69,7 +72,7 @@ export function Sidebar({
               className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
               onClick={() => onSelectChannel(ch.name)}
             >
-              {ch.hasPassword ? <Lock size={14} /> : <Hash size={14} />}
+              {ch.hasPassword ? <Lock size={14} className="channel-icon" /> : <Hash size={14} className="channel-icon" />}
               <span className="channel-name">{ch.name}</span>
               {(unreadCounts[ch.name] || 0) > 0 && (
                 <span className="channel-unread">{unreadCounts[ch.name]}</span>
@@ -90,7 +93,7 @@ export function Sidebar({
 
         {dmConversations.length > 0 && (
           <>
-            <div className="sidebar-section-header" style={{ marginTop: 12 }}>
+            <div className="sidebar-section-header dm-header">
               <span>{t("sidebar.directMessages")}</span>
             </div>
             <ul className="channel-list">
@@ -100,7 +103,7 @@ export function Sidebar({
                   className={`channel-item ${activeDM === dm.peerId ? "active" : ""}`}
                   onClick={() => onSelectDM(dm.peerId)}
                 >
-                  <MessageSquare size={14} />
+                  <MessageSquare size={14} className="channel-icon" />
                   <span className="channel-name">{dm.peerNick}</span>
                   {dm.unread > 0 && <span className="channel-unread">{dm.unread}</span>}
                 </li>
@@ -112,9 +115,9 @@ export function Sidebar({
 
       {nickname && (
         <div className="sidebar-footer">
-          <Circle size={8} className="status-dot" />
+          <StatusDot status={userStatus || "available"} />
           <span className="sidebar-nick">{nickname}</span>
-          <span className="sidebar-role">{role}</span>
+          <span className="sidebar-role" data-role={role}>{role}</span>
         </div>
       )}
 
@@ -129,7 +132,7 @@ export function Sidebar({
           overflow: hidden;
         }
         .sidebar-header {
-          padding: 16px;
+          padding: 16px 16px 14px;
           border-bottom: 1px solid var(--border);
           display: flex;
           align-items: center;
@@ -137,19 +140,21 @@ export function Sidebar({
         }
         .sidebar-header h2 {
           font-size: 15px;
-          font-weight: 600;
+          font-weight: 700;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          letter-spacing: -0.2px;
         }
         .sidebar-disconnect {
           color: var(--text-muted);
-          padding: 4px;
-          border-radius: 4px;
-          transition: color 0.2s;
+          padding: 6px;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-normal), background var(--transition-normal);
         }
         .sidebar-disconnect:hover {
           color: var(--danger);
+          background: var(--danger-dim);
         }
         .sidebar-section {
           flex: 1;
@@ -161,21 +166,27 @@ export function Sidebar({
           align-items: center;
           justify-content: space-between;
           padding: 0 16px;
-          margin-bottom: 8px;
+          margin-bottom: 6px;
           font-size: 11px;
-          font-weight: 600;
+          font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           color: var(--text-muted);
         }
+        .sidebar-section-header.dm-header {
+          margin-top: 16px;
+          padding-top: 12px;
+          border-top: 1px solid var(--border);
+        }
         .sidebar-add {
           color: var(--text-muted);
-          padding: 2px;
-          border-radius: 4px;
-          transition: color 0.2s;
+          padding: 4px;
+          border-radius: var(--radius-sm);
+          transition: color var(--transition-normal), background var(--transition-normal);
         }
         .sidebar-add:hover {
           color: var(--accent);
+          background: var(--accent-dim);
         }
         .channel-list {
           list-style: none;
@@ -183,12 +194,14 @@ export function Sidebar({
         .channel-item {
           display: flex;
           align-items: center;
-          gap: 6px;
-          padding: 6px 16px;
+          gap: 8px;
+          padding: 6px 12px 6px 16px;
           cursor: pointer;
           color: var(--text-secondary);
-          transition: background 0.15s, color 0.15s;
+          transition: background var(--transition-fast), color var(--transition-fast);
           font-size: 14px;
+          margin: 1px 8px;
+          border-radius: var(--radius-sm);
         }
         .channel-item:hover {
           background: var(--bg-tertiary);
@@ -198,25 +211,34 @@ export function Sidebar({
           background: var(--accent-dim);
           color: var(--accent);
         }
+        .channel-item.active .channel-icon {
+          color: var(--accent);
+        }
+        .channel-icon {
+          flex-shrink: 0;
+          opacity: 0.7;
+        }
         .channel-name {
           flex: 1;
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          font-weight: 450;
         }
         .channel-count {
           font-size: 11px;
           color: var(--text-muted);
           background: var(--bg-tertiary);
-          padding: 1px 5px;
-          border-radius: 8px;
+          padding: 1px 6px;
+          border-radius: 10px;
+          font-weight: 500;
         }
         .channel-delete {
           opacity: 0;
           color: var(--text-muted);
-          padding: 2px;
-          border-radius: 4px;
-          transition: opacity 0.15s, color 0.15s;
+          padding: 3px;
+          border-radius: var(--radius-sm);
+          transition: opacity var(--transition-fast), color var(--transition-fast);
         }
         .channel-item:hover .channel-delete {
           opacity: 1;
@@ -227,12 +249,13 @@ export function Sidebar({
         .channel-unread {
           font-size: 10px;
           font-weight: 700;
-          color: var(--bg-primary);
+          color: #fff;
           background: var(--accent);
-          padding: 1px 5px;
-          border-radius: 8px;
-          min-width: 16px;
+          padding: 1px 6px;
+          border-radius: 10px;
+          min-width: 18px;
           text-align: center;
+          line-height: 1.5;
         }
         .sidebar-footer {
           padding: 12px 16px;
@@ -241,11 +264,6 @@ export function Sidebar({
           align-items: center;
           gap: 8px;
           font-size: 13px;
-        }
-        .status-dot {
-          color: #22c55e;
-          fill: #22c55e;
-          flex-shrink: 0;
         }
         .sidebar-nick {
           flex: 1;
@@ -256,13 +274,16 @@ export function Sidebar({
         }
         .sidebar-role {
           font-size: 10px;
+          font-weight: 600;
           text-transform: uppercase;
-          letter-spacing: 0.5px;
-          color: var(--text-muted);
-          background: var(--bg-tertiary);
+          letter-spacing: 0.4px;
           padding: 2px 6px;
-          border-radius: 4px;
+          border-radius: var(--radius-sm);
+          background: var(--bg-tertiary);
+          color: var(--text-muted);
         }
+        .sidebar-role[data-role="admin"] { color: var(--role-admin); }
+        .sidebar-role[data-role="operator"] { color: var(--role-operator); }
       `}</style>
     </aside>
   );

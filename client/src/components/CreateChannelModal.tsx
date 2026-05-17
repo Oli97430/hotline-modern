@@ -74,7 +74,9 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
         .modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.6);
+          background: rgba(0, 0, 0, 0.5);
+          backdrop-filter: blur(4px);
+          -webkit-backdrop-filter: blur(4px);
           display: flex;
           align-items: center;
           justify-content: center;
@@ -84,18 +86,20 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
         .modal-content {
           background: var(--bg-secondary);
           border: 1px solid var(--border);
-          border-radius: 12px;
-          padding: 24px;
+          border-radius: var(--radius-lg);
+          padding: 28px;
           width: 100%;
           max-width: 360px;
           display: flex;
           flex-direction: column;
           gap: 16px;
           animation: fadeInScale 0.2s ease;
+          box-shadow: var(--shadow-lg);
         }
         .modal-content h3 {
           font-size: 16px;
-          font-weight: 600;
+          font-weight: 700;
+          letter-spacing: -0.2px;
         }
         .modal-field {
           display: flex;
@@ -103,37 +107,48 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
           gap: 6px;
         }
         .modal-field label {
-          font-size: 12px;
-          font-weight: 500;
+          font-size: 11px;
+          font-weight: 600;
           color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+        .modal-field input {
+          padding: 10px 12px;
         }
         .modal-actions {
           display: flex;
           justify-content: flex-end;
           gap: 8px;
-          margin-top: 4px;
+          margin-top: 8px;
         }
         .modal-btn-cancel {
-          padding: 8px 16px;
+          padding: 9px 16px;
           border-radius: var(--radius);
           color: var(--text-secondary);
           font-size: 13px;
-          transition: color 0.2s;
+          font-weight: 500;
+          transition: color var(--transition-normal), background var(--transition-normal);
         }
         .modal-btn-cancel:hover {
           color: var(--text-primary);
+          background: var(--bg-tertiary);
         }
         .modal-btn-submit {
-          padding: 8px 16px;
+          padding: 9px 20px;
           border-radius: var(--radius);
           background: var(--accent);
-          color: var(--bg-primary);
+          color: #fff;
           font-size: 13px;
           font-weight: 600;
-          transition: background 0.2s;
+          transition: background var(--transition-normal), transform var(--transition-fast);
         }
         .modal-btn-submit:hover:not(:disabled) {
           background: var(--accent-hover);
+          transform: translateY(-1px);
+        }
+        .modal-btn-submit:active:not(:disabled) {
+          transform: translateY(0);
         }
         .modal-btn-submit:disabled {
           opacity: 0.4;

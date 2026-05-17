@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Loader } from "lucide-react";
 
 interface ConnectDialogProps {
   onConnect: (address: string, nickname: string) => void;
@@ -20,13 +21,13 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
 
   return (
     <div className="connect-overlay">
+      <div className="connect-bg-glow" />
       <form className="connect-dialog" onSubmit={handleSubmit}>
         <div className="connect-logo">
           <img src="/logo.svg" alt="Hotline Modern" className="connect-logo-img" />
           <h1>{t("app.name")}</h1>
+          <p className="connect-subtitle">{t("connect.title")}</p>
         </div>
-
-        <h2>{t("connect.title")}</h2>
 
         <div className="connect-field">
           <label>{t("connect.serverAddress")}</label>
@@ -48,11 +49,19 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
             placeholder={t("connect.nicknamePlaceholder")}
             disabled={isConnecting}
             maxLength={32}
+            autoFocus
           />
         </div>
 
         <button type="submit" className="connect-btn" disabled={isConnecting || !nickname.trim()}>
-          {isConnecting ? t("connect.connecting") : t("connect.button")}
+          {isConnecting ? (
+            <>
+              <Loader size={16} className="connect-spinner" />
+              {t("connect.connecting")}
+            </>
+          ) : (
+            t("connect.button")
+          )}
         </button>
       </form>
 
@@ -63,42 +72,56 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
           justify-content: center;
           height: 100%;
           background: var(--bg-primary);
+          position: relative;
+          overflow: hidden;
+        }
+        .connect-bg-glow {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 600px;
+          height: 600px;
+          background: radial-gradient(circle, rgba(var(--accent-rgb), 0.06) 0%, transparent 70%);
+          pointer-events: none;
         }
         .connect-dialog {
+          position: relative;
           background: var(--bg-secondary);
           border: 1px solid var(--border);
-          border-radius: 12px;
-          padding: 40px;
+          border-radius: var(--radius-lg);
+          padding: 48px 40px 40px;
           width: 100%;
-          max-width: 400px;
+          max-width: 380px;
           display: flex;
           flex-direction: column;
           gap: 20px;
           animation: fadeInScale 0.3s ease;
+          box-shadow: var(--shadow-lg);
         }
         .connect-logo {
           display: flex;
           flex-direction: column;
           align-items: center;
           gap: 12px;
-          color: var(--accent);
-          margin-bottom: 8px;
+          margin-bottom: 4px;
         }
         .connect-logo-img {
-          width: 80px;
-          height: 80px;
+          width: 72px;
+          height: 72px;
           border-radius: 16px;
+          box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.2);
         }
         .connect-logo h1 {
-          font-size: 24px;
-          font-weight: 600;
+          font-size: 22px;
+          font-weight: 700;
           color: var(--text-primary);
+          letter-spacing: -0.3px;
         }
-        .connect-dialog h2 {
-          font-size: 16px;
-          font-weight: 500;
-          color: var(--text-secondary);
-          text-align: center;
+        .connect-subtitle {
+          font-size: 14px;
+          color: var(--text-muted);
+          font-weight: 400;
         }
         .connect-field {
           display: flex;
@@ -106,24 +129,43 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
           gap: 6px;
         }
         .connect-field label {
-          font-size: 13px;
-          font-weight: 500;
+          font-size: 12px;
+          font-weight: 600;
           color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+        .connect-field input {
+          padding: 10px 14px;
+          font-size: 14px;
         }
         .connect-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
           background: var(--accent);
-          color: var(--bg-primary);
-          padding: 10px 20px;
+          color: #fff;
+          padding: 12px 20px;
           border-radius: var(--radius);
           font-weight: 600;
-          transition: background 0.2s;
+          font-size: 14px;
+          margin-top: 4px;
+          transition: background var(--transition-normal), transform var(--transition-fast);
         }
         .connect-btn:hover:not(:disabled) {
           background: var(--accent-hover);
+          transform: translateY(-1px);
+        }
+        .connect-btn:active:not(:disabled) {
+          transform: translateY(0);
         }
         .connect-btn:disabled {
           opacity: 0.5;
           cursor: not-allowed;
+        }
+        .connect-spinner {
+          animation: spin 1s linear infinite;
         }
       `}</style>
     </div>

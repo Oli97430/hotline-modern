@@ -17,13 +17,13 @@ interface UserListProps {
 function RoleIcon({ role }: { role: string }) {
   switch (role) {
     case "admin":
-      return <Star size={12} style={{ color: "var(--role-admin)" }} />;
+      return <Star size={11} style={{ color: "var(--role-admin)" }} />;
     case "operator":
-      return <Shield size={12} style={{ color: "var(--role-operator)" }} />;
+      return <Shield size={11} style={{ color: "var(--role-operator)" }} />;
     case "guest":
-      return <Eye size={12} style={{ color: "var(--role-guest)" }} />;
+      return <Eye size={11} style={{ color: "var(--role-guest)" }} />;
     default:
-      return <User size={12} style={{ color: "var(--role-member)" }} />;
+      return <User size={11} style={{ color: "var(--role-member)" }} />;
   }
 }
 
@@ -64,14 +64,14 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
     <aside className="user-list">
       <div className="user-list-header">
         <span>{t("users.title")}</span>
-        <span className="user-count">{t("users.online", { count: users.length })}</span>
+        <span className="user-count">{users.length}</span>
       </div>
 
       <ul className="user-entries">
         {sorted.map((user) => (
           <li
             key={`${user.userId}-${user.nickname}`}
-            className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""}`}
+            className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""} ${user.userId === currentUserId ? "self" : ""}`}
             onClick={(e) => handleUserClick(user.userId, e)}
           >
             <StatusDot status={user.status} />
@@ -94,25 +94,27 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           <div className="user-menu-pubkey" title={menuTarget.userId}>
             {menuTarget.userId.slice(0, 16)}...
           </div>
-          <button onClick={() => { onDM?.(menuUser); setMenuUser(null); }}>
-            {t("users.sendDM")}
-          </button>
-          {canModerate && menuTarget.role !== "operator" && (
-            <button onClick={() => { onOp?.(menuUser); setMenuUser(null); }}>
-              {t("roles.operator")}
+          <div className="user-menu-actions">
+            <button onClick={() => { onDM?.(menuUser); setMenuUser(null); }}>
+              {t("users.sendDM")}
             </button>
-          )}
-          {canModerate && menuTarget.role === "operator" && (
-            <button onClick={() => { onDeop?.(menuUser); setMenuUser(null); }}>
-              {t("roles.member")}
-            </button>
-          )}
-          {canModerate && (
-            <button onClick={() => { onKick?.(menuUser); setMenuUser(null); }}>Kick</button>
-          )}
-          {canModerate && (
-            <button className="danger" onClick={() => { onBan?.(menuUser); setMenuUser(null); }}>Ban</button>
-          )}
+            {canModerate && menuTarget.role !== "operator" && (
+              <button onClick={() => { onOp?.(menuUser); setMenuUser(null); }}>
+                {t("roles.operator")}
+              </button>
+            )}
+            {canModerate && menuTarget.role === "operator" && (
+              <button onClick={() => { onDeop?.(menuUser); setMenuUser(null); }}>
+                {t("roles.member")}
+              </button>
+            )}
+            {canModerate && (
+              <button onClick={() => { onKick?.(menuUser); setMenuUser(null); }}>Kick</button>
+            )}
+            {canModerate && (
+              <button className="danger" onClick={() => { onBan?.(menuUser); setMenuUser(null); }}>Ban</button>
+            )}
+          </div>
         </div>
       )}
 
@@ -121,7 +123,6 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           width: 200px;
           min-width: 200px;
           background: var(--bg-secondary);
-          border-left: 1px solid var(--border);
           display: flex;
           flex-direction: column;
           height: 100%;
@@ -130,100 +131,112 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           padding: 12px 16px;
           border-bottom: 1px solid var(--border);
           display: flex;
-          flex-direction: column;
-          gap: 2px;
+          align-items: center;
+          justify-content: space-between;
         }
         .user-list-header span:first-child {
           font-size: 11px;
-          font-weight: 600;
+          font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
           color: var(--text-muted);
         }
         .user-count {
-          font-size: 12px;
-          color: var(--text-secondary);
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-muted);
+          background: var(--bg-tertiary);
+          padding: 1px 7px;
+          border-radius: 10px;
         }
         .user-entries {
           list-style: none;
           overflow-y: auto;
           flex: 1;
-          padding: 8px 0;
+          padding: 6px 0;
         }
         .user-entry {
           display: flex;
           align-items: center;
-          gap: 8px;
-          padding: 4px 16px;
+          gap: 7px;
+          padding: 5px 12px;
           font-size: 13px;
+          margin: 1px 6px;
+          border-radius: var(--radius-sm);
+          transition: background var(--transition-fast);
         }
         .user-nick {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+          font-weight: 450;
         }
         .user-entry.clickable {
           cursor: pointer;
-          border-radius: 4px;
         }
         .user-entry.clickable:hover {
           background: var(--bg-tertiary);
         }
+        .user-entry.self {
+          opacity: 0.7;
+        }
         .user-menu {
           background: var(--bg-secondary);
           border: 1px solid var(--border);
-          border-radius: 8px;
-          padding: 4px;
-          min-width: 120px;
+          border-radius: var(--radius-lg);
+          padding: 6px;
+          min-width: 140px;
           z-index: 200;
-          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+          box-shadow: var(--shadow-lg);
           animation: fadeInScale 0.1s ease;
         }
         .user-menu-header {
-          padding: 6px 10px;
+          padding: 8px 10px 6px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 8px;
-          border-bottom: 1px solid var(--border);
-          margin-bottom: 4px;
         }
         .user-menu-nick {
           font-size: 13px;
-          font-weight: 600;
+          font-weight: 700;
           color: var(--text-primary);
         }
         .user-menu-role {
-          font-size: 10px;
-          font-weight: 600;
+          font-size: 9px;
+          font-weight: 700;
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
         .user-menu-pubkey {
-          padding: 2px 10px 6px;
+          padding: 2px 10px 8px;
           font-size: 10px;
           font-family: var(--font-mono);
           color: var(--text-muted);
           border-bottom: 1px solid var(--border);
-          margin-bottom: 4px;
         }
-        .user-menu button {
+        .user-menu-actions {
+          padding-top: 4px;
+        }
+        .user-menu-actions button {
           display: block;
           width: 100%;
           text-align: left;
-          padding: 6px 10px;
+          padding: 7px 10px;
           font-size: 13px;
-          border-radius: 4px;
+          font-weight: 450;
+          border-radius: var(--radius-sm);
           color: var(--text-primary);
+          transition: background var(--transition-fast);
         }
-        .user-menu button:hover {
+        .user-menu-actions button:hover {
           background: var(--bg-tertiary);
         }
-        .user-menu button.danger {
+        .user-menu-actions button.danger {
           color: var(--danger);
         }
-        .user-menu button.danger:hover {
-          background: rgba(239, 68, 68, 0.1);
+        .user-menu-actions button.danger:hover {
+          background: var(--danger-dim);
         }
       `}</style>
     </aside>

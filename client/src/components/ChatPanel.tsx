@@ -189,6 +189,12 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           const msg = item as ChatMessage;
           const canMod = currentRole === "admin" || currentRole === "operator";
           const replyMsg = msg.replyTo ? channelMessages.find((m) => m.id === msg.replyTo) : undefined;
+          const msgIdx = channelMessages.indexOf(msg);
+          const prev = msgIdx > 0 ? channelMessages[msgIdx - 1] : undefined;
+          const isGrouped = prev !== undefined
+            && prev.userId === msg.userId
+            && (msg.timestamp - prev.timestamp) < 120000
+            && !msg.replyTo;
           return (
             <MessageBubble
               key={msg.id}
@@ -209,6 +215,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
               onPin={onPin}
               onReply={onReply}
               replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
+              isGrouped={isGrouped}
             />
           );
         })}
