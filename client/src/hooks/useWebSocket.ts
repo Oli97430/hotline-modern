@@ -25,6 +25,24 @@ export interface ChatMessage {
   timestamp: number;
 }
 
+export interface DMMessage {
+  id: string;
+  from: string;
+  to: string;
+  nickname: string;
+  content: string;
+  role: string;
+  timestamp: number;
+}
+
+export interface TypingUser {
+  userId: string;
+  nickname: string;
+  channel: string;
+  targetId: string;
+  expiry: number;
+}
+
 export interface ServerInfo {
   name: string;
   motd: string;
@@ -41,14 +59,19 @@ export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
   messages: ChatMessage[];
+  dmMessages: DMMessage[];
+  typingUsers: TypingUser[];
   channels: { name: string; topic: string; userCount: number }[];
   users: { userId: string; nickname: string; role: string; status: string }[];
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
   sendChat: (channel: string, content: string) => void;
+  sendDM: (targetId: string, content: string) => void;
+  sendTyping: (channel: string, targetId?: string) => void;
   joinChannel: (channel: string) => void;
   leaveChannel: (channel: string) => void;
   createChannel: (name: string, topic: string) => void;
+  deleteChannel: (name: string) => void;
   requestUserList: () => void;
   requestChannelList: () => void;
   kickUser: (userId: string) => void;
@@ -66,6 +89,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
+  const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number }[]>([]);
   const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string }[]>([]);
 
@@ -156,6 +181,33 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           );
           break;
         }
+        case "dm.message": {
+          const payload = msg.payload as { from: string; to: string; nickname: string; content: string; role: string };
+          setDmMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [
+              ...prev,
+              {
+                id: msg.id,
+                from: payload.from,
+                to: payload.to,
+                nickname: payload.nickname,
+                content: payload.content,
+                role: payload.role,
+                timestamp: msg.timestamp,
+              },
+            ].sort((a, b) => a.timestamp - b.timestamp);
+          });
+          break;
+        }
+        case "typing": {
+          const payload = msg.payload as { userId: string; nickname: string; channel: string; targetId: string };
+          setTypingUsers((prev) => {
+            const filtered = prev.filter((t) => t.userId !== payload.userId || t.channel !== payload.channel);
+            return [...filtered, { ...payload, expiry: Date.now() + 3000 }];
+          });
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -218,6 +270,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setStatus("disconnected");
     setServerInfo(null);
     setMessages([]);
+    setDmMessages([]);
+    setTypingUsers([]);
     setChannels([]);
     setUsers([]);
   }, []);
@@ -292,6 +346,34 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
+  const sendDM = useCallback((targetId: string, content: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("dm.send", { targetId, content });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const sendTyping = useCallback((channel: string, targetId?: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("typing", { channel, targetId: targetId || "" });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const deleteChannel = useCallback((name: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("channel.delete", { name });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     return () => {
       if (reconnectTimerRef.current) {
@@ -307,14 +389,19 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     status,
     serverInfo,
     messages,
+    dmMessages,
+    typingUsers,
     channels,
     users,
     connect,
     disconnect,
     sendChat,
+    sendDM,
+    sendTyping,
     joinChannel,
     leaveChannel,
     createChannel,
+    deleteChannel,
     requestUserList,
     requestChannelList,
     kickUser,

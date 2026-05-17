@@ -1,8 +1,16 @@
+import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Shield, Star, User, Eye } from "lucide-react";
 
 interface UserListProps {
   users: { userId: string; nickname: string; role: string; status: string }[];
+  currentUserId?: string;
+  currentRole?: string;
+  onKick?: (userId: string) => void;
+  onBan?: (userId: string) => void;
+  onOp?: (userId: string) => void;
+  onDeop?: (userId: string) => void;
+  onDM?: (userId: string) => void;
 }
 
 function RoleIcon({ role }: { role: string }) {
@@ -18,8 +26,28 @@ function RoleIcon({ role }: { role: string }) {
   }
 }
 
-export function UserList({ users }: UserListProps) {
+export function UserList({ users, currentUserId, currentRole, onKick, onBan, onOp, onDeop, onDM }: UserListProps) {
   const { t } = useTranslation();
+  const [menuUser, setMenuUser] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const canModerate = currentRole === "admin" || currentRole === "operator";
+
+  useEffect(() => {
+    const close = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuUser(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const handleUserClick = (userId: string, e: React.MouseEvent) => {
+    if (userId === currentUserId) return;
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setMenuPos({ x: rect.left, y: rect.bottom + 4 });
+    setMenuUser(userId === menuUser ? null : userId);
+  };
 
   const sorted = [...users].sort((a, b) => {
     const order = { admin: 0, operator: 1, member: 2, guest: 3 };
@@ -28,6 +56,8 @@ export function UserList({ users }: UserListProps) {
     if (aOrder !== bOrder) return aOrder - bOrder;
     return a.nickname.localeCompare(b.nickname);
   });
+
+  const menuTarget = users.find((u) => u.userId === menuUser);
 
   return (
     <aside className="user-list">
@@ -38,7 +68,11 @@ export function UserList({ users }: UserListProps) {
 
       <ul className="user-entries">
         {sorted.map((user) => (
-          <li key={`${user.userId}-${user.nickname}`} className="user-entry">
+          <li
+            key={`${user.userId}-${user.nickname}`}
+            className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""}`}
+            onClick={(e) => handleUserClick(user.userId, e)}
+          >
             <RoleIcon role={user.role} />
             <span className="user-nick" style={{ color: `var(--role-${user.role})` }}>
               {user.nickname}
@@ -46,6 +80,31 @@ export function UserList({ users }: UserListProps) {
           </li>
         ))}
       </ul>
+
+      {menuUser && menuTarget && (
+        <div ref={menuRef} className="user-menu" style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}>
+          <div className="user-menu-header">{menuTarget.nickname}</div>
+          <button onClick={() => { onDM?.(menuUser); setMenuUser(null); }}>
+            {t("users.sendDM")}
+          </button>
+          {canModerate && menuTarget.role !== "operator" && (
+            <button onClick={() => { onOp?.(menuUser); setMenuUser(null); }}>
+              {t("roles.operator")}
+            </button>
+          )}
+          {canModerate && menuTarget.role === "operator" && (
+            <button onClick={() => { onDeop?.(menuUser); setMenuUser(null); }}>
+              {t("roles.member")}
+            </button>
+          )}
+          {canModerate && (
+            <button onClick={() => { onKick?.(menuUser); setMenuUser(null); }}>Kick</button>
+          )}
+          {canModerate && (
+            <button className="danger" onClick={() => { onBan?.(menuUser); setMenuUser(null); }}>Ban</button>
+          )}
+        </div>
+      )}
 
       <style>{`
         .user-list {
@@ -92,6 +151,49 @@ export function UserList({ users }: UserListProps) {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
+        }
+        .user-entry.clickable {
+          cursor: pointer;
+          border-radius: 4px;
+        }
+        .user-entry.clickable:hover {
+          background: var(--bg-tertiary);
+        }
+        .user-menu {
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 4px;
+          min-width: 120px;
+          z-index: 200;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+          animation: fadeInScale 0.1s ease;
+        }
+        .user-menu-header {
+          padding: 6px 10px;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-muted);
+          border-bottom: 1px solid var(--border);
+          margin-bottom: 4px;
+        }
+        .user-menu button {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 6px 10px;
+          font-size: 13px;
+          border-radius: 4px;
+          color: var(--text-primary);
+        }
+        .user-menu button:hover {
+          background: var(--bg-tertiary);
+        }
+        .user-menu button.danger {
+          color: var(--danger);
+        }
+        .user-menu button.danger:hover {
+          background: rgba(239, 68, 68, 0.1);
         }
       `}</style>
     </aside>

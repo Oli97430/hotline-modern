@@ -1,6 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 
-:root {
+:root, [data-theme="dark"] {
   --bg-primary: #09090b;
   --bg-secondary: #18181b;
   --bg-tertiary: #27272a;
@@ -21,6 +21,26 @@
   --radius: 8px;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+}
+
+[data-theme="light"] {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f4f4f5;
+  --bg-tertiary: #e4e4e7;
+  --bg-hover: #d4d4d8;
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-muted: #a1a1aa;
+  --accent: #0891b2;
+  --accent-hover: #06b6d4;
+  --accent-dim: #cffafe;
+  --border: #d4d4d8;
+  --role-admin: #d97706;
+  --role-operator: #2563eb;
+  --role-member: #71717a;
+  --role-guest: #a1a1aa;
+  --danger: #dc2626;
+  --success: #16a34a;
 }
 
 * {

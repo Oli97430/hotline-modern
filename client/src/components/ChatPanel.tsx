@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Send } from "lucide-react";
+import { Send, Smile } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
-import { ChatMessage } from "../hooks/useWebSocket";
+import { EmojiPicker } from "./EmojiPicker";
+import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
 
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
   const date = new Date(ts);
@@ -21,14 +22,19 @@ interface ChatPanelProps {
   activeChannel: string;
   channelTopic?: string;
   currentUserId: string;
+  typingUsers: TypingUser[];
+  dmMode?: { peerId: string; peerNick: string };
   onSendMessage: (channel: string, content: string) => void;
   onSlashCommand?: (command: string, args: string[]) => void;
+  onTyping?: () => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, onSendMessage, onSlashCommand }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
+  const [showEmoji, setShowEmoji] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const typingThrottleRef = useRef(0);
 
   const channelMessages = messages.filter((m) => m.channel === activeChannel);
 
@@ -67,14 +73,37 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+      return;
+    }
+    if (onTyping && Date.now() - typingThrottleRef.current > 2000) {
+      typingThrottleRef.current = Date.now();
+      onTyping();
     }
   };
+
+  const handleEmojiSelect = useCallback((emoji: string) => {
+    setInput((prev) => prev + emoji);
+    setShowEmoji(false);
+  }, []);
+
+  const activeTyping = typingUsers.filter((t) => {
+    if (dmMode) return t.targetId === currentUserId && t.userId === dmMode.peerId;
+    return t.channel === activeChannel && t.userId !== currentUserId;
+  });
+
+  const typingText = activeTyping.length > 0
+    ? activeTyping.length === 1
+      ? t("chat.typing", { name: activeTyping[0].nickname })
+      : t("chat.typingMultiple", { count: activeTyping.length })
+    : null;
 
   return (
     <div className="chat-panel">
       <div className="chat-header">
-        <span className="chat-channel-name"># {activeChannel}</span>
-        {channelTopic && <span className="chat-topic">{channelTopic}</span>}
+        <span className="chat-channel-name">
+          {dmMode ? `@ ${dmMode.peerNick}` : `# ${activeChannel}`}
+        </span>
+        {!dmMode && channelTopic && <span className="chat-topic">{channelTopic}</span>}
       </div>
 
       <div className="chat-messages">
@@ -100,15 +129,25 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         <div ref={messagesEndRef} />
       </div>
 
+      {typingText && <div className="chat-typing">{typingText}</div>}
+
       <div className="chat-input-area">
-        <input
-          type="text"
-          className="chat-input"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={t("chat.placeholder")}
-        />
+        <div className="chat-input-wrapper">
+          <input
+            type="text"
+            className="chat-input"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={dmMode ? t("chat.dmPlaceholder", { name: dmMode.peerNick }) : t("chat.placeholder")}
+          />
+          <button className="emoji-btn" onClick={() => setShowEmoji((v) => !v)} title="Emoji">
+            <Smile size={18} />
+          </button>
+          {showEmoji && (
+            <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />
+          )}
+        </div>
         <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim()}>
           <Send size={18} />
         </button>
@@ -153,15 +192,39 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           color: var(--text-muted);
           font-size: 14px;
         }
+        .chat-typing {
+          padding: 2px 16px 0;
+          font-size: 12px;
+          color: var(--text-muted);
+          font-style: italic;
+          animation: fadeIn 0.15s ease;
+        }
         .chat-input-area {
           padding: 12px 16px;
           border-top: 1px solid var(--border);
           display: flex;
           gap: 8px;
         }
+        .chat-input-wrapper {
+          flex: 1;
+          position: relative;
+          display: flex;
+          align-items: center;
+        }
         .chat-input {
           flex: 1;
-          padding: 10px 14px;
+          padding: 10px 38px 10px 14px;
+        }
+        .emoji-btn {
+          position: absolute;
+          right: 8px;
+          color: var(--text-muted);
+          padding: 2px;
+          border-radius: 4px;
+          transition: color 0.2s;
+        }
+        .emoji-btn:hover {
+          color: var(--accent);
         }
         .chat-send-btn {
           background: var(--accent);

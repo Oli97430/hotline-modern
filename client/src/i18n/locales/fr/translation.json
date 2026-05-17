@@ -44,5 +44,11 @@
   "server.motd": "Message du jour",
   "error.disconnected": "Déconnecté du serveur",
   "error.reconnecting": "Reconnexion...",
-  "error.permissionDenied": "Permission refusée"
+  "error.permissionDenied": "Permission refusée",
+  "sidebar.directMessages": "Messages privés",
+  "sidebar.deleteChannel": "Supprimer le salon",
+  "chat.typing": "{{name}} écrit...",
+  "chat.typingMultiple": "{{count}} personnes écrivent...",
+  "chat.dmPlaceholder": "Message à {{name}}...",
+  "users.sendDM": "Envoyer un message"
 }

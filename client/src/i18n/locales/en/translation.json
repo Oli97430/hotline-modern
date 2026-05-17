@@ -44,5 +44,11 @@
   "server.motd": "Message of the Day",
   "error.disconnected": "Disconnected from server",
   "error.reconnecting": "Reconnecting...",
-  "error.permissionDenied": "Permission denied"
+  "error.permissionDenied": "Permission denied",
+  "sidebar.directMessages": "Direct Messages",
+  "sidebar.deleteChannel": "Delete channel",
+  "chat.typing": "{{name}} is typing...",
+  "chat.typingMultiple": "{{count}} people are typing...",
+  "chat.dmPlaceholder": "Message {{name}}...",
+  "users.sendDM": "Send message"
 }

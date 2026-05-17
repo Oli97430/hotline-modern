@@ -55,11 +55,16 @@ The built application will be in `client/src-tauri/target/release/`.
 ## Features
 
 - **Chat** — Real-time messaging with channels. Default `#lobby` channel.
-- **Channels** — Create and manage channels (admin/operator).
+- **Direct messages** — Private encrypted conversations between users.
+- **Typing indicators** — See who's typing in real-time (channels + DMs).
+- **Emoji picker** — Quick emoji insertion from a 32-emoji grid.
+- **Desktop notifications** — Browser notifications for missed messages (lazy permission request).
+- **Channels** — Create, delete, and manage channels with topics (admin/operator).
 - **File sharing** — Browse, upload, and download files via the built-in file server.
 - **Roles** — 4-level hierarchy: admin > operator > member > guest.
 - **Portable identity** — Ed25519 key pair generated at first launch. Same key works on any server.
 - **i18n** — English and French. Auto-detects system language with manual override.
+- **Dark/Light themes** — Toggle between themes with system preference detection.
 
 ## Slash Commands
 

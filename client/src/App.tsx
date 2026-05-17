@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ConnectDialog } from "./components/ConnectDialog";
 import { Sidebar } from "./components/Sidebar";
@@ -17,13 +17,17 @@ export default function App() {
   const { t } = useTranslation();
   const { identity } = useIdentity();
   const [activeChannel, setActiveChannel] = useState("lobby");
+  const [activeDM, setActiveDM] = useState("");
   const [serverAddress, setServerAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
+  const [dmUnreadCounts, setDmUnreadCounts] = useState<Record<string, number>>({});
   const prevMessagesLenRef = useRef(0);
+  const prevDmLenRef = useRef(0);
   const activeChannelRef = useRef(activeChannel);
+  const activeDMRef = useRef(activeDM);
 
   const handleError = useCallback((msg: string) => {
     setError(msg);
@@ -41,8 +45,22 @@ export default function App() {
   };
 
   const handleSelectChannel = (channel: string) => {
+    setActiveDM("");
     setActiveChannel(channel);
     ws.joinChannel(channel);
+  };
+
+  const handleSelectDM = (peerId: string) => {
+    setActiveDM(peerId);
+    setDmUnreadCounts((prev) => ({ ...prev, [peerId]: 0 }));
+  };
+
+  const handleDeleteChannel = (name: string) => {
+    ws.deleteChannel(name);
+    if (activeChannel === name) {
+      setActiveChannel("lobby");
+      ws.joinChannel("lobby");
+    }
   };
 
   const handleCreateChannel = () => {
@@ -51,6 +69,10 @@ export default function App() {
 
   const handleCreateChannelSubmit = (name: string, topic: string) => {
     ws.createChannel(name, topic);
+    setTimeout(() => {
+      handleSelectChannelWithClear(name);
+      ws.requestChannelList();
+    }, 300);
   };
 
   const handleSlashCommand = useCallback(
@@ -89,32 +111,126 @@ export default function App() {
     [ws, activeChannel]
   );
 
+  const playNotifSound = useCallback(() => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      osc.type = "sine";
+      gain.gain.value = 0.08;
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch {}
+  }, []);
+
   useEffect(() => {
     activeChannelRef.current = activeChannel;
   }, [activeChannel]);
+
+  useEffect(() => {
+    activeDMRef.current = activeDM;
+  }, [activeDM]);
 
   useEffect(() => {
     if (ws.messages.length > prevMessagesLenRef.current) {
       const newMsgs = ws.messages.slice(prevMessagesLenRef.current);
       const currentChannel = activeChannelRef.current;
       const currentUserId = ws.serverInfo?.userId;
+      let hasUnread = false;
       setUnreadCounts((prev) => {
         const counts = { ...prev };
         for (const msg of newMsgs) {
           if (msg.channel !== currentChannel && msg.userId !== currentUserId) {
             counts[msg.channel] = (counts[msg.channel] || 0) + 1;
+            hasUnread = true;
           }
         }
         return counts;
       });
+      if (hasUnread) {
+        playNotifSound();
+        const last = newMsgs[newMsgs.length - 1];
+        if (last && last.userId !== currentUserId) showDesktopNotif(last.nickname, last.content);
+      }
     }
     prevMessagesLenRef.current = ws.messages.length;
   }, [ws.messages]);
+
+  useEffect(() => {
+    if (ws.dmMessages.length > prevDmLenRef.current) {
+      const newDms = ws.dmMessages.slice(prevDmLenRef.current);
+      const currentUserId = ws.serverInfo?.userId;
+      const currentDM = activeDMRef.current;
+      for (const dm of newDms) {
+        const peerId = dm.from === currentUserId ? dm.to : dm.from;
+        if (peerId !== currentDM && dm.from !== currentUserId) {
+          setDmUnreadCounts((prev) => ({ ...prev, [peerId]: (prev[peerId] || 0) + 1 }));
+          playNotifSound();
+          showDesktopNotif(dm.nickname, dm.content);
+        }
+      }
+    }
+    prevDmLenRef.current = ws.dmMessages.length;
+  }, [ws.dmMessages]);
+
+  const showDesktopNotif = useCallback((title: string, body: string) => {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      Notification.requestPermission();
+      return;
+    }
+    if (Notification.permission === "granted" && document.hidden) {
+      new Notification(title, { body, icon: "/logo.svg" });
+    }
+  }, []);
+
+  const dmConversations = useMemo(() => {
+    const currentUserId = ws.serverInfo?.userId;
+    if (!currentUserId) return [];
+    const convos = new Map<string, { peerId: string; peerNick: string; lastMessage: string; unread: number; ts: number }>();
+    for (const dm of ws.dmMessages) {
+      const peerId = dm.from === currentUserId ? dm.to : dm.from;
+      const peerNick = dm.from === currentUserId
+        ? (ws.users.find((u) => u.userId === peerId)?.nickname || peerId.slice(0, 8))
+        : dm.nickname;
+      const existing = convos.get(peerId);
+      if (!existing || dm.timestamp > existing.ts) {
+        convos.set(peerId, {
+          peerId,
+          peerNick,
+          lastMessage: dm.content,
+          unread: dmUnreadCounts[peerId] || 0,
+          ts: dm.timestamp,
+        });
+      }
+    }
+    return Array.from(convos.values()).sort((a, b) => b.ts - a.ts);
+  }, [ws.dmMessages, ws.serverInfo?.userId, ws.users, dmUnreadCounts]);
 
   const handleSelectChannelWithClear = (channel: string) => {
     setUnreadCounts((prev) => ({ ...prev, [channel]: 0 }));
     handleSelectChannel(channel);
   };
+
+  const dmMessagesAsChatMessages = useMemo(() => {
+    if (!activeDM || !ws.serverInfo?.userId) return [];
+    const myId = ws.serverInfo.userId;
+    return ws.dmMessages
+      .filter((dm) => (dm.from === myId && dm.to === activeDM) || (dm.from === activeDM && dm.to === myId))
+      .map((dm) => ({
+        id: dm.id,
+        channel: "__dm__",
+        userId: dm.from,
+        nickname: dm.nickname,
+        content: dm.content,
+        role: dm.role,
+        timestamp: dm.timestamp,
+      }));
+  }, [ws.dmMessages, activeDM, ws.serverInfo?.userId]);
 
   if (ws.status === "disconnected" || ws.status === "connecting") {
     return <ConnectDialog onConnect={handleConnect} isConnecting={ws.status === "connecting"} />;
@@ -135,8 +251,12 @@ export default function App() {
           serverName={ws.serverInfo?.name || t("app.name")}
           channels={ws.channels}
           activeChannel={activeChannel}
+          activeDM={activeDM}
+          dmConversations={dmConversations}
           onSelectChannel={handleSelectChannelWithClear}
+          onSelectDM={handleSelectDM}
           onCreateChannel={handleCreateChannel}
+          onDeleteChannel={handleDeleteChannel}
           onDisconnect={ws.disconnect}
           canCreateChannel={canCreateChannel}
           unreadCounts={unreadCounts}
@@ -155,12 +275,15 @@ export default function App() {
 
         <div className="app-chat-row">
           <ChatPanel
-            messages={ws.messages}
+            messages={activeDM ? dmMessagesAsChatMessages : ws.messages}
             activeChannel={activeChannel}
             channelTopic={activeCh?.topic}
             currentUserId={ws.serverInfo?.userId || ""}
-            onSendMessage={ws.sendChat}
-            onSlashCommand={handleSlashCommand}
+            typingUsers={ws.typingUsers}
+            dmMode={activeDM ? { peerId: activeDM, peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8) } : undefined}
+            onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : ws.sendChat}
+            onSlashCommand={activeDM ? undefined : handleSlashCommand}
+            onTyping={() => activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel)}
           />
 
           <button
@@ -174,7 +297,16 @@ export default function App() {
       </main>
 
       <div className={`app-right-panel ${rightPanelOpen ? "open" : "closed"}`}>
-        <UserList users={ws.users} />
+        <UserList
+          users={ws.users}
+          currentUserId={ws.serverInfo?.userId}
+          currentRole={ws.serverInfo?.role}
+          onKick={ws.kickUser}
+          onBan={ws.banUser}
+          onOp={(uid) => ws.setUserRole(uid, "operator")}
+          onDeop={(uid) => ws.setUserRole(uid, "member")}
+          onDM={handleSelectDM}
+        />
         <FileBrowser
           serverAddress={serverAddress}
           publicKey={pubKeyHex}

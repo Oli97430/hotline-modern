@@ -151,6 +151,17 @@ func (d *DB) SetChannelTopic(name, topic string) error {
 	return err
 }
 
+func (d *DB) DeleteChannel(name string) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	tx.Exec("DELETE FROM messages WHERE channel = ?", name)
+	tx.Exec("DELETE FROM channels WHERE name = ?", name)
+	return tx.Commit()
+}
+
 func (d *DB) ChannelExists(name string) (bool, error) {
 	var count int
 	err := d.conn.QueryRow("SELECT COUNT(*) FROM channels WHERE name = ?", name).Scan(&count)

@@ -211,6 +211,12 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleOp(client, msg)
 	case "admin.topic":
 		h.handleTopic(client, msg)
+	case "dm.send":
+		h.handleDMSend(client, msg)
+	case "typing":
+		h.handleTyping(client, msg)
+	case "channel.delete":
+		h.handleChannelDelete(client, msg)
 	}
 }
 
@@ -689,6 +695,148 @@ func (h *Hub) handleTopic(client *Client, msg Message) {
 		return
 	}
 
+	h.broadcastChannelList()
+}
+
+func dmChannelKey(a, b string) string {
+	if a < b {
+		return "dm:" + a + ":" + b
+	}
+	return "dm:" + b + ":" + a
+}
+
+func (h *Hub) handleDMSend(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		TargetId string `json:"targetId"`
+		Content  string `json:"content"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.TargetId == client.PublicKey {
+		return
+	}
+
+	dmCh := dmChannelKey(client.PublicKey, payload.TargetId)
+	msgID := uuid.New().String()
+	h.chat.SaveMessage(msgID, dmCh, client.PublicKey, client.Nickname, payload.Content)
+
+	dmMsg := Message{
+		Type:      "dm.message",
+		ID:        msgID,
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"from":     client.PublicKey,
+			"to":       payload.TargetId,
+			"nickname": client.Nickname,
+			"content":  payload.Content,
+			"role":     client.Role,
+		}),
+	}
+
+	data, _ := json.Marshal(dmMsg)
+	h.mu.RLock()
+	for _, c := range h.clients {
+		if c.PublicKey == client.PublicKey || c.PublicKey == payload.TargetId {
+			select {
+			case c.Send <- data:
+			default:
+			}
+		}
+	}
+	h.mu.RUnlock()
+}
+
+func (h *Hub) handleTyping(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		Channel  string `json:"channel"`
+		TargetId string `json:"targetId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	typingMsg := Message{
+		Type:      "typing",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"userId":   client.PublicKey,
+			"nickname": client.Nickname,
+			"channel":  payload.Channel,
+			"targetId": payload.TargetId,
+		}),
+	}
+
+	if payload.TargetId != "" {
+		data, _ := json.Marshal(typingMsg)
+		h.mu.RLock()
+		for _, c := range h.clients {
+			if c.PublicKey == payload.TargetId {
+				select {
+				case c.Send <- data:
+				default:
+				}
+			}
+		}
+		h.mu.RUnlock()
+		return
+	}
+
+	if payload.Channel != "" {
+		data, _ := json.Marshal(typingMsg)
+		h.mu.RLock()
+		clients := h.channels[payload.Channel]
+		for _, c := range clients {
+			if c.PublicKey != client.PublicKey {
+				select {
+				case c.Send <- data:
+				default:
+				}
+			}
+		}
+		h.mu.RUnlock()
+	}
+}
+
+func (h *Hub) handleChannelDelete(client *Client, msg Message) {
+	if !h.permissions.CanCreateChannel(client.Role) {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.Name == "lobby" {
+		h.sendError(client, "cannot delete lobby")
+		return
+	}
+
+	h.mu.Lock()
+	if members := h.channels[payload.Name]; members != nil {
+		for _, c := range members {
+			delete(c.Channels, payload.Name)
+		}
+		delete(h.channels, payload.Name)
+	}
+	h.mu.Unlock()
+
+	h.chat.DeleteChannel(payload.Name)
 	h.broadcastChannelList()
 }
 

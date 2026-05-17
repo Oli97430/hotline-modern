@@ -1,12 +1,23 @@
 import { useTranslation } from "react-i18next";
-import { Hash, Plus, LogOut, Circle } from "lucide-react";
+import { Hash, Plus, LogOut, Circle, MessageSquare, Trash2 } from "lucide-react";
+
+interface DMConversation {
+  peerId: string;
+  peerNick: string;
+  lastMessage: string;
+  unread: number;
+}
 
 interface SidebarProps {
   serverName: string;
   channels: { name: string; topic: string; userCount: number }[];
   activeChannel: string;
+  activeDM: string;
+  dmConversations: DMConversation[];
   onSelectChannel: (channel: string) => void;
+  onSelectDM: (peerId: string) => void;
   onCreateChannel: () => void;
+  onDeleteChannel: (name: string) => void;
   onDisconnect: () => void;
   canCreateChannel: boolean;
   unreadCounts: Record<string, number>;
@@ -18,8 +29,12 @@ export function Sidebar({
   serverName,
   channels,
   activeChannel,
+  activeDM,
+  dmConversations,
   onSelectChannel,
+  onSelectDM,
   onCreateChannel,
+  onDeleteChannel,
   onDisconnect,
   canCreateChannel,
   unreadCounts,
@@ -51,7 +66,7 @@ export function Sidebar({
           {channels.map((ch) => (
             <li
               key={ch.name}
-              className={`channel-item ${ch.name === activeChannel ? "active" : ""}`}
+              className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
               onClick={() => onSelectChannel(ch.name)}
             >
               <Hash size={14} />
@@ -60,9 +75,39 @@ export function Sidebar({
                 <span className="channel-unread">{unreadCounts[ch.name]}</span>
               )}
               <span className="channel-count">{ch.userCount}</span>
+              {canCreateChannel && ch.name !== "lobby" && (
+                <button
+                  className="channel-delete"
+                  onClick={(e) => { e.stopPropagation(); onDeleteChannel(ch.name); }}
+                  title={t("sidebar.deleteChannel")}
+                >
+                  <Trash2 size={12} />
+                </button>
+              )}
             </li>
           ))}
         </ul>
+
+        {dmConversations.length > 0 && (
+          <>
+            <div className="sidebar-section-header" style={{ marginTop: 12 }}>
+              <span>{t("sidebar.directMessages")}</span>
+            </div>
+            <ul className="channel-list">
+              {dmConversations.map((dm) => (
+                <li
+                  key={dm.peerId}
+                  className={`channel-item ${activeDM === dm.peerId ? "active" : ""}`}
+                  onClick={() => onSelectDM(dm.peerId)}
+                >
+                  <MessageSquare size={14} />
+                  <span className="channel-name">{dm.peerNick}</span>
+                  {dm.unread > 0 && <span className="channel-unread">{dm.unread}</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </div>
 
       {nickname && (
@@ -165,6 +210,19 @@ export function Sidebar({
           background: var(--bg-tertiary);
           padding: 1px 5px;
           border-radius: 8px;
+        }
+        .channel-delete {
+          opacity: 0;
+          color: var(--text-muted);
+          padding: 2px;
+          border-radius: 4px;
+          transition: opacity 0.15s, color 0.15s;
+        }
+        .channel-item:hover .channel-delete {
+          opacity: 1;
+        }
+        .channel-delete:hover {
+          color: var(--danger);
         }
         .channel-unread {
           font-size: 10px;

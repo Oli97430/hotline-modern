@@ -1,5 +1,6 @@
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe } from "lucide-react";
+import { Globe, Sun, Moon } from "lucide-react";
 
 const languages = [
   { code: "en", label: "English", flag: "🇬🇧" },
@@ -8,15 +9,25 @@ const languages = [
 
 export function LanguageSelector() {
   const { i18n, t } = useTranslation();
+  const [theme, setTheme] = useState(() => localStorage.getItem("hotline-theme") || "dark");
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    localStorage.setItem("hotline-theme", theme);
+  }, [theme]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     i18n.changeLanguage(e.target.value);
   };
 
+  const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
+
   return (
     <div className="lang-selector">
+      <button className="theme-toggle" onClick={toggleTheme} title={t("settings.theme")}>
+        {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+      </button>
       <Globe size={14} />
-      <label>{t("settings.language")}</label>
       <select value={i18n.language.split("-")[0]} onChange={handleChange}>
         {languages.map((lang) => (
           <option key={lang.code} value={lang.code}>
@@ -52,6 +63,20 @@ export function LanguageSelector() {
         }
         .lang-selector select:focus {
           border-color: var(--accent);
+        }
+        .theme-toggle {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: 4px;
+          color: var(--text-muted);
+          transition: color 0.2s, background 0.2s;
+        }
+        .theme-toggle:hover {
+          color: var(--accent);
+          background: var(--bg-tertiary);
         }
       `}</style>
     </div>

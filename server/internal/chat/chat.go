@@ -51,3 +51,7 @@ func (m *Manager) ChannelExists(name string) (bool, error) {
 func (m *Manager) SetTopic(channel, topic string) error {
 	return m.db.SetChannelTopic(channel, topic)
 }
+
+func (m *Manager) DeleteChannel(name string) error {
+	return m.db.DeleteChannel(name)
+}
