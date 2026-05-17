@@ -433,8 +433,9 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
             onKeyDown={handleKeyDown}
             placeholder={dmMode ? t("chat.dmPlaceholder", { name: dmMode.peerNick }) : t("chat.placeholder")}
             rows={1}
+            aria-label={dmMode ? t("chat.dmPlaceholder", { name: dmMode.peerNick }) : t("chat.placeholder")}
           />
-          <button className="emoji-btn" onClick={() => setShowEmoji((v) => !v)} title="Emoji">
+          <button className="emoji-btn" onClick={() => setShowEmoji((v) => !v)} title="Emoji" aria-label="Emoji">
             <Smile size={18} />
           </button>
           {showEmoji && (
@@ -442,11 +443,11 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           )}
         </div>
         {!input.trim() && canUpload ? (
-          <button className="chat-mic-btn" onClick={() => setShowVoiceRecorder(true)} title={t("voice.record")}>
+          <button className="chat-mic-btn" onClick={() => setShowVoiceRecorder(true)} title={t("voice.record")} aria-label={t("voice.record")}>
             <Mic size={18} />
           </button>
         ) : (
-          <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim()}>
+          <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim()} aria-label={t("chat.send")}>
             <Send size={18} />
           </button>
         )}

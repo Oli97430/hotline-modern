@@ -76,13 +76,16 @@ export function Sidebar({
         <div className="sidebar-section-header">
           <span>{t("sidebar.channels")}</span>
           {canCreateChannel && (
-            <button className="sidebar-add" onClick={onCreateChannel} title={t("sidebar.createChannel")}>
+            <button className="sidebar-add" onClick={onCreateChannel} title={t("sidebar.createChannel")} aria-label={t("sidebar.createChannel")}>
               <Plus size={14} />
             </button>
           )}
         </div>
 
-        <ul className="channel-list">
+        <ul className="channel-list" role="listbox" aria-label={t("sidebar.channels")}>
+          {channels.length === 0 && (
+            <li className="channel-empty">{t("sidebar.noChannels")}</li>
+          )}
           {channels.map((ch, idx) => (
             <li
               key={ch.name}
@@ -252,6 +255,12 @@ export function Sidebar({
         }
         .channel-list {
           list-style: none;
+        }
+        .channel-empty {
+          padding: 8px 16px;
+          font-size: 12px;
+          color: var(--text-muted);
+          font-style: italic;
         }
         .channel-item {
           display: flex;

@@ -136,6 +136,20 @@ export interface UseWebSocketReturn {
   loadHistory: (channel: string, beforeTimestamp: number) => void;
 }
 
+/** Append a message to an array with dedup, conditional sort, and cap. */
+function insertAndCap<T extends { id: string; timestamp: number }>(
+  prev: T[], newMsg: T, cap: number
+): T[] {
+  if (prev.some((m) => m.id === newMsg.id)) return prev;
+  const result = prev.length >= cap
+    ? [...prev.slice(1), newMsg]
+    : [...prev, newMsg];
+  if (prev.length > 0 && prev[prev.length - 1].timestamp > newMsg.timestamp) {
+    result.sort((a, b) => a.timestamp - b.timestamp);
+  }
+  return result;
+}
+
 export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
@@ -197,30 +211,16 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
         case "chat.message": {
           const payload = msg.payload as ChatMessagePayload & { replyTo?: string };
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) return prev;
-            const newMsg = {
-              id: msg.id,
-              channel: payload.channel,
-              userId: payload.userId,
-              nickname: payload.nickname,
-              content: payload.content,
-              role: payload.role,
-              timestamp: msg.timestamp,
-              replyTo: payload.replyTo,
-            };
-            // Insert in order (messages typically arrive chronologically)
-            const result = [...prev, newMsg];
-            // Only sort if out of order (rare case: delayed delivery)
-            if (prev.length > 0 && prev[prev.length - 1].timestamp > msg.timestamp) {
-              result.sort((a, b) => a.timestamp - b.timestamp);
-            }
-            // Cap to prevent unbounded memory growth (keep last 2000 per session)
-            if (result.length > 2000) {
-              return result.slice(result.length - 2000);
-            }
-            return result;
-          });
+          setMessages((prev) => insertAndCap(prev, {
+            id: msg.id,
+            channel: payload.channel,
+            userId: payload.userId,
+            nickname: payload.nickname,
+            content: payload.content,
+            role: payload.role,
+            timestamp: msg.timestamp,
+            replyTo: payload.replyTo,
+          }, 2000));
           break;
         }
         case "channel.list": {
@@ -255,9 +255,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
         case "dm.message": {
           const payload = msg.payload as { from: string; to: string; nickname: string; content: string; role: string };
-          setDmMessages((prev) => {
-            if (prev.some((m) => m.id === msg.id)) return prev;
-            const newMsg = {
+          setDmMessages((prev) =>
+            insertAndCap(prev, {
               id: msg.id,
               from: payload.from,
               to: payload.to,
@@ -265,17 +264,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
               content: payload.content,
               role: payload.role,
               timestamp: msg.timestamp,
-            };
-            const result = [...prev, newMsg];
-            if (prev.length > 0 && prev[prev.length - 1].timestamp > msg.timestamp) {
-              result.sort((a, b) => a.timestamp - b.timestamp);
-            }
-            // Cap DM history in memory
-            if (result.length > 1000) {
-              return result.slice(result.length - 1000);
-            }
-            return result;
-          });
+            }, 1000)
+          );
           break;
         }
         case "typing": {

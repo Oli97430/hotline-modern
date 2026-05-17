@@ -68,7 +68,7 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
         <span className="user-count">{users.length}</span>
       </div>
 
-      <ul className="user-entries">
+      <ul className="user-entries" role="list" aria-label={t("users.title")}>
         {sorted.map((user) => (
           <li
             key={`${user.userId}-${user.nickname}`}
@@ -130,7 +130,7 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           display: flex;
           flex-direction: column;
           height: 100%;
-          border-left: 1px solid var(--border-subtle);
+          border-left: 1px solid var(--border);
         }
         .user-list-header {
           padding: 12px 16px;

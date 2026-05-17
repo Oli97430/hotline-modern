@@ -15,17 +15,8 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		// Allow connections from any origin for self-hosted deployments.
-		// In production, restrict to known origins.
-		// At minimum, allow same-origin and localhost variants.
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true // Non-browser clients (curl, etc.)
-		}
-		// Allow localhost/LAN origins for self-hosted use
-		return true
-	},
+	// TODO: restrict to known origins in production deployments
+	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
 type Message struct {
@@ -454,7 +445,7 @@ func (h *Hub) handleChannelJoin(client *Client, msg Message) {
 	}
 
 	// Check password for private channels (admin/op bypass)
-	if client.Role != "admin" && client.Role != "operator" {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
 		ok, _ := h.chat.CheckChannelPassword(payload.Channel, payload.Password)
 		if !ok {
 			h.sendError(client, "incorrect channel password")
@@ -743,7 +734,7 @@ func (h *Hub) handleBan(client *Client, msg Message) {
 		return
 	}
 
-	h.permissions.SetRole(payload.UserId, "guest")
+	h.permissions.SetRole(payload.UserId, permissions.RoleGuest)
 
 	// Find nickname via index and persist ban
 	h.mu.RLock()
@@ -972,7 +963,7 @@ func (h *Hub) handleChannelDelete(client *Client, msg Message) {
 }
 
 func (h *Hub) handleAdminSettings(client *Client, msg Message) {
-	if client.Role != "admin" {
+	if client.Role != permissions.RoleAdmin {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -1003,7 +994,7 @@ func (h *Hub) handleAdminSettings(client *Client, msg Message) {
 }
 
 func (h *Hub) handleBanList(client *Client) {
-	if client.Role != "admin" && client.Role != "operator" {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -1034,7 +1025,7 @@ func (h *Hub) handleBanList(client *Client) {
 }
 
 func (h *Hub) handleUnban(client *Client, msg Message) {
-	if client.Role != "admin" && client.Role != "operator" {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -1051,7 +1042,7 @@ func (h *Hub) handleUnban(client *Client, msg Message) {
 		return
 	}
 
-	h.permissions.SetRole(payload.PublicKey, "member")
+	h.permissions.SetRole(payload.PublicKey, permissions.RoleMember)
 
 	h.sendToClient(client, Message{
 		Type:      "admin.unbanned",
@@ -1117,8 +1108,7 @@ func (h *Hub) handleChatDelete(client *Client, msg Message) {
 		return
 	}
 
-	// Allow owner or admin/op to delete
-	if m.UserKey != client.PublicKey && client.Role != "admin" && client.Role != "operator" {
+	if m.UserKey != client.PublicKey && client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
 		h.sendError(client, "permission denied")
 		return
 	}

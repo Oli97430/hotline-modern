@@ -72,29 +72,20 @@ func main() {
 	wsServer := &http.Server{Addr: *addr, Handler: wsMux}
 	fileHTTPServer := &http.Server{Addr: *httpAddr, Handler: fileMux}
 
-	go func() {
+	startServer := func(srv *http.Server, label string) {
+		var err error
 		if useTLS {
-			if err := fileHTTPServer.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("HTTPS file server error: %v", err)
-			}
+			err = srv.ListenAndServeTLS(*tlsCert, *tlsKey)
 		} else {
-			if err := fileHTTPServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("HTTP file server error: %v", err)
-			}
+			err = srv.ListenAndServe()
 		}
-	}()
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("%s error: %v", label, err)
+		}
+	}
 
-	go func() {
-		if useTLS {
-			if err := wsServer.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("WSS server error: %v", err)
-			}
-		} else {
-			if err := wsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Fatalf("WebSocket server error: %v", err)
-			}
-		}
-	}()
+	go startServer(fileHTTPServer, "file server")
+	go startServer(wsServer, "WebSocket server")
 
 	// Graceful shutdown on SIGINT/SIGTERM
 	quit := make(chan os.Signal, 1)

@@ -45,10 +45,6 @@ func (m *Manager) CreateChannel(name, topic, createdBy, password string) error {
 	return m.db.CreateChannel(name, topic, createdBy, password)
 }
 
-func (m *Manager) GetChannelPassword(name string) (string, error) {
-	return m.db.GetChannelPassword(name)
-}
-
 func (m *Manager) CheckChannelPassword(name, password string) (bool, error) {
 	return m.db.CheckChannelPassword(name, password)
 }

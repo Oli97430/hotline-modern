@@ -45,7 +45,7 @@ export default function App() {
   const [activeDM, setActiveDM] = useState("");
   const [serverAddress, setServerAddress] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(() => window.innerWidth > 768);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showPins, setShowPins] = useState(false);
@@ -365,12 +365,9 @@ export default function App() {
       }));
   }, [ws.dmMessages, activeDM, ws.serverInfo?.userId]);
 
-  if (ws.status === "disconnected" || ws.status === "connecting") {
-    return <ConnectDialog onConnect={handleConnect} isConnecting={ws.status === "connecting"} />;
-  }
+  const [quoteText, setQuoteText] = useState("");
 
-  const handleSearchOpen = () => setShowSearch(true);
-  const handleSearchClose = () => { setShowSearch(false); ws.clearSearch(); };
+  const handleSearchClose = useCallback(() => { setShowSearch(false); ws.clearSearch(); }, [ws]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -396,14 +393,8 @@ export default function App() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showSearch, replyTo, showShortcuts, showPins, showBookmarks]);
+  }, [showSearch, replyTo, showShortcuts, showPins, showBookmarks, handleSearchClose]);
 
-  const handleReply = (messageId: string) => {
-    const msg = (activeDM ? dmMessagesAsChatMessages : ws.messages).find((m) => m.id === messageId);
-    if (msg) setReplyTo({ id: msg.id, nickname: msg.nickname, content: msg.content });
-  };
-
-  const [quoteText, setQuoteText] = useState("");
   const handleQuote = useCallback((text: string, nickname: string) => {
     const quoted = text.split("\n").map((l) => `> ${l}`).join("\n");
     setQuoteText(`${quoted}\n@${nickname} `);
@@ -424,7 +415,6 @@ export default function App() {
     if (msg) setForwardMsg({ content: msg.content, author: msg.nickname });
   }, [ws.messages]);
 
-  // Custom emoji handlers
   const handleEmojiUpload = useCallback((name: string, file: File) => {
     const url = URL.createObjectURL(file);
     const emoji = { id: Date.now().toString(36), name, url };
@@ -439,7 +429,6 @@ export default function App() {
     saveCustomEmojis(updated);
   }, [customEmojis]);
 
-  // Scheduled message handlers
   const handleScheduleMessage = useCallback((msg: ScheduledMessage) => {
     const updated = [...scheduledMessages, msg];
     setScheduledMessages(updated);
@@ -469,7 +458,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [scheduledMessages, ws, addToast]);
 
-  // Channel reorder (used via drag in Sidebar)
   const handleChannelReorder = useCallback((newOrder: string[]) => {
     setChannelOrder(newOrder);
     saveChannelOrder(newOrder);
@@ -478,19 +466,6 @@ export default function App() {
   const orderedChannels = useMemo(() => {
     return applyChannelOrder(ws.channels, channelOrder);
   }, [ws.channels, channelOrder]);
-
-  const handleSendWithReply = (channel: string, content: string) => {
-    if (replyTo) {
-      ws.sendChatWithReply(channel, content, replyTo.id);
-      setReplyTo(null);
-    } else {
-      ws.sendChat(channel, content);
-    }
-  };
-
-  const handleStatusChange = (status: string) => {
-    ws.setStatus(status);
-  };
 
   const handleFileUpload = useCallback(async (file: File) => {
     try {
@@ -541,6 +516,30 @@ export default function App() {
   const handleRemoveBookmark = useCallback((messageId: string) => {
     setBookmarks(removeBookmark(messageId));
   }, []);
+
+  if (ws.status === "disconnected" || ws.status === "connecting") {
+    return <ConnectDialog onConnect={handleConnect} isConnecting={ws.status === "connecting"} />;
+  }
+
+  const handleSearchOpen = () => setShowSearch(true);
+
+  const handleReply = (messageId: string) => {
+    const msg = (activeDM ? dmMessagesAsChatMessages : ws.messages).find((m) => m.id === messageId);
+    if (msg) setReplyTo({ id: msg.id, nickname: msg.nickname, content: msg.content });
+  };
+
+  const handleSendWithReply = (channel: string, content: string) => {
+    if (replyTo) {
+      ws.sendChatWithReply(channel, content, replyTo.id);
+      setReplyTo(null);
+    } else {
+      ws.sendChat(channel, content);
+    }
+  };
+
+  const handleStatusChange = (status: string) => {
+    ws.setStatus(status);
+  };
 
 
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
@@ -601,13 +600,13 @@ export default function App() {
 
       <main className="app-main">
         <div className="mobile-header">
-          <button className="mobile-header-btn" onClick={() => setMobileSidebarOpen(true)}>
+          <button className="mobile-header-btn" onClick={() => setMobileSidebarOpen(true)} aria-label={t("sidebar.openMenu")}>
             <Menu size={18} />
           </button>
           <span className="mobile-header-channel">
             {activeDM ? dmConversations.find(d => d.peerId === activeDM)?.peerNick || "DM" : `#${activeChannel}`}
           </span>
-          <button className="mobile-header-btn" onClick={() => setRightPanelOpen(v => !v)}>
+          <button className="mobile-header-btn" onClick={() => setRightPanelOpen(v => !v)} aria-label={t("users.togglePanel")}>
             <UsersIcon size={18} />
           </button>
         </div>
@@ -711,6 +710,7 @@ export default function App() {
             className="panel-toggle"
             onClick={() => setRightPanelOpen((v) => !v)}
             title={rightPanelOpen ? "Hide panel" : "Show panel"}
+            aria-label={rightPanelOpen ? "Hide panel" : "Show panel"}
           >
             {rightPanelOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           </button>

@@ -183,7 +183,6 @@ func (d *DB) CreateChannel(name, topic, createdBy, password string) error {
 	return err
 }
 
-// GetChannelPasswordHash returns the bcrypt hash stored for the channel password.
 func (d *DB) GetChannelPasswordHash(name string) (string, error) {
 	var pw string
 	err := d.conn.QueryRow("SELECT password FROM channels WHERE name = ?", name).Scan(&pw)
@@ -217,11 +216,6 @@ func (d *DB) CheckChannelPassword(name, password string) (bool, error) {
 		return true, nil
 	}
 	return false, nil
-}
-
-// GetChannelPassword kept for backward compat — returns hash (for hasPassword check)
-func (d *DB) GetChannelPassword(name string) (string, error) {
-	return d.GetChannelPasswordHash(name)
 }
 
 func (d *DB) SetChannelTopic(name, topic string) error {
