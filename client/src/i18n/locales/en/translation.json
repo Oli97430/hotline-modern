@@ -51,6 +51,7 @@
   "chat.typingMultiple": "{{count}} people are typing...",
   "chat.dmPlaceholder": "Message {{name}}...",
   "users.sendDM": "Send message",
+  "chat.edited": "(edited)",
   "search.title": "Search messages",
   "search.placeholder": "Search messages...",
   "search.allChannels": "All channels",

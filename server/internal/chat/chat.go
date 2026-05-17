@@ -65,3 +65,47 @@ func (m *Manager) SearchMessages(query string, channel string, limit int) ([]db.
 	}
 	return m.db.SearchMessages(query, channel, limit)
 }
+
+func (m *Manager) EditMessage(id, userKey, content string) error {
+	return m.db.EditMessage(id, userKey, content)
+}
+
+func (m *Manager) DeleteMessage(id, userKey string) error {
+	return m.db.DeleteMessage(id, userKey)
+}
+
+func (m *Manager) DeleteMessageAdmin(id string) error {
+	return m.db.DeleteMessageAdmin(id)
+}
+
+func (m *Manager) AddReaction(messageId, userKey, emoji string) error {
+	return m.db.AddReaction(messageId, userKey, emoji)
+}
+
+func (m *Manager) RemoveReaction(messageId, userKey, emoji string) error {
+	return m.db.RemoveReaction(messageId, userKey, emoji)
+}
+
+func (m *Manager) GetReactions(messageId string) ([]db.Reaction, error) {
+	return m.db.GetReactions(messageId)
+}
+
+func (m *Manager) GetMessageReactions(messageIds []string) (map[string][]db.Reaction, error) {
+	return m.db.GetMessageReactions(messageIds)
+}
+
+func (m *Manager) PinMessage(messageId, channel, pinnedBy string) error {
+	return m.db.PinMessage(messageId, channel, pinnedBy)
+}
+
+func (m *Manager) UnpinMessage(messageId string) error {
+	return m.db.UnpinMessage(messageId)
+}
+
+func (m *Manager) GetPinnedMessages(channel string) ([]db.Message, error) {
+	return m.db.GetPinnedMessages(channel)
+}
+
+func (m *Manager) GetMessageById(id string) (*db.Message, error) {
+	return m.db.GetMessageById(id)
+}

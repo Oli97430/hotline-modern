@@ -23,6 +23,8 @@ export interface ChatMessage {
   content: string;
   role: string;
   timestamp: number;
+  edited?: boolean;
+  reactions?: MessageReaction[];
 }
 
 export interface DMMessage {
@@ -64,6 +66,20 @@ export interface SearchResult {
   timestamp: number;
 }
 
+export interface MessageReaction {
+  emoji: string;
+  users: string[];
+}
+
+export interface PinnedMessage {
+  id: string;
+  channel: string;
+  userId: string;
+  nickname: string;
+  content: string;
+  timestamp: number;
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
@@ -73,6 +89,7 @@ export interface UseWebSocketReturn {
   channels: { name: string; topic: string; userCount: number }[];
   users: { userId: string; nickname: string; role: string; status: string }[];
   searchResults: SearchResult[];
+  pinnedMessages: PinnedMessage[];
   reconnectIn: number;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
@@ -91,6 +108,14 @@ export interface UseWebSocketReturn {
   setTopic: (channel: string, topic: string) => void;
   search: (query: string, channel?: string) => void;
   clearSearch: () => void;
+  editMessage: (messageId: string, content: string) => void;
+  deleteMessage: (messageId: string) => void;
+  addReaction: (messageId: string, emoji: string) => void;
+  removeReaction: (messageId: string, emoji: string) => void;
+  pinMessage: (messageId: string, channel: string) => void;
+  unpinMessage: (messageId: string, channel: string) => void;
+  requestPins: (channel: string) => void;
+  changeNickname: (nickname: string) => void;
 }
 
 export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWebSocketReturn {
@@ -108,6 +133,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number }[]>([]);
   const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string }[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [reconnectIn, setReconnectIn] = useState(0);
 
   const handleMessage = useCallback(
@@ -227,6 +253,68 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         case "chat.search_results": {
           const payload = msg.payload as { query: string; results: SearchResult[] };
           setSearchResults(payload.results || []);
+          break;
+        }
+        case "chat.edited": {
+          const payload = msg.payload as { messageId: string; channel: string; content: string; userId: string };
+          setMessages((prev) =>
+            prev.map((m) => m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m)
+          );
+          break;
+        }
+        case "chat.deleted": {
+          const payload = msg.payload as { messageId: string; channel: string };
+          setMessages((prev) => prev.filter((m) => m.id !== payload.messageId));
+          break;
+        }
+        case "reaction.updated": {
+          const payload = msg.payload as { messageId: string; emoji: string; userId: string; action: string };
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== payload.messageId) return m;
+              const reactions = [...(m.reactions || [])];
+              const idx = reactions.findIndex((r) => r.emoji === payload.emoji);
+              if (payload.action === "add") {
+                if (idx >= 0) {
+                  if (!reactions[idx].users.includes(payload.userId)) {
+                    reactions[idx] = { ...reactions[idx], users: [...reactions[idx].users, payload.userId] };
+                  }
+                } else {
+                  reactions.push({ emoji: payload.emoji, users: [payload.userId] });
+                }
+              } else {
+                if (idx >= 0) {
+                  const users = reactions[idx].users.filter((u) => u !== payload.userId);
+                  if (users.length === 0) {
+                    reactions.splice(idx, 1);
+                  } else {
+                    reactions[idx] = { ...reactions[idx], users };
+                  }
+                }
+              }
+              return { ...m, reactions };
+            })
+          );
+          break;
+        }
+        case "pin.added": {
+          // Just trigger a refresh if needed
+          break;
+        }
+        case "pin.removed": {
+          setPinnedMessages((prev) => prev.filter((p) => p.id !== (msg.payload as { messageId: string }).messageId));
+          break;
+        }
+        case "pin.list": {
+          const payload = msg.payload as { channel: string; messages: PinnedMessage[] };
+          setPinnedMessages(payload.messages || []);
+          break;
+        }
+        case "user.nick_changed": {
+          const payload = msg.payload as { userId: string; oldNick: string; newNick: string };
+          setUsers((prev) =>
+            prev.map((u) => u.userId === payload.userId ? { ...u, nickname: payload.newNick } : u)
+          );
           break;
         }
         case "error": {
@@ -417,6 +505,62 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setSearchResults([]);
   }, []);
 
+  const editMessage = useCallback((messageId: string, content: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("chat.edit", { messageId, content });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const deleteMessage = useCallback((messageId: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("chat.delete", { messageId });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const addReaction = useCallback((messageId: string, emoji: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("reaction.add", { messageId, emoji });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const removeReaction = useCallback((messageId: string, emoji: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("reaction.remove", { messageId, emoji });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const pinMessage = useCallback((messageId: string, channel: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("pin.add", { messageId, channel });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const unpinMessage = useCallback((messageId: string, channel: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("pin.remove", { messageId, channel });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const requestPins = useCallback((channel: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("pin.list", { channel });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const changeNickname = useCallback((nickname: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("user.nick", { nickname });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
@@ -444,6 +588,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     channels,
     users,
     searchResults,
+    pinnedMessages,
     reconnectIn,
     connect,
     disconnect,
@@ -462,5 +607,13 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setTopic,
     search,
     clearSearch,
+    editMessage,
+    deleteMessage,
+    addReaction,
+    removeReaction,
+    pinMessage,
+    unpinMessage,
+    requestPins,
+    changeNickname,
   };
 }

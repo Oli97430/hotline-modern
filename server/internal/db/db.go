@@ -83,6 +83,22 @@ func migrate(conn *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel, timestamp);
 
+	CREATE TABLE IF NOT EXISTS reactions (
+		message_id TEXT NOT NULL,
+		user_key TEXT NOT NULL,
+		emoji TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (message_id, user_key, emoji)
+	);
+
+	CREATE TABLE IF NOT EXISTS pinned_messages (
+		message_id TEXT NOT NULL,
+		channel TEXT NOT NULL,
+		pinned_by TEXT NOT NULL,
+		pinned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (message_id)
+	);
+
 	INSERT OR IGNORE INTO channels (name, topic, created_by) VALUES ('lobby', 'Welcome to the server', 'system');
 	`
 	_, err := conn.Exec(schema)
@@ -199,6 +215,176 @@ func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 		messages[i], messages[j] = messages[j], messages[i]
 	}
 	return messages, nil
+}
+
+func (d *DB) EditMessage(id, userKey, content string) error {
+	res, err := d.conn.Exec(
+		"UPDATE messages SET content = ? WHERE id = ? AND user_key = ?",
+		content, id, userKey,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
+func (d *DB) DeleteMessage(id, userKey string) error {
+	_, err := d.conn.Exec("DELETE FROM messages WHERE id = ? AND user_key = ?", id, userKey)
+	return err
+}
+
+func (d *DB) DeleteMessageAdmin(id string) error {
+	_, err := d.conn.Exec("DELETE FROM messages WHERE id = ?", id)
+	return err
+}
+
+func (d *DB) AddReaction(messageId, userKey, emoji string) error {
+	_, err := d.conn.Exec(
+		"INSERT OR IGNORE INTO reactions (message_id, user_key, emoji) VALUES (?, ?, ?)",
+		messageId, userKey, emoji,
+	)
+	return err
+}
+
+func (d *DB) RemoveReaction(messageId, userKey, emoji string) error {
+	_, err := d.conn.Exec(
+		"DELETE FROM reactions WHERE message_id = ? AND user_key = ? AND emoji = ?",
+		messageId, userKey, emoji,
+	)
+	return err
+}
+
+type Reaction struct {
+	Emoji string
+	Users []string
+}
+
+func (d *DB) GetReactions(messageId string) ([]Reaction, error) {
+	rows, err := d.conn.Query(
+		"SELECT emoji, user_key FROM reactions WHERE message_id = ? ORDER BY created_at",
+		messageId,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	emojiMap := make(map[string][]string)
+	var order []string
+	for rows.Next() {
+		var emoji, userKey string
+		if err := rows.Scan(&emoji, &userKey); err != nil {
+			return nil, err
+		}
+		if _, exists := emojiMap[emoji]; !exists {
+			order = append(order, emoji)
+		}
+		emojiMap[emoji] = append(emojiMap[emoji], userKey)
+	}
+
+	var reactions []Reaction
+	for _, e := range order {
+		reactions = append(reactions, Reaction{Emoji: e, Users: emojiMap[e]})
+	}
+	return reactions, nil
+}
+
+func (d *DB) GetMessageReactions(messageIds []string) (map[string][]Reaction, error) {
+	if len(messageIds) == 0 {
+		return nil, nil
+	}
+	query := "SELECT message_id, emoji, user_key FROM reactions WHERE message_id IN ("
+	args := make([]interface{}, len(messageIds))
+	for i, id := range messageIds {
+		if i > 0 {
+			query += ","
+		}
+		query += "?"
+		args[i] = id
+	}
+	query += ") ORDER BY created_at"
+
+	rows, err := d.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string][]Reaction)
+	emojiMap := make(map[string]map[string][]string) // msgId -> emoji -> users
+	orderMap := make(map[string][]string)            // msgId -> emoji order
+
+	for rows.Next() {
+		var msgId, emoji, userKey string
+		if err := rows.Scan(&msgId, &emoji, &userKey); err != nil {
+			return nil, err
+		}
+		if emojiMap[msgId] == nil {
+			emojiMap[msgId] = make(map[string][]string)
+		}
+		if _, exists := emojiMap[msgId][emoji]; !exists {
+			orderMap[msgId] = append(orderMap[msgId], emoji)
+		}
+		emojiMap[msgId][emoji] = append(emojiMap[msgId][emoji], userKey)
+	}
+
+	for msgId, emojis := range emojiMap {
+		for _, e := range orderMap[msgId] {
+			result[msgId] = append(result[msgId], Reaction{Emoji: e, Users: emojis[e]})
+		}
+	}
+	return result, nil
+}
+
+func (d *DB) PinMessage(messageId, channel, pinnedBy string) error {
+	_, err := d.conn.Exec(
+		"INSERT OR REPLACE INTO pinned_messages (message_id, channel, pinned_by, pinned_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+		messageId, channel, pinnedBy,
+	)
+	return err
+}
+
+func (d *DB) UnpinMessage(messageId string) error {
+	_, err := d.conn.Exec("DELETE FROM pinned_messages WHERE message_id = ?", messageId)
+	return err
+}
+
+func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
+	rows, err := d.conn.Query(
+		`SELECT m.id, m.channel, m.user_key, m.nickname, m.content, m.timestamp
+		 FROM pinned_messages p JOIN messages m ON p.message_id = m.id
+		 WHERE p.channel = ? ORDER BY p.pinned_at DESC`,
+		channel,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+	}
+	return messages, nil
+}
+
+func (d *DB) GetMessageById(id string) (*Message, error) {
+	var m Message
+	err := d.conn.QueryRow(
+		"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE id = ?", id,
+	).Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }
 
 func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message, error) {

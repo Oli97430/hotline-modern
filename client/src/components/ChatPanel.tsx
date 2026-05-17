@@ -22,15 +22,21 @@ interface ChatPanelProps {
   activeChannel: string;
   channelTopic?: string;
   currentUserId: string;
+  currentRole?: string;
   typingUsers: TypingUser[];
   dmMode?: { peerId: string; peerNick: string };
   onSendMessage: (channel: string, content: string) => void;
   onSlashCommand?: (command: string, args: string[]) => void;
   onTyping?: () => void;
   onSearchOpen?: () => void;
+  onReact?: (messageId: string, emoji: string) => void;
+  onRemoveReact?: (messageId: string, emoji: string) => void;
+  onEdit?: (messageId: string, content: string) => void;
+  onDelete?: (messageId: string) => void;
+  onPin?: (messageId: string) => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -116,22 +122,37 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         {channelMessages.length === 0 && (
           <div className="chat-empty">{t("chat.noMessages")}</div>
         )}
-        {messagesWithDates.map((item) =>
-          "type" in item && item.type === "separator" ? (
-            <div key={item.key} className="chat-date-separator">
-              <span>{item.date}</span>
-            </div>
-          ) : (
+        {messagesWithDates.map((item) => {
+          if ("type" in item && item.type === "separator") {
+            return (
+              <div key={item.key} className="chat-date-separator">
+                <span>{item.date}</span>
+              </div>
+            );
+          }
+          const msg = item as ChatMessage;
+          const canMod = currentRole === "admin" || currentRole === "operator";
+          return (
             <MessageBubble
-              key={(item as ChatMessage).id}
-              nickname={(item as ChatMessage).nickname}
-              content={(item as ChatMessage).content}
-              role={(item as ChatMessage).role}
-              timestamp={(item as ChatMessage).timestamp}
-              isOwn={(item as ChatMessage).userId === currentUserId}
+              key={msg.id}
+              id={msg.id}
+              nickname={msg.nickname}
+              content={msg.content}
+              role={msg.role}
+              timestamp={msg.timestamp}
+              isOwn={msg.userId === currentUserId}
+              edited={msg.edited}
+              reactions={msg.reactions}
+              currentUserId={currentUserId}
+              canModerate={canMod}
+              onReact={onReact}
+              onRemoveReact={onRemoveReact}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onPin={onPin}
             />
-          )
-        )}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 

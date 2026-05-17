@@ -219,6 +219,22 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleChannelDelete(client, msg)
 	case "chat.search":
 		h.handleSearch(client, msg)
+	case "chat.edit":
+		h.handleChatEdit(client, msg)
+	case "chat.delete":
+		h.handleChatDelete(client, msg)
+	case "reaction.add":
+		h.handleReactionAdd(client, msg)
+	case "reaction.remove":
+		h.handleReactionRemove(client, msg)
+	case "pin.add":
+		h.handlePinAdd(client, msg)
+	case "pin.remove":
+		h.handlePinRemove(client, msg)
+	case "pin.list":
+		h.handlePinList(client, msg)
+	case "user.nick":
+		h.handleNickChange(client, msg)
 	}
 }
 
@@ -840,6 +856,296 @@ func (h *Hub) handleChannelDelete(client *Client, msg Message) {
 
 	h.chat.DeleteChannel(payload.Name)
 	h.broadcastChannelList()
+}
+
+func (h *Hub) handleChatEdit(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		MessageId string `json:"messageId"`
+		Content   string `json:"content"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.EditMessage(payload.MessageId, client.PublicKey, payload.Content); err != nil {
+		h.sendError(client, "cannot edit message")
+		return
+	}
+
+	// Get the message to know which channel to broadcast to
+	m, err := h.chat.GetMessageById(payload.MessageId)
+	if err != nil {
+		return
+	}
+
+	editMsg := Message{
+		Type:      "chat.edited",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"messageId": payload.MessageId,
+			"channel":   m.Channel,
+			"content":   payload.Content,
+			"userId":    client.PublicKey,
+		}),
+	}
+	h.broadcastToChannel(m.Channel, editMsg)
+}
+
+func (h *Hub) handleChatDelete(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		MessageId string `json:"messageId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	m, err := h.chat.GetMessageById(payload.MessageId)
+	if err != nil {
+		h.sendError(client, "message not found")
+		return
+	}
+
+	// Allow owner or admin/op to delete
+	if m.UserKey != client.PublicKey && client.Role != "admin" && client.Role != "operator" {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	if m.UserKey == client.PublicKey {
+		h.chat.DeleteMessage(payload.MessageId, client.PublicKey)
+	} else {
+		h.chat.DeleteMessageAdmin(payload.MessageId)
+	}
+
+	deleteMsg := Message{
+		Type:      "chat.deleted",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"messageId": payload.MessageId,
+			"channel":   m.Channel,
+		}),
+	}
+	h.broadcastToChannel(m.Channel, deleteMsg)
+}
+
+func (h *Hub) handleReactionAdd(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		MessageId string `json:"messageId"`
+		Emoji     string `json:"emoji"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.AddReaction(payload.MessageId, client.PublicKey, payload.Emoji); err != nil {
+		return
+	}
+
+	m, _ := h.chat.GetMessageById(payload.MessageId)
+	channel := ""
+	if m != nil {
+		channel = m.Channel
+	}
+
+	reactMsg := Message{
+		Type:      "reaction.updated",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"messageId": payload.MessageId,
+			"channel":   channel,
+			"emoji":     payload.Emoji,
+			"userId":    client.PublicKey,
+			"action":    "add",
+		}),
+	}
+
+	if channel != "" {
+		h.broadcastToChannel(channel, reactMsg)
+	}
+}
+
+func (h *Hub) handleReactionRemove(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		MessageId string `json:"messageId"`
+		Emoji     string `json:"emoji"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.RemoveReaction(payload.MessageId, client.PublicKey, payload.Emoji); err != nil {
+		return
+	}
+
+	m, _ := h.chat.GetMessageById(payload.MessageId)
+	channel := ""
+	if m != nil {
+		channel = m.Channel
+	}
+
+	reactMsg := Message{
+		Type:      "reaction.updated",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"messageId": payload.MessageId,
+			"channel":   channel,
+			"emoji":     payload.Emoji,
+			"userId":    client.PublicKey,
+			"action":    "remove",
+		}),
+	}
+
+	if channel != "" {
+		h.broadcastToChannel(channel, reactMsg)
+	}
+}
+
+func (h *Hub) handlePinAdd(client *Client, msg Message) {
+	if !h.permissions.CanCreateChannel(client.Role) {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		MessageId string `json:"messageId"`
+		Channel   string `json:"channel"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.PinMessage(payload.MessageId, payload.Channel, client.PublicKey); err != nil {
+		h.sendError(client, "failed to pin message")
+		return
+	}
+
+	pinMsg := Message{
+		Type:      "pin.added",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"messageId": payload.MessageId,
+			"channel":   payload.Channel,
+			"pinnedBy":  client.PublicKey,
+		}),
+	}
+	h.broadcastToChannel(payload.Channel, pinMsg)
+}
+
+func (h *Hub) handlePinRemove(client *Client, msg Message) {
+	if !h.permissions.CanCreateChannel(client.Role) {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		MessageId string `json:"messageId"`
+		Channel   string `json:"channel"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.UnpinMessage(payload.MessageId); err != nil {
+		h.sendError(client, "failed to unpin message")
+		return
+	}
+
+	unpinMsg := Message{
+		Type:      "pin.removed",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"messageId": payload.MessageId,
+			"channel":   payload.Channel,
+		}),
+	}
+	h.broadcastToChannel(payload.Channel, unpinMsg)
+}
+
+func (h *Hub) handlePinList(client *Client, msg Message) {
+	var payload struct {
+		Channel string `json:"channel"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	pinned, err := h.chat.GetPinnedMessages(payload.Channel)
+	if err != nil {
+		return
+	}
+
+	var msgs []map[string]interface{}
+	for _, m := range pinned {
+		msgs = append(msgs, map[string]interface{}{
+			"id":        m.ID,
+			"channel":   m.Channel,
+			"userId":    m.UserKey,
+			"nickname":  m.Nickname,
+			"content":   m.Content,
+			"timestamp": m.Timestamp.UnixMilli(),
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      "pin.list",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "messages": msgs}),
+	})
+}
+
+func (h *Hub) handleNickChange(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		Nickname string `json:"nickname"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if len(payload.Nickname) < 1 || len(payload.Nickname) > 32 {
+		h.sendError(client, "nickname must be 1-32 characters")
+		return
+	}
+
+	oldNick := client.Nickname
+	client.Nickname = payload.Nickname
+
+	h.broadcastAll(Message{
+		Type:      "user.nick_changed",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"userId":  client.PublicKey,
+			"oldNick": oldNick,
+			"newNick": payload.Nickname,
+		}),
+	})
 }
 
 func (h *Hub) handleSearch(client *Client, msg Message) {

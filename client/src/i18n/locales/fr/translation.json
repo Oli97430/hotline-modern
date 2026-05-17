@@ -51,6 +51,7 @@
   "chat.typingMultiple": "{{count}} personnes écrivent...",
   "chat.dmPlaceholder": "Message à {{name}}...",
   "users.sendDM": "Envoyer un message",
+  "chat.edited": "(modifié)",
   "search.title": "Rechercher des messages",
   "search.placeholder": "Rechercher...",
   "search.allChannels": "Tous les salons",

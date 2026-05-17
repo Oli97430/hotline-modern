@@ -304,12 +304,18 @@ export default function App() {
             activeChannel={activeChannel}
             channelTopic={activeCh?.topic}
             currentUserId={ws.serverInfo?.userId || ""}
+            currentRole={ws.serverInfo?.role}
             typingUsers={ws.typingUsers}
             dmMode={activeDM ? { peerId: activeDM, peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8) } : undefined}
             onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : ws.sendChat}
             onSlashCommand={activeDM ? undefined : handleSlashCommand}
             onTyping={() => activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel)}
             onSearchOpen={handleSearchOpen}
+            onReact={ws.addReaction}
+            onRemoveReact={ws.removeReaction}
+            onEdit={ws.editMessage}
+            onDelete={ws.deleteMessage}
+            onPin={(msgId) => ws.pinMessage(msgId, activeChannel)}
           />
 
           <button
