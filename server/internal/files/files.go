@@ -39,6 +39,15 @@ func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
+	// CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "X-Hotline-PublicKey, X-Hotline-Signature, Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	pubKey := r.Header.Get("X-Hotline-PublicKey")
 	sig := r.Header.Get("X-Hotline-Signature")
 
@@ -137,6 +146,21 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, role strin
 	}
 
 	reqPath := strings.TrimPrefix(r.URL.Path, "/files/")
+
+	// Support multipart form with auto filename
+	r.ParseMultipartForm(32 << 20) // 32MB max
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "no file in request", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// If reqPath is empty or ends in /, use original filename
+	if reqPath == "" || strings.HasSuffix(reqPath, "/") {
+		reqPath = reqPath + header.Filename
+	}
+
 	fullPath := filepath.Join(s.rootDir, filepath.Clean(reqPath))
 	if !strings.HasPrefix(fullPath, s.rootDir) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
@@ -148,13 +172,6 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, role strin
 		return
 	}
 
-	file, _, err := r.FormFile("file")
-	if err != nil {
-		http.Error(w, "no file in request", http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-
 	dst, err := os.Create(fullPath)
 	if err != nil {
 		http.Error(w, "server error", http.StatusInternalServerError)
@@ -162,11 +179,18 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, role strin
 	}
 	defer dst.Close()
 
-	if _, err := io.Copy(dst, file); err != nil {
+	written, err := io.Copy(dst, file)
+	if err != nil {
 		http.Error(w, "upload failed", http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "path": reqPath})
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"path":     reqPath,
+		"filename": header.Filename,
+		"size":     written,
+	})
 }

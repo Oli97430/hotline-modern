@@ -11,6 +11,7 @@ import { CreateChannelModal } from "./components/CreateChannelModal";
 import { SearchPanel } from "./components/SearchPanel";
 import { ConnectionStatus } from "./components/ConnectionStatus";
 import { NotificationSettings, NotifPrefs, loadNotifPrefs } from "./components/NotificationSettings";
+import { StatusSelector } from "./components/StatusSelector";
 import { useIdentity } from "./hooks/useIdentity";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { getPublicKeyHex, signMessage } from "./lib/crypto";
@@ -280,13 +281,50 @@ export default function App() {
     }
   };
 
+  const handleStatusChange = (status: string) => {
+    ws.setStatus(status);
+  };
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    try {
+      const pk = getPublicKeyHex(identity);
+      const s = signMessage(pk, identity.secretKey);
+      const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
+      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "").replace(/:9998/, ":9999");
+      const uploadUrl = `${protocol}${base}/files/uploads/`;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const resp = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "X-Hotline-PublicKey": pk,
+          "X-Hotline-Signature": s,
+        },
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        handleError("File upload failed");
+        return;
+      }
+
+      const result = await resp.json();
+      const fileUrl = `${protocol}${base}/files/${result.path}`;
+      ws.sendChat(activeChannel, `[${result.filename}](${fileUrl})`);
+    } catch {
+      handleError("File upload error");
+    }
+  }, [serverAddress, activeChannel, ws, handleError, identity]);
+
+  const pubKeyHex = getPublicKeyHex(identity);
+  const sig = signMessage(pubKeyHex, identity.secretKey);
+
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canUpload = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canDownload = ws.serverInfo?.role !== "guest";
   const activeCh = ws.channels.find((c) => c.name === activeChannel);
-
-  const pubKeyHex = getPublicKeyHex(identity);
-  const sig = signMessage(pubKeyHex, identity.secretKey);
 
   return (
     <div className="app-layout">
@@ -308,6 +346,7 @@ export default function App() {
           role={ws.serverInfo?.role || ""}
         />
         <div className="app-sidebar-bottom">
+          <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />
           <NotificationSettings prefs={notifPrefs} onChange={setNotifPrefs} />
           <LanguageSelector />
         </div>
@@ -350,6 +389,11 @@ export default function App() {
             onReply={handleReply}
             replyTo={replyTo}
             onCancelReply={() => setReplyTo(null)}
+            onLoadHistory={ws.loadHistory}
+            historyLoading={ws.historyLoading}
+            hasMoreHistory={ws.hasMoreHistory}
+            onFileUpload={canUpload ? handleFileUpload : undefined}
+            canUpload={canUpload}
           />
 
           <button

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Shield, Star, User, Eye } from "lucide-react";
+import { StatusDot } from "./StatusSelector";
 
 interface UserListProps {
   users: { userId: string; nickname: string; role: string; status: string }[];
@@ -73,6 +74,7 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
             className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""}`}
             onClick={(e) => handleUserClick(user.userId, e)}
           >
+            <StatusDot status={user.status} />
             <RoleIcon role={user.role} />
             <span className="user-nick" style={{ color: `var(--role-${user.role})` }}>
               {user.nickname}

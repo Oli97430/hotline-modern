@@ -130,3 +130,13 @@ func (m *Manager) GetBans() ([]db.Ban, error) {
 func (m *Manager) IsBanned(publicKey string) (bool, error) {
 	return m.db.IsBanned(publicKey)
 }
+
+func (m *Manager) GetHistoryBefore(channel string, before time.Time, limit int) ([]db.Message, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	return m.db.GetMessagesBefore(channel, before, limit)
+}

@@ -30,11 +30,36 @@ type Client struct {
 	PublicKey string
 	Nickname  string
 	Role      string
+	Status    string // "available", "away", "busy"
 	Channels  map[string]bool
 	Conn      *websocket.Conn
 	Send      chan []byte
 	Hub       *Hub
 	mu        sync.Mutex
+	// Rate limiting
+	tokens     float64
+	lastRefill time.Time
+}
+
+const (
+	rateLimitTokens   = 10.0 // max tokens (burst)
+	rateLimitRefill   = 2.0  // tokens per second
+	rateLimitCost     = 1.0  // cost per message
+)
+
+func (c *Client) consumeToken() bool {
+	now := time.Now()
+	elapsed := now.Sub(c.lastRefill).Seconds()
+	c.tokens += elapsed * rateLimitRefill
+	if c.tokens > rateLimitTokens {
+		c.tokens = rateLimitTokens
+	}
+	c.lastRefill = now
+	if c.tokens < rateLimitCost {
+		return false
+	}
+	c.tokens -= rateLimitCost
+	return true
 }
 
 type Hub struct {
@@ -101,11 +126,14 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		ID:       uuid.New().String(),
-		Channels: make(map[string]bool),
-		Conn:     conn,
-		Send:     make(chan []byte, 256),
-		Hub:      h,
+		ID:         uuid.New().String(),
+		Status:     "available",
+		Channels:   make(map[string]bool),
+		Conn:       conn,
+		Send:       make(chan []byte, 256),
+		Hub:        h,
+		tokens:     rateLimitTokens,
+		lastRefill: time.Now(),
 	}
 
 	nonce, err := h.auth.GenerateNonce(client.ID)
@@ -188,6 +216,14 @@ func (c *Client) writePump() {
 }
 
 func (h *Hub) handleMessage(client *Client, msg Message) {
+	// Rate limit all messages except auth
+	if msg.Type != "auth" && client.PublicKey != "" {
+		if !client.consumeToken() {
+			h.sendError(client, "rate limited: slow down")
+			return
+		}
+	}
+
 	switch msg.Type {
 	case "auth":
 		h.handleAuth(client, msg)
@@ -241,6 +277,12 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleBanList(client)
 	case "admin.unban":
 		h.handleUnban(client, msg)
+	case "user.status":
+		h.handleUserStatus(client, msg)
+	case "channel.members":
+		h.handleChannelMembers(client, msg)
+	case "chat.history":
+		h.handleChatHistory(client, msg)
 	}
 }
 
@@ -437,7 +479,7 @@ func (h *Hub) handleUserList(client *Client) {
 			"userId":   c.PublicKey,
 			"nickname": c.Nickname,
 			"role":     c.Role,
-			"status":   "online",
+			"status":   c.Status,
 		})
 	}
 	h.mu.RUnlock()
@@ -1321,6 +1363,137 @@ func (h *Hub) handleSearch(client *Client, msg Message) {
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"query": payload.Query, "results": msgs}),
+	})
+}
+
+func (h *Hub) handleUserStatus(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	switch payload.Status {
+	case "available", "away", "busy":
+	default:
+		return
+	}
+
+	client.Status = payload.Status
+
+	h.broadcastAll(Message{
+		Type:      "user.status_changed",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"userId": client.PublicKey,
+			"status": payload.Status,
+		}),
+	})
+}
+
+func (h *Hub) handleChannelMembers(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		Channel string `json:"channel"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	h.mu.RLock()
+	members := h.channels[payload.Channel]
+	var list []map[string]string
+	for _, c := range members {
+		if c.PublicKey == "" {
+			continue
+		}
+		list = append(list, map[string]string{
+			"userId":   c.PublicKey,
+			"nickname": c.Nickname,
+			"role":     c.Role,
+			"status":   c.Status,
+		})
+	}
+	h.mu.RUnlock()
+
+	h.sendToClient(client, Message{
+		Type:      "channel.members",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"channel": payload.Channel,
+			"members": list,
+		}),
+	})
+}
+
+func (h *Hub) handleChatHistory(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		return
+	}
+
+	var payload struct {
+		Channel string `json:"channel"`
+		Before  int64  `json:"before"` // timestamp in ms
+		Limit   int    `json:"limit"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.Limit <= 0 || payload.Limit > 50 {
+		payload.Limit = 50
+	}
+
+	var beforeTime time.Time
+	if payload.Before > 0 {
+		beforeTime = time.UnixMilli(payload.Before)
+	} else {
+		beforeTime = time.Now()
+	}
+
+	messages, err := h.chat.GetHistoryBefore(payload.Channel, beforeTime, payload.Limit)
+	if err != nil {
+		return
+	}
+
+	var msgs []map[string]interface{}
+	for _, m := range messages {
+		p := map[string]interface{}{
+			"channel":  m.Channel,
+			"userId":   m.UserKey,
+			"nickname": m.Nickname,
+			"content":  m.Content,
+			"role":     h.permissions.GetRole(m.UserKey),
+		}
+		if m.ReplyTo != "" {
+			p["replyTo"] = m.ReplyTo
+		}
+		msgs = append(msgs, map[string]interface{}{
+			"id":        m.ID,
+			"timestamp": m.Timestamp.UnixMilli(),
+			"payload":   p,
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      "chat.history",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"channel":  payload.Channel,
+			"messages": msgs,
+			"hasMore":  len(messages) >= payload.Limit,
+		}),
 	})
 }
 

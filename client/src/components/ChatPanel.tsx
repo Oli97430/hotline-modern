@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Smile, Search } from "lucide-react";
+import { Send, Smile, Search, Upload, Loader } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { EmojiPicker } from "./EmojiPicker";
 import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
@@ -37,16 +37,60 @@ interface ChatPanelProps {
   onReply?: (messageId: string) => void;
   replyTo?: { id: string; nickname: string; content: string } | null;
   onCancelReply?: () => void;
+  onLoadHistory?: (channel: string, beforeTimestamp: number) => void;
+  historyLoading?: boolean;
+  hasMoreHistory?: boolean;
+  onFileUpload?: (file: File) => void;
+  canUpload?: boolean;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingThrottleRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const prevScrollHeightRef = useRef(0);
+  const isLoadingHistoryRef = useRef(false);
 
   const channelMessages = messages.filter((m) => m.channel === activeChannel);
+
+  // Scroll to top = load more history
+  const handleScroll = useCallback(() => {
+    const container = messagesContainerRef.current;
+    if (!container || historyLoading || !hasMoreHistory || !onLoadHistory || isLoadingHistoryRef.current) return;
+    if (container.scrollTop < 100 && channelMessages.length > 0) {
+      isLoadingHistoryRef.current = true;
+      prevScrollHeightRef.current = container.scrollHeight;
+      onLoadHistory(activeChannel, channelMessages[0].timestamp);
+    }
+  }, [activeChannel, channelMessages, historyLoading, hasMoreHistory, onLoadHistory]);
+
+  // Preserve scroll position after prepending history
+  useEffect(() => {
+    if (isLoadingHistoryRef.current && !historyLoading) {
+      isLoadingHistoryRef.current = false;
+      const container = messagesContainerRef.current;
+      if (container) {
+        const newScrollHeight = container.scrollHeight;
+        container.scrollTop = newScrollHeight - prevScrollHeightRef.current;
+      }
+    }
+  }, [historyLoading, channelMessages.length]);
+
+  const handleFileSelect = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onFileUpload) {
+      onFileUpload(file);
+    }
+    e.target.value = "";
+  }, [onFileUpload]);
 
   const messagesWithDates = useMemo(() => {
     const result: (ChatMessage | { type: "separator"; date: string; key: string })[] = [];
@@ -121,7 +165,16 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         )}
       </div>
 
-      <div className="chat-messages">
+      <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
+        {historyLoading && (
+          <div className="chat-history-loading">
+            <Loader size={14} className="spinner" />
+            <span>{t("chat.loadingHistory")}</span>
+          </div>
+        )}
+        {!historyLoading && hasMoreHistory === false && channelMessages.length > 0 && (
+          <div className="chat-history-end">{t("chat.historyStart")}</div>
+        )}
         {channelMessages.length === 0 && (
           <div className="chat-empty">{t("chat.noMessages")}</div>
         )}
@@ -173,6 +226,14 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
       )}
 
       <div className="chat-input-area">
+        {canUpload && onFileUpload && (
+          <>
+            <button className="chat-upload-btn" onClick={handleFileSelect} title={t("files.upload")}>
+              <Upload size={18} />
+            </button>
+            <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFileInputChange} />
+          </>
+        )}
         <div className="chat-input-wrapper">
           <textarea
             className="chat-input"
@@ -358,6 +419,37 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           border-radius: 10px;
           text-transform: uppercase;
           letter-spacing: 0.3px;
+        }
+        .chat-history-loading {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 12px;
+          font-size: 12px;
+          color: var(--text-muted);
+        }
+        .chat-history-loading .spinner {
+          animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+        .chat-history-end {
+          text-align: center;
+          padding: 12px;
+          font-size: 11px;
+          color: var(--text-muted);
+          font-style: italic;
+        }
+        .chat-upload-btn {
+          padding: 8px;
+          color: var(--text-muted);
+          border-radius: var(--radius);
+          transition: color 0.2s;
+        }
+        .chat-upload-btn:hover {
+          color: var(--accent);
         }
       `}</style>
     </div>

@@ -81,6 +81,13 @@ export interface PinnedMessage {
   timestamp: number;
 }
 
+export interface ChannelMember {
+  userId: string;
+  nickname: string;
+  role: string;
+  status: string;
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
@@ -91,7 +98,10 @@ export interface UseWebSocketReturn {
   users: { userId: string; nickname: string; role: string; status: string }[];
   searchResults: SearchResult[];
   pinnedMessages: PinnedMessage[];
+  channelMembers: ChannelMember[];
   reconnectIn: number;
+  historyLoading: boolean;
+  hasMoreHistory: boolean;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
   sendChat: (channel: string, content: string) => void;
@@ -121,6 +131,9 @@ export interface UseWebSocketReturn {
   updateServerSettings: (serverName: string, motd: string) => void;
   requestBanList: () => void;
   unbanUser: (publicKey: string) => void;
+  setStatus: (status: string) => void;
+  requestChannelMembers: (channel: string) => void;
+  loadHistory: (channel: string, beforeTimestamp: number) => void;
 }
 
 export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWebSocketReturn {
@@ -139,7 +152,10 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string }[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
+  const [channelMembers, setChannelMembers] = useState<ChannelMember[]>([]);
   const [reconnectIn, setReconnectIn] = useState(0);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [hasMoreHistory, setHasMoreHistory] = useState(true);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -326,6 +342,42 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         case "server.settings_updated": {
           const payload = msg.payload as { serverName: string; motd: string };
           setServerInfo((prev) => prev ? { ...prev, name: payload.serverName, motd: payload.motd } : prev);
+          break;
+        }
+        case "user.status_changed": {
+          const payload = msg.payload as { userId: string; status: string };
+          setUsers((prev) =>
+            prev.map((u) => u.userId === payload.userId ? { ...u, status: payload.status } : u)
+          );
+          break;
+        }
+        case "channel.members": {
+          const payload = msg.payload as { channel: string; members: ChannelMember[] };
+          setChannelMembers(payload.members || []);
+          break;
+        }
+        case "chat.history": {
+          const payload = msg.payload as { channel: string; messages: { id: string; timestamp: number; payload: ChatMessagePayload & { replyTo?: string } }[]; hasMore: boolean };
+          setHistoryLoading(false);
+          setHasMoreHistory(payload.hasMore);
+          if (payload.messages && payload.messages.length > 0) {
+            setMessages((prev) => {
+              const newMsgs: ChatMessage[] = payload.messages.map((m) => ({
+                id: m.id,
+                channel: m.payload.channel,
+                userId: m.payload.userId,
+                nickname: m.payload.nickname,
+                content: m.payload.content,
+                role: m.payload.role,
+                timestamp: m.timestamp,
+                replyTo: m.payload.replyTo,
+              }));
+              // Prepend older messages, deduping by id
+              const existingIds = new Set(prev.map((m) => m.id));
+              const unique = newMsgs.filter((m) => !existingIds.has(m.id));
+              return [...unique, ...prev].sort((a, b) => a.timestamp - b.timestamp);
+            });
+          }
           break;
         }
         case "error": {
@@ -600,6 +652,28 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
+  const setUserStatus = useCallback((status: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("user.status", { status });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const requestChannelMembers = useCallback((channel: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("channel.members", { channel });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const loadHistory = useCallback((channel: string, beforeTimestamp: number) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      setHistoryLoading(true);
+      const msg = createMessage("chat.history", { channel, before: beforeTimestamp, limit: 50 });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
@@ -628,7 +702,10 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     users,
     searchResults,
     pinnedMessages,
+    channelMembers,
     reconnectIn,
+    historyLoading,
+    hasMoreHistory,
     connect,
     disconnect,
     sendChat,
@@ -658,5 +735,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     updateServerSettings,
     requestBanList,
     unbanUser,
+    setStatus: setUserStatus,
+    requestChannelMembers,
+    loadHistory,
   };
 }

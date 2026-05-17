@@ -65,5 +65,12 @@
   "notif.muteSound": "Mute sounds",
   "notif.unmuteSound": "Unmute sounds",
   "notif.muteDesktop": "Mute notifications",
-  "notif.unmuteDesktop": "Unmute notifications"
+  "notif.unmuteDesktop": "Unmute notifications",
+  "status.available": "Available",
+  "status.away": "Away",
+  "status.busy": "Busy",
+  "chat.loadingHistory": "Loading older messages...",
+  "chat.historyStart": "Beginning of conversation",
+  "files.dropHere": "Drop file to upload",
+  "files.uploading": "Uploading..."
 }

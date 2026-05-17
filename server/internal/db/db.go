@@ -480,3 +480,29 @@ func (d *DB) IsBanned(publicKey string) (bool, error) {
 	err := d.conn.QueryRow("SELECT COUNT(*) FROM bans WHERE public_key = ?", publicKey).Scan(&count)
 	return count > 0, err
 }
+
+func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]Message, error) {
+	rows, err := d.conn.Query(
+		"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?",
+		channel, before, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+	}
+
+	// Reverse to chronological order
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
+	return messages, nil
+}

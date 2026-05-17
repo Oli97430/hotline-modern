@@ -65,5 +65,12 @@
   "notif.muteSound": "Couper les sons",
   "notif.unmuteSound": "Activer les sons",
   "notif.muteDesktop": "Couper les notifications",
-  "notif.unmuteDesktop": "Activer les notifications"
+  "notif.unmuteDesktop": "Activer les notifications",
+  "status.available": "Disponible",
+  "status.away": "Absent",
+  "status.busy": "Occupé",
+  "chat.loadingHistory": "Chargement des anciens messages...",
+  "chat.historyStart": "Début de la conversation",
+  "files.dropHere": "Déposer le fichier pour téléverser",
+  "files.uploading": "Téléversement..."
 }
