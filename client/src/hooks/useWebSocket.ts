@@ -13,7 +13,7 @@ import {
 } from "../lib/protocol";
 import { Identity, getPublicKeyHex, signMessage } from "../lib/crypto";
 
-export type ConnectionStatus = "disconnected" | "connecting" | "authenticating" | "connected";
+export type ConnectionStatus = "disconnected" | "connecting" | "authenticating" | "connected" | "reconnecting";
 
 export interface ChatMessage {
   id: string;
@@ -55,6 +55,15 @@ interface UseWebSocketOptions {
   onError?: (message: string) => void;
 }
 
+export interface SearchResult {
+  id: string;
+  channel: string;
+  userId: string;
+  nickname: string;
+  content: string;
+  timestamp: number;
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
@@ -63,6 +72,8 @@ export interface UseWebSocketReturn {
   typingUsers: TypingUser[];
   channels: { name: string; topic: string; userCount: number }[];
   users: { userId: string; nickname: string; role: string; status: string }[];
+  searchResults: SearchResult[];
+  reconnectIn: number;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
   sendChat: (channel: string, content: string) => void;
@@ -78,11 +89,14 @@ export interface UseWebSocketReturn {
   banUser: (userId: string) => void;
   setUserRole: (userId: string, role: string) => void;
   setTopic: (channel: string, topic: string) => void;
+  search: (query: string, channel?: string) => void;
+  clearSearch: () => void;
 }
 
 export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWebSocketReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectCountRef = useRef(0);
   const addressRef = useRef<string>("");
   const nicknameRef = useRef<string>("");
 
@@ -93,6 +107,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number }[]>([]);
   const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string }[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [reconnectIn, setReconnectIn] = useState(0);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -208,6 +224,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           });
           break;
         }
+        case "chat.search_results": {
+          const payload = msg.payload as { query: string; results: SearchResult[] };
+          setSearchResults(payload.results || []);
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -235,18 +256,36 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
-      ws.onopen = () => {};
+      ws.onopen = () => {
+        reconnectCountRef.current = 0;
+        setReconnectIn(0);
+      };
 
       ws.onmessage = handleMessage;
 
       ws.onclose = () => {
-        setStatus("disconnected");
         if (addressRef.current) {
+          const attempt = reconnectCountRef.current;
+          const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+          reconnectCountRef.current = attempt + 1;
+          setStatus("reconnecting");
+          setReconnectIn(Math.round(delay / 1000));
+
+          const countdownInterval = window.setInterval(() => {
+            setReconnectIn((v) => {
+              if (v <= 1) { clearInterval(countdownInterval); return 0; }
+              return v - 1;
+            });
+          }, 1000);
+
           reconnectTimerRef.current = window.setTimeout(() => {
+            clearInterval(countdownInterval);
             if (addressRef.current) {
               connect(addressRef.current, nicknameRef.current);
             }
-          }, 3000);
+          }, delay);
+        } else {
+          setStatus("disconnected");
         }
       };
 
@@ -367,6 +406,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
+  const search = useCallback((query: string, channel?: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("chat.search", { query, channel: channel || "" });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const clearSearch = useCallback(() => {
+    setSearchResults([]);
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
@@ -393,6 +443,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     typingUsers,
     channels,
     users,
+    searchResults,
+    reconnectIn,
     connect,
     disconnect,
     sendChat,
@@ -408,5 +460,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     banUser,
     setUserRole,
     setTopic,
+    search,
+    clearSearch,
   };
 }

@@ -50,5 +50,16 @@
   "chat.typing": "{{name}} is typing...",
   "chat.typingMultiple": "{{count}} people are typing...",
   "chat.dmPlaceholder": "Message {{name}}...",
-  "users.sendDM": "Send message"
+  "users.sendDM": "Send message",
+  "search.title": "Search messages",
+  "search.placeholder": "Search messages...",
+  "search.allChannels": "All channels",
+  "search.noResults": "No results found",
+  "connection.reconnecting": "Reconnecting in {{seconds}}s...",
+  "connection.connecting": "Connecting...",
+  "connection.authenticating": "Authenticating...",
+  "notif.muteSound": "Mute sounds",
+  "notif.unmuteSound": "Unmute sounds",
+  "notif.muteDesktop": "Mute notifications",
+  "notif.unmuteDesktop": "Unmute notifications"
 }

@@ -217,6 +217,8 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleTyping(client, msg)
 	case "channel.delete":
 		h.handleChannelDelete(client, msg)
+	case "chat.search":
+		h.handleSearch(client, msg)
 	}
 }
 
@@ -838,6 +840,51 @@ func (h *Hub) handleChannelDelete(client *Client, msg Message) {
 
 	h.chat.DeleteChannel(payload.Name)
 	h.broadcastChannelList()
+}
+
+func (h *Hub) handleSearch(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		Query   string `json:"query"`
+		Channel string `json:"channel"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if len(payload.Query) < 2 {
+		h.sendError(client, "query too short")
+		return
+	}
+
+	results, err := h.chat.SearchMessages(payload.Query, payload.Channel, 30)
+	if err != nil {
+		h.sendError(client, "search failed")
+		return
+	}
+
+	var msgs []map[string]interface{}
+	for _, m := range results {
+		msgs = append(msgs, map[string]interface{}{
+			"id":        m.ID,
+			"channel":   m.Channel,
+			"userId":    m.UserKey,
+			"nickname":  m.Nickname,
+			"content":   m.Content,
+			"timestamp": m.Timestamp.UnixMilli(),
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      "chat.search_results",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"query": payload.Query, "results": msgs}),
+	})
 }
 
 func mustMarshal(v interface{}) json.RawMessage {

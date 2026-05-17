@@ -83,7 +83,15 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
 
       {menuUser && menuTarget && (
         <div ref={menuRef} className="user-menu" style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}>
-          <div className="user-menu-header">{menuTarget.nickname}</div>
+          <div className="user-menu-header">
+            <span className="user-menu-nick">{menuTarget.nickname}</span>
+            <span className="user-menu-role" style={{ color: `var(--role-${menuTarget.role})` }}>
+              {t(`roles.${menuTarget.role}`)}
+            </span>
+          </div>
+          <div className="user-menu-pubkey" title={menuTarget.userId}>
+            {menuTarget.userId.slice(0, 16)}...
+          </div>
           <button onClick={() => { onDM?.(menuUser); setMenuUser(null); }}>
             {t("users.sendDM")}
           </button>
@@ -171,8 +179,28 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
         }
         .user-menu-header {
           padding: 6px 10px;
-          font-size: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          border-bottom: 1px solid var(--border);
+          margin-bottom: 4px;
+        }
+        .user-menu-nick {
+          font-size: 13px;
           font-weight: 600;
+          color: var(--text-primary);
+        }
+        .user-menu-role {
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .user-menu-pubkey {
+          padding: 2px 10px 6px;
+          font-size: 10px;
+          font-family: var(--font-mono);
           color: var(--text-muted);
           border-bottom: 1px solid var(--border);
           margin-bottom: 4px;

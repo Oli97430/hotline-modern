@@ -8,6 +8,9 @@ import { FileBrowser } from "./components/FileBrowser";
 import { ServerBanner } from "./components/ServerBanner";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { CreateChannelModal } from "./components/CreateChannelModal";
+import { SearchPanel } from "./components/SearchPanel";
+import { ConnectionStatus } from "./components/ConnectionStatus";
+import { NotificationSettings, NotifPrefs, loadNotifPrefs } from "./components/NotificationSettings";
 import { useIdentity } from "./hooks/useIdentity";
 import { useWebSocket } from "./hooks/useWebSocket";
 import { getPublicKeyHex, signMessage } from "./lib/crypto";
@@ -22,8 +25,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [dmUnreadCounts, setDmUnreadCounts] = useState<Record<string, number>>({});
+  const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(loadNotifPrefs);
   const prevMessagesLenRef = useRef(0);
   const prevDmLenRef = useRef(0);
   const activeChannelRef = useRef(activeChannel);
@@ -111,7 +116,11 @@ export default function App() {
     [ws, activeChannel]
   );
 
+  const notifPrefsRef = useRef(notifPrefs);
+  useEffect(() => { notifPrefsRef.current = notifPrefs; }, [notifPrefs]);
+
   const playNotifSound = useCallback(() => {
+    if (!notifPrefsRef.current.soundEnabled) return;
     try {
       const ctx = new AudioContext();
       const osc = ctx.createOscillator();
@@ -178,6 +187,7 @@ export default function App() {
   }, [ws.dmMessages]);
 
   const showDesktopNotif = useCallback((title: string, body: string) => {
+    if (!notifPrefsRef.current.desktopEnabled) return;
     if (!("Notification" in window)) return;
     if (Notification.permission === "default") {
       Notification.requestPermission();
@@ -236,6 +246,9 @@ export default function App() {
     return <ConnectDialog onConnect={handleConnect} isConnecting={ws.status === "connecting"} />;
   }
 
+  const handleSearchOpen = () => setShowSearch(true);
+  const handleSearchClose = () => { setShowSearch(false); ws.clearSearch(); };
+
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canUpload = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canDownload = ws.serverInfo?.role !== "guest";
@@ -263,10 +276,14 @@ export default function App() {
           nickname={ws.serverInfo?.userId ? (ws.users.find(u => u.userId === ws.serverInfo?.userId)?.nickname || "") : ""}
           role={ws.serverInfo?.role || ""}
         />
-        <LanguageSelector />
+        <div className="app-sidebar-bottom">
+          <NotificationSettings prefs={notifPrefs} onChange={setNotifPrefs} />
+          <LanguageSelector />
+        </div>
       </div>
 
       <main className="app-main">
+        <ConnectionStatus status={ws.status} reconnectIn={ws.reconnectIn} />
         {ws.serverInfo?.motd && <ServerBanner motd={ws.serverInfo.motd} />}
 
         {error && (
@@ -274,6 +291,14 @@ export default function App() {
         )}
 
         <div className="app-chat-row">
+          {showSearch && (
+            <SearchPanel
+              onSearch={ws.search}
+              onClose={handleSearchClose}
+              results={ws.searchResults}
+              activeChannel={activeChannel}
+            />
+          )}
           <ChatPanel
             messages={activeDM ? dmMessagesAsChatMessages : ws.messages}
             activeChannel={activeChannel}
@@ -284,6 +309,7 @@ export default function App() {
             onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : ws.sendChat}
             onSlashCommand={activeDM ? undefined : handleSlashCommand}
             onTyping={() => activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel)}
+            onSearchOpen={handleSearchOpen}
           />
 
           <button
@@ -334,6 +360,13 @@ export default function App() {
           flex-direction: column;
           background: var(--bg-secondary);
           border-right: 1px solid var(--border);
+        }
+        .app-sidebar-bottom {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 8px 12px;
+          border-top: 1px solid var(--border);
         }
         .app-main {
           flex: 1;

@@ -200,3 +200,33 @@ func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 	}
 	return messages, nil
 }
+
+func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message, error) {
+	var rows *sql.Rows
+	var err error
+	if channel != "" {
+		rows, err = d.conn.Query(
+			"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?",
+			channel, "%"+query+"%", limit,
+		)
+	} else {
+		rows, err = d.conn.Query(
+			"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?",
+			"%"+query+"%", limit,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var m Message
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+	}
+	return messages, nil
+}

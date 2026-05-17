@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Smile } from "lucide-react";
+import { Send, Smile, Search } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { EmojiPicker } from "./EmojiPicker";
 import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
@@ -27,9 +27,10 @@ interface ChatPanelProps {
   onSendMessage: (channel: string, content: string) => void;
   onSlashCommand?: (command: string, args: string[]) => void;
   onTyping?: () => void;
+  onSearchOpen?: () => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -104,6 +105,11 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           {dmMode ? `@ ${dmMode.peerNick}` : `# ${activeChannel}`}
         </span>
         {!dmMode && channelTopic && <span className="chat-topic">{channelTopic}</span>}
+        {onSearchOpen && (
+          <button className="chat-search-btn" onClick={onSearchOpen} title={t("search.title")}>
+            <Search size={16} />
+          </button>
+        )}
       </div>
 
       <div className="chat-messages">
@@ -133,13 +139,13 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
 
       <div className="chat-input-area">
         <div className="chat-input-wrapper">
-          <input
-            type="text"
+          <textarea
             className="chat-input"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={dmMode ? t("chat.dmPlaceholder", { name: dmMode.peerNick }) : t("chat.placeholder")}
+            rows={1}
           />
           <button className="emoji-btn" onClick={() => setShowEmoji((v) => !v)} title="Emoji">
             <Smile size={18} />
@@ -167,6 +173,16 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           display: flex;
           align-items: center;
           gap: 12px;
+        }
+        .chat-search-btn {
+          margin-left: auto;
+          color: var(--text-muted);
+          padding: 4px;
+          border-radius: 4px;
+          transition: color 0.2s;
+        }
+        .chat-search-btn:hover {
+          color: var(--accent);
         }
         .chat-channel-name {
           font-size: 15px;
@@ -214,6 +230,25 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         .chat-input {
           flex: 1;
           padding: 10px 38px 10px 14px;
+          resize: none;
+          min-height: 38px;
+          max-height: 120px;
+          overflow-y: auto;
+          line-height: 1.4;
+          font-family: inherit;
+          font-size: inherit;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text-primary);
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .chat-input:focus {
+          border-color: var(--accent);
+        }
+        .chat-input::placeholder {
+          color: var(--text-muted);
         }
         .emoji-btn {
           position: absolute;

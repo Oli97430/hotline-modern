@@ -50,5 +50,16 @@
   "chat.typing": "{{name}} écrit...",
   "chat.typingMultiple": "{{count}} personnes écrivent...",
   "chat.dmPlaceholder": "Message à {{name}}...",
-  "users.sendDM": "Envoyer un message"
+  "users.sendDM": "Envoyer un message",
+  "search.title": "Rechercher des messages",
+  "search.placeholder": "Rechercher...",
+  "search.allChannels": "Tous les salons",
+  "search.noResults": "Aucun résultat",
+  "connection.reconnecting": "Reconnexion dans {{seconds}}s...",
+  "connection.connecting": "Connexion...",
+  "connection.authenticating": "Authentification...",
+  "notif.muteSound": "Couper les sons",
+  "notif.unmuteSound": "Activer les sons",
+  "notif.muteDesktop": "Couper les notifications",
+  "notif.unmuteDesktop": "Activer les notifications"
 }

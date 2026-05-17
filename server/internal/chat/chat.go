@@ -55,3 +55,13 @@ func (m *Manager) SetTopic(channel, topic string) error {
 func (m *Manager) DeleteChannel(name string) error {
 	return m.db.DeleteChannel(name)
 }
+
+func (m *Manager) SearchMessages(query string, channel string, limit int) ([]db.Message, error) {
+	if limit <= 0 {
+		limit = 30
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	return m.db.SearchMessages(query, channel, limit)
+}
