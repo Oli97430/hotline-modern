@@ -235,6 +235,12 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handlePinList(client, msg)
 	case "user.nick":
 		h.handleNickChange(client, msg)
+	case "admin.settings":
+		h.handleAdminSettings(client, msg)
+	case "admin.banlist":
+		h.handleBanList(client)
+	case "admin.unban":
+		h.handleUnban(client, msg)
 	}
 }
 
@@ -309,6 +315,7 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 	var payload struct {
 		Channel string `json:"channel"`
 		Content string `json:"content"`
+		ReplyTo string `json:"replyTo"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return
@@ -325,19 +332,24 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 	}
 
 	msgID := uuid.New().String()
-	h.chat.SaveMessage(msgID, payload.Channel, client.PublicKey, client.Nickname, payload.Content)
+	h.chat.SaveMessage(msgID, payload.Channel, client.PublicKey, client.Nickname, payload.Content, payload.ReplyTo)
+
+	chatPayload := map[string]interface{}{
+		"channel":  payload.Channel,
+		"userId":   client.PublicKey,
+		"nickname": client.Nickname,
+		"content":  payload.Content,
+		"role":     client.Role,
+	}
+	if payload.ReplyTo != "" {
+		chatPayload["replyTo"] = payload.ReplyTo
+	}
 
 	chatMsg := Message{
 		Type:      "chat.message",
 		ID:        msgID,
 		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"channel":  payload.Channel,
-			"userId":   client.PublicKey,
-			"nickname": client.Nickname,
-			"content":  payload.Content,
-			"role":     client.Role,
-		}),
+		Payload:   mustMarshal(chatPayload),
 	}
 
 	h.broadcastToChannel(payload.Channel, chatMsg)
@@ -349,7 +361,8 @@ func (h *Hub) handleChannelJoin(client *Client, msg Message) {
 	}
 
 	var payload struct {
-		Channel string `json:"channel"`
+		Channel  string `json:"channel"`
+		Password string `json:"password"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return
@@ -358,6 +371,15 @@ func (h *Hub) handleChannelJoin(client *Client, msg Message) {
 	if !h.permissions.CanJoinChannel(client.Role, payload.Channel) {
 		h.sendError(client, "permission denied")
 		return
+	}
+
+	// Check password for private channels (admin/op bypass)
+	if client.Role != "admin" && client.Role != "operator" {
+		pw, _ := h.chat.GetChannelPassword(payload.Channel)
+		if pw != "" && payload.Password != pw {
+			h.sendError(client, "incorrect channel password")
+			return
+		}
 	}
 
 	h.joinChannel(client, payload.Channel)
@@ -382,8 +404,9 @@ func (h *Hub) handleChannelCreate(client *Client, msg Message) {
 	}
 
 	var payload struct {
-		Name  string `json:"name"`
-		Topic string `json:"topic"`
+		Name     string `json:"name"`
+		Topic    string `json:"topic"`
+		Password string `json:"password"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return
@@ -395,7 +418,7 @@ func (h *Hub) handleChannelCreate(client *Client, msg Message) {
 		return
 	}
 
-	if err := h.chat.CreateChannel(payload.Name, payload.Topic, client.PublicKey); err != nil {
+	if err := h.chat.CreateChannel(payload.Name, payload.Topic, client.PublicKey, payload.Password); err != nil {
 		h.sendError(client, "failed to create channel")
 		return
 	}
@@ -438,9 +461,10 @@ func (h *Hub) handleChannelList(client *Client) {
 		}
 		h.mu.RUnlock()
 		list = append(list, map[string]interface{}{
-			"name":      ch.Name,
-			"topic":     ch.Topic,
-			"userCount": count,
+			"name":        ch.Name,
+			"topic":       ch.Topic,
+			"userCount":   count,
+			"hasPassword": ch.Password != "",
 		})
 	}
 
@@ -525,9 +549,10 @@ func (h *Hub) broadcastChannelList() {
 		}
 		h.mu.RUnlock()
 		list = append(list, map[string]interface{}{
-			"name":      ch.Name,
-			"topic":     ch.Topic,
-			"userCount": count,
+			"name":        ch.Name,
+			"topic":       ch.Topic,
+			"userCount":   count,
+			"hasPassword": ch.Password != "",
 		})
 	}
 
@@ -569,17 +594,21 @@ func (h *Hub) sendHistory(client *Client, channel string) {
 		return
 	}
 	for _, m := range messages {
+		payload := map[string]interface{}{
+			"channel":  m.Channel,
+			"userId":   m.UserKey,
+			"nickname": m.Nickname,
+			"content":  m.Content,
+			"role":     h.permissions.GetRole(m.UserKey),
+		}
+		if m.ReplyTo != "" {
+			payload["replyTo"] = m.ReplyTo
+		}
 		h.sendToClient(client, Message{
 			Type:      "chat.message",
 			ID:        m.ID,
 			Timestamp: m.Timestamp.UnixMilli(),
-			Payload: mustMarshal(map[string]interface{}{
-				"channel":  m.Channel,
-				"userId":   m.UserKey,
-				"nickname": m.Nickname,
-				"content":  m.Content,
-				"role":     h.permissions.GetRole(m.UserKey),
-			}),
+			Payload:   mustMarshal(payload),
 		})
 	}
 }
@@ -637,6 +666,18 @@ func (h *Hub) handleBan(client *Client, msg Message) {
 	}
 
 	h.permissions.SetRole(payload.UserId, "guest")
+
+	// Find nickname and persist ban
+	var targetNick string
+	h.mu.RLock()
+	for _, c := range h.clients {
+		if c.PublicKey == payload.UserId {
+			targetNick = c.Nickname
+			break
+		}
+	}
+	h.mu.RUnlock()
+	h.chat.AddBan(payload.UserId, targetNick, client.PublicKey, "")
 
 	h.mu.RLock()
 	for _, c := range h.clients {
@@ -743,7 +784,7 @@ func (h *Hub) handleDMSend(client *Client, msg Message) {
 
 	dmCh := dmChannelKey(client.PublicKey, payload.TargetId)
 	msgID := uuid.New().String()
-	h.chat.SaveMessage(msgID, dmCh, client.PublicKey, client.Nickname, payload.Content)
+	h.chat.SaveMessage(msgID, dmCh, client.PublicKey, client.Nickname, payload.Content, "")
 
 	dmMsg := Message{
 		Type:      "dm.message",
@@ -856,6 +897,96 @@ func (h *Hub) handleChannelDelete(client *Client, msg Message) {
 
 	h.chat.DeleteChannel(payload.Name)
 	h.broadcastChannelList()
+}
+
+func (h *Hub) handleAdminSettings(client *Client, msg Message) {
+	if client.Role != "admin" {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		ServerName string `json:"serverName"`
+		Motd       string `json:"motd"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.ServerName != "" {
+		h.serverName = payload.ServerName
+	}
+	h.motd = payload.Motd
+
+	// Broadcast updated info to all clients
+	h.broadcastAll(Message{
+		Type:      "server.settings_updated",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"serverName": h.serverName,
+			"motd":       h.motd,
+		}),
+	})
+}
+
+func (h *Hub) handleBanList(client *Client) {
+	if client.Role != "admin" && client.Role != "operator" {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	bans, err := h.chat.GetBans()
+	if err != nil {
+		h.sendError(client, "failed to get ban list")
+		return
+	}
+
+	var list []map[string]interface{}
+	for _, b := range bans {
+		list = append(list, map[string]interface{}{
+			"publicKey": b.PublicKey,
+			"nickname":  b.Nickname,
+			"bannedBy":  b.BannedBy,
+			"reason":    b.Reason,
+			"bannedAt":  b.BannedAt.UnixMilli(),
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      "admin.banlist",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"bans": list}),
+	})
+}
+
+func (h *Hub) handleUnban(client *Client, msg Message) {
+	if client.Role != "admin" && client.Role != "operator" {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		PublicKey string `json:"publicKey"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.RemoveBan(payload.PublicKey); err != nil {
+		h.sendError(client, "failed to unban")
+		return
+	}
+
+	h.permissions.SetRole(payload.PublicKey, "member")
+
+	h.sendToClient(client, Message{
+		Type:      "admin.unbanned",
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"publicKey": payload.PublicKey}),
+	})
 }
 
 func (h *Hub) handleChatEdit(client *Client, msg Message) {

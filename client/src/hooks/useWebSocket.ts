@@ -25,6 +25,7 @@ export interface ChatMessage {
   timestamp: number;
   edited?: boolean;
   reactions?: MessageReaction[];
+  replyTo?: string;
 }
 
 export interface DMMessage {
@@ -86,7 +87,7 @@ export interface UseWebSocketReturn {
   messages: ChatMessage[];
   dmMessages: DMMessage[];
   typingUsers: TypingUser[];
-  channels: { name: string; topic: string; userCount: number }[];
+  channels: { name: string; topic: string; userCount: number; hasPassword: boolean }[];
   users: { userId: string; nickname: string; role: string; status: string }[];
   searchResults: SearchResult[];
   pinnedMessages: PinnedMessage[];
@@ -98,7 +99,7 @@ export interface UseWebSocketReturn {
   sendTyping: (channel: string, targetId?: string) => void;
   joinChannel: (channel: string) => void;
   leaveChannel: (channel: string) => void;
-  createChannel: (name: string, topic: string) => void;
+  createChannel: (name: string, topic: string, password?: string) => void;
   deleteChannel: (name: string) => void;
   requestUserList: () => void;
   requestChannelList: () => void;
@@ -116,6 +117,10 @@ export interface UseWebSocketReturn {
   unpinMessage: (messageId: string, channel: string) => void;
   requestPins: (channel: string) => void;
   changeNickname: (nickname: string) => void;
+  sendChatWithReply: (channel: string, content: string, replyTo: string) => void;
+  updateServerSettings: (serverName: string, motd: string) => void;
+  requestBanList: () => void;
+  unbanUser: (publicKey: string) => void;
 }
 
 export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWebSocketReturn {
@@ -130,7 +135,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
-  const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number }[]>([]);
+  const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number; hasPassword: boolean }[]>([]);
   const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string }[]>([]);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
@@ -175,7 +180,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           break;
         }
         case "chat.message": {
-          const payload = msg.payload as ChatMessagePayload;
+          const payload = msg.payload as ChatMessagePayload & { replyTo?: string };
           setMessages((prev) => {
             if (prev.some((m) => m.id === msg.id)) return prev;
             return [
@@ -188,6 +193,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
                 content: payload.content,
                 role: payload.role,
                 timestamp: msg.timestamp,
+                replyTo: payload.replyTo,
               },
             ].sort((a, b) => a.timestamp - b.timestamp);
           });
@@ -317,6 +323,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           );
           break;
         }
+        case "server.settings_updated": {
+          const payload = msg.payload as { serverName: string; motd: string };
+          setServerInfo((prev) => prev ? { ...prev, name: payload.serverName, motd: payload.motd } : prev);
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -424,9 +435,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
-  const createChannel = useCallback((name: string, topic: string) => {
+  const createChannel = useCallback((name: string, topic: string, password?: string) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.create", { name, topic });
+      const msg = createMessage("channel.create", { name, topic, password: password || "" });
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
@@ -561,6 +572,34 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
+  const sendChatWithReply = useCallback((channel: string, content: string, replyTo: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("chat.send", { channel, content, replyTo });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const updateServerSettings = useCallback((serverName: string, motd: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("admin.settings", { serverName, motd });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const requestBanList = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("admin.banlist", {});
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
+  const unbanUser = useCallback((publicKey: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      const msg = createMessage("admin.unban", { publicKey });
+      wsRef.current.send(JSON.stringify(msg));
+    }
+  }, []);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
@@ -615,5 +654,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     unpinMessage,
     requestPins,
     changeNickname,
+    sendChatWithReply,
+    updateServerSettings,
+    requestBanList,
+    unbanUser,
   };
 }

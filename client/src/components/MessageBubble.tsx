@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Smile, Pencil, Trash2, Pin } from "lucide-react";
+import { Smile, Pencil, Trash2, Pin, Reply } from "lucide-react";
 import { MessageReaction } from "../hooks/useWebSocket";
 
 const IMAGE_REGEX = /\b(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?)\b/gi;
@@ -49,11 +49,13 @@ interface MessageBubbleProps {
   onEdit?: (messageId: string, content: string) => void;
   onDelete?: (messageId: string) => void;
   onPin?: (messageId: string) => void;
+  onReply?: (messageId: string) => void;
+  replyContext?: { nickname: string; content: string };
 }
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin }: MessageBubbleProps) {
+export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyContext }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
   const [showActions, setShowActions] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -92,6 +94,12 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => { setShowActions(false); setShowReactPicker(false); }}
     >
+      {replyContext && (
+        <div className="message-reply-context">
+          <span className="reply-context-nick">{replyContext.nickname}</span>
+          <span className="reply-context-text">{replyContext.content.slice(0, 60)}</span>
+        </div>
+      )}
       <div className="message-header">
         <span className="message-nick" style={{ color: roleColor }}>
           {nickname}
@@ -145,6 +153,7 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
 
       {showActions && !editing && (
         <div className="message-actions">
+          <button onClick={() => onReply?.(id)} title="Reply"><Reply size={14} /></button>
           <button onClick={() => setShowReactPicker((v) => !v)} title="React"><Smile size={14} /></button>
           {isOwn && <button onClick={() => { setEditing(true); setEditContent(content); }} title="Edit"><Pencil size={14} /></button>}
           {(isOwn || canModerate) && <button onClick={() => onDelete?.(id)} title="Delete"><Trash2 size={14} /></button>}
@@ -169,6 +178,25 @@ export function MessageBubble({ id, nickname, content, role, timestamp, isOwn, e
         }
         .message:hover {
           background: var(--bg-secondary);
+        }
+        .message-reply-context {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px 0 4px 12px;
+          border-left: 2px solid var(--accent);
+          margin-bottom: 2px;
+          font-size: 12px;
+        }
+        .reply-context-nick {
+          font-weight: 600;
+          color: var(--accent);
+        }
+        .reply-context-text {
+          color: var(--text-muted);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .message.own .message-nick {
           font-weight: 600;

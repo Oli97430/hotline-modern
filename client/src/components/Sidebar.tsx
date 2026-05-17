@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { Hash, Plus, LogOut, Circle, MessageSquare, Trash2 } from "lucide-react";
+import { Hash, Plus, LogOut, Circle, MessageSquare, Trash2, Lock } from "lucide-react";
 
 interface DMConversation {
   peerId: string;
@@ -10,7 +10,7 @@ interface DMConversation {
 
 interface SidebarProps {
   serverName: string;
-  channels: { name: string; topic: string; userCount: number }[];
+  channels: { name: string; topic: string; userCount: number; hasPassword?: boolean }[];
   activeChannel: string;
   activeDM: string;
   dmConversations: DMConversation[];
@@ -69,7 +69,7 @@ export function Sidebar({
               className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
               onClick={() => onSelectChannel(ch.name)}
             >
-              <Hash size={14} />
+              {ch.hasPassword ? <Lock size={14} /> : <Hash size={14} />}
               <span className="channel-name">{ch.name}</span>
               {(unreadCounts[ch.name] || 0) > 0 && (
                 <span className="channel-unread">{unreadCounts[ch.name]}</span>

@@ -26,6 +26,7 @@ export default function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [dmUnreadCounts, setDmUnreadCounts] = useState<Record<string, number>>({});
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(loadNotifPrefs);
@@ -72,8 +73,8 @@ export default function App() {
     setShowCreateModal(true);
   };
 
-  const handleCreateChannelSubmit = (name: string, topic: string) => {
-    ws.createChannel(name, topic);
+  const handleCreateChannelSubmit = (name: string, topic: string, password: string) => {
+    ws.createChannel(name, topic, password);
     setTimeout(() => {
       handleSelectChannelWithClear(name);
       ws.requestChannelList();
@@ -249,6 +250,36 @@ export default function App() {
   const handleSearchOpen = () => setShowSearch(true);
   const handleSearchClose = () => { setShowSearch(false); ws.clearSearch(); };
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSearch((v) => !v);
+      }
+      if (e.key === "Escape") {
+        if (showSearch) { handleSearchClose(); return; }
+        if (replyTo) { setReplyTo(null); return; }
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [showSearch, replyTo]);
+
+  const handleReply = (messageId: string) => {
+    const msg = (activeDM ? dmMessagesAsChatMessages : ws.messages).find((m) => m.id === messageId);
+    if (msg) setReplyTo({ id: msg.id, nickname: msg.nickname, content: msg.content });
+  };
+
+  const handleSendWithReply = (channel: string, content: string) => {
+    if (replyTo) {
+      ws.sendChatWithReply(channel, content, replyTo.id);
+      setReplyTo(null);
+    } else {
+      ws.sendChat(channel, content);
+    }
+  };
+
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canUpload = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canDownload = ws.serverInfo?.role !== "guest";
@@ -307,7 +338,7 @@ export default function App() {
             currentRole={ws.serverInfo?.role}
             typingUsers={ws.typingUsers}
             dmMode={activeDM ? { peerId: activeDM, peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8) } : undefined}
-            onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : ws.sendChat}
+            onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : handleSendWithReply}
             onSlashCommand={activeDM ? undefined : handleSlashCommand}
             onTyping={() => activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel)}
             onSearchOpen={handleSearchOpen}
@@ -316,6 +347,9 @@ export default function App() {
             onEdit={ws.editMessage}
             onDelete={ws.deleteMessage}
             onPin={(msgId) => ws.pinMessage(msgId, activeChannel)}
+            onReply={handleReply}
+            replyTo={replyTo}
+            onCancelReply={() => setReplyTo(null)}
           />
 
           <button

@@ -14,13 +14,14 @@ func New(database *db.DB) *Manager {
 	return &Manager{db: database}
 }
 
-func (m *Manager) SaveMessage(id, channel, userKey, nickname, content string) error {
+func (m *Manager) SaveMessage(id, channel, userKey, nickname, content, replyTo string) error {
 	msg := db.Message{
 		ID:        id,
 		Channel:   channel,
 		UserKey:   userKey,
 		Nickname:  nickname,
 		Content:   content,
+		ReplyTo:   replyTo,
 		Timestamp: time.Now(),
 	}
 	return m.db.SaveMessage(msg)
@@ -40,8 +41,12 @@ func (m *Manager) GetChannels() ([]db.Channel, error) {
 	return m.db.GetChannels()
 }
 
-func (m *Manager) CreateChannel(name, topic, createdBy string) error {
-	return m.db.CreateChannel(name, topic, createdBy)
+func (m *Manager) CreateChannel(name, topic, createdBy, password string) error {
+	return m.db.CreateChannel(name, topic, createdBy, password)
+}
+
+func (m *Manager) GetChannelPassword(name string) (string, error) {
+	return m.db.GetChannelPassword(name)
 }
 
 func (m *Manager) ChannelExists(name string) (bool, error) {
@@ -108,4 +113,20 @@ func (m *Manager) GetPinnedMessages(channel string) ([]db.Message, error) {
 
 func (m *Manager) GetMessageById(id string) (*db.Message, error) {
 	return m.db.GetMessageById(id)
+}
+
+func (m *Manager) AddBan(publicKey, nickname, bannedBy, reason string) error {
+	return m.db.AddBan(publicKey, nickname, bannedBy, reason)
+}
+
+func (m *Manager) RemoveBan(publicKey string) error {
+	return m.db.RemoveBan(publicKey)
+}
+
+func (m *Manager) GetBans() ([]db.Ban, error) {
+	return m.db.GetBans()
+}
+
+func (m *Manager) IsBanned(publicKey string) (bool, error) {
+	return m.db.IsBanned(publicKey)
 }

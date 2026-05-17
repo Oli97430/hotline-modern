@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface CreateChannelModalProps {
-  onSubmit: (name: string, topic: string) => void;
+  onSubmit: (name: string, topic: string, password: string) => void;
   onClose: () => void;
 }
 
@@ -10,12 +10,13 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [topic, setTopic] = useState("");
+  const [password, setPassword] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const channelName = name.trim().toLowerCase().replace(/\s+/g, "-");
     if (channelName) {
-      onSubmit(channelName, topic.trim());
+      onSubmit(channelName, topic.trim(), password.trim());
       onClose();
     }
   };
@@ -45,6 +46,17 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
             onChange={(e) => setTopic(e.target.value)}
             placeholder={t("channel.topic")}
             maxLength={128}
+          />
+        </div>
+
+        <div className="modal-field">
+          <label>{t("channel.password")}</label>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder={t("channel.passwordPlaceholder")}
+            maxLength={64}
           />
         </div>
 

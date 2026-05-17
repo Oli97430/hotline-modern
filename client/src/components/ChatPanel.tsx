@@ -34,9 +34,12 @@ interface ChatPanelProps {
   onEdit?: (messageId: string, content: string) => void;
   onDelete?: (messageId: string) => void;
   onPin?: (messageId: string) => void;
+  onReply?: (messageId: string) => void;
+  replyTo?: { id: string; nickname: string; content: string } | null;
+  onCancelReply?: () => void;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -132,6 +135,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           }
           const msg = item as ChatMessage;
           const canMod = currentRole === "admin" || currentRole === "operator";
+          const replyMsg = msg.replyTo ? channelMessages.find((m) => m.id === msg.replyTo) : undefined;
           return (
             <MessageBubble
               key={msg.id}
@@ -150,6 +154,8 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
               onEdit={onEdit}
               onDelete={onDelete}
               onPin={onPin}
+              onReply={onReply}
+              replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
             />
           );
         })}
@@ -157,6 +163,14 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
       </div>
 
       {typingText && <div className="chat-typing">{typingText}</div>}
+
+      {replyTo && (
+        <div className="chat-reply-preview">
+          <span className="reply-label">{t("chat.replyingTo")} <strong>{replyTo.nickname}</strong></span>
+          <span className="reply-content">{replyTo.content.slice(0, 80)}</span>
+          <button className="reply-cancel" onClick={onCancelReply}>&times;</button>
+        </div>
+      )}
 
       <div className="chat-input-area">
         <div className="chat-input-wrapper">
@@ -235,6 +249,36 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           color: var(--text-muted);
           font-style: italic;
           animation: fadeIn 0.15s ease;
+        }
+        .chat-reply-preview {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 16px;
+          background: var(--bg-tertiary);
+          border-left: 3px solid var(--accent);
+          font-size: 12px;
+          color: var(--text-secondary);
+          animation: fadeIn 0.1s ease;
+        }
+        .reply-label {
+          white-space: nowrap;
+        }
+        .reply-content {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-muted);
+        }
+        .reply-cancel {
+          color: var(--text-muted);
+          font-size: 18px;
+          padding: 0 4px;
+          line-height: 1;
+        }
+        .reply-cancel:hover {
+          color: var(--danger);
         }
         .chat-input-area {
           padding: 12px 16px;

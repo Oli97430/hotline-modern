@@ -23,6 +23,7 @@ type Channel struct {
 	Name      string
 	Topic     string
 	CreatedBy string
+	Password  string
 	CreatedAt time.Time
 }
 
@@ -32,6 +33,7 @@ type Message struct {
 	UserKey   string
 	Nickname  string
 	Content   string
+	ReplyTo   string
 	Timestamp time.Time
 }
 
@@ -67,6 +69,7 @@ func migrate(conn *sql.DB) error {
 		name TEXT PRIMARY KEY,
 		topic TEXT NOT NULL DEFAULT '',
 		created_by TEXT NOT NULL DEFAULT '',
+		password TEXT NOT NULL DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -76,6 +79,7 @@ func migrate(conn *sql.DB) error {
 		user_key TEXT NOT NULL,
 		nickname TEXT NOT NULL,
 		content TEXT NOT NULL,
+		reply_to TEXT NOT NULL DEFAULT '',
 		timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 		FOREIGN KEY (channel) REFERENCES channels(name),
 		FOREIGN KEY (user_key) REFERENCES users(public_key)
@@ -89,6 +93,14 @@ func migrate(conn *sql.DB) error {
 		emoji TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (message_id, user_key, emoji)
+	);
+
+	CREATE TABLE IF NOT EXISTS bans (
+		public_key TEXT PRIMARY KEY,
+		nickname TEXT NOT NULL DEFAULT '',
+		banned_by TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		banned_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS pinned_messages (
@@ -137,7 +149,7 @@ func (d *DB) HasAnyUser() (bool, error) {
 }
 
 func (d *DB) GetChannels() ([]Channel, error) {
-	rows, err := d.conn.Query("SELECT name, topic, created_by, created_at FROM channels")
+	rows, err := d.conn.Query("SELECT name, topic, created_by, password, created_at FROM channels")
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +158,7 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	var channels []Channel
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.Name, &c.Topic, &c.CreatedBy, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.Name, &c.Topic, &c.CreatedBy, &c.Password, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		channels = append(channels, c)
@@ -154,12 +166,18 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	return channels, nil
 }
 
-func (d *DB) CreateChannel(name, topic, createdBy string) error {
+func (d *DB) CreateChannel(name, topic, createdBy, password string) error {
 	_, err := d.conn.Exec(
-		"INSERT INTO channels (name, topic, created_by) VALUES (?, ?, ?)",
-		name, topic, createdBy,
+		"INSERT INTO channels (name, topic, created_by, password) VALUES (?, ?, ?, ?)",
+		name, topic, createdBy, password,
 	)
 	return err
+}
+
+func (d *DB) GetChannelPassword(name string) (string, error) {
+	var pw string
+	err := d.conn.QueryRow("SELECT password FROM channels WHERE name = ?", name).Scan(&pw)
+	return pw, err
 }
 
 func (d *DB) SetChannelTopic(name, topic string) error {
@@ -186,15 +204,15 @@ func (d *DB) ChannelExists(name string) (bool, error) {
 
 func (d *DB) SaveMessage(msg Message) error {
 	_, err := d.conn.Exec(
-		"INSERT INTO messages (id, channel, user_key, nickname, content, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-		msg.ID, msg.Channel, msg.UserKey, msg.Nickname, msg.Content, msg.Timestamp,
+		"INSERT INTO messages (id, channel, user_key, nickname, content, reply_to, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		msg.ID, msg.Channel, msg.UserKey, msg.Nickname, msg.Content, msg.ReplyTo, msg.Timestamp,
 	)
 	return err
 }
 
 func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 	rows, err := d.conn.Query(
-		"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
+		"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
 		channel, limit,
 	)
 	if err != nil {
@@ -205,7 +223,7 @@ func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -355,7 +373,7 @@ func (d *DB) UnpinMessage(messageId string) error {
 
 func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
 	rows, err := d.conn.Query(
-		`SELECT m.id, m.channel, m.user_key, m.nickname, m.content, m.timestamp
+		`SELECT m.id, m.channel, m.user_key, m.nickname, m.content, m.reply_to, m.timestamp
 		 FROM pinned_messages p JOIN messages m ON p.message_id = m.id
 		 WHERE p.channel = ? ORDER BY p.pinned_at DESC`,
 		channel,
@@ -368,7 +386,7 @@ func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
@@ -379,8 +397,8 @@ func (d *DB) GetPinnedMessages(channel string) ([]Message, error) {
 func (d *DB) GetMessageById(id string) (*Message, error) {
 	var m Message
 	err := d.conn.QueryRow(
-		"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE id = ?", id,
-	).Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp)
+		"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE id = ?", id,
+	).Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp)
 	if err != nil {
 		return nil, err
 	}
@@ -392,12 +410,12 @@ func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message,
 	var err error
 	if channel != "" {
 		rows, err = d.conn.Query(
-			"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?",
+			"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?",
 			channel, "%"+query+"%", limit,
 		)
 	} else {
 		rows, err = d.conn.Query(
-			"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?",
+			"SELECT id, channel, user_key, nickname, content, reply_to, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?",
 			"%"+query+"%", limit,
 		)
 	}
@@ -409,10 +427,56 @@ func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message,
 	var messages []Message
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.Timestamp); err != nil {
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.ReplyTo, &m.Timestamp); err != nil {
 			return nil, err
 		}
 		messages = append(messages, m)
 	}
 	return messages, nil
+}
+
+// Ban management
+type Ban struct {
+	PublicKey string
+	Nickname string
+	BannedBy string
+	Reason   string
+	BannedAt time.Time
+}
+
+func (d *DB) AddBan(publicKey, nickname, bannedBy, reason string) error {
+	_, err := d.conn.Exec(
+		"INSERT OR REPLACE INTO bans (public_key, nickname, banned_by, reason) VALUES (?, ?, ?, ?)",
+		publicKey, nickname, bannedBy, reason,
+	)
+	return err
+}
+
+func (d *DB) RemoveBan(publicKey string) error {
+	_, err := d.conn.Exec("DELETE FROM bans WHERE public_key = ?", publicKey)
+	return err
+}
+
+func (d *DB) GetBans() ([]Ban, error) {
+	rows, err := d.conn.Query("SELECT public_key, nickname, banned_by, reason, banned_at FROM bans ORDER BY banned_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bans []Ban
+	for rows.Next() {
+		var b Ban
+		if err := rows.Scan(&b.PublicKey, &b.Nickname, &b.BannedBy, &b.Reason, &b.BannedAt); err != nil {
+			return nil, err
+		}
+		bans = append(bans, b)
+	}
+	return bans, nil
+}
+
+func (d *DB) IsBanned(publicKey string) (bool, error) {
+	var count int
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM bans WHERE public_key = ?", publicKey).Scan(&count)
+	return count > 0, err
 }
