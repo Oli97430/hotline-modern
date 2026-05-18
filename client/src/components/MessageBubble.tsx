@@ -186,12 +186,34 @@ export function MessageBubble({
   const { t, i18n } = useTranslation();
 
   if (system) {
-    const systemText =
-      content === "joined" ? t("system.userJoined", { name: nickname }) : t("system.userLeft", { name: nickname });
+    // Join/leave messages
+    if (content === "joined" || content === "left") {
+      const systemText =
+        content === "joined" ? t("system.userJoined", { name: nickname }) : t("system.userLeft", { name: nickname });
+      return (
+        <div style={{ display: "flex", justifyContent: "center", padding: "4px 16px" }}>
+          <span style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", opacity: 0.7 }}>
+            {systemText}
+          </span>
+        </div>
+      );
+    }
+    // Welcome messages and other system messages (info style)
     return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "4px 16px" }}>
-        <span style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", opacity: 0.7 }}>
-          {systemText}
+      <div style={{ display: "flex", justifyContent: "center", padding: "6px 16px" }}>
+        <span
+          style={{
+            fontSize: 12,
+            color: "var(--accent, #7c5cbf)",
+            fontStyle: "italic",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            opacity: 0.9,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          {content}
         </span>
       </div>
     );

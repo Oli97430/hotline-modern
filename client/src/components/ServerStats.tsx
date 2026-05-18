@@ -1,18 +1,58 @@
-import { Clock, Hash, MessageCircle, TrendingUp, Users, X } from "lucide-react";
-import { useMemo } from "react";
+import { Activity, Clock, Cpu, Hash, HardDrive, MessageCircle, TrendingUp, Users, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useWebSocket";
+
+interface HealthData {
+  status: string;
+  uptime: number;
+  users: number;
+  channels: number;
+  goroutines: number;
+  memoryMB: number;
+  version: string;
+}
+
+function formatUptime(seconds: number): string {
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  parts.push(`${minutes}m`);
+  return parts.join(" ");
+}
 
 interface ServerStatsProps {
   messages: ChatMessage[];
   userCount: number;
   channelCount: number;
   serverName: string;
+  serverAddress?: string;
   onClose: () => void;
 }
 
-export function ServerStats({ messages, userCount, channelCount, serverName, onClose }: ServerStatsProps) {
+export function ServerStats({ messages, userCount, channelCount, serverName, serverAddress, onClose }: ServerStatsProps) {
   const { t } = useTranslation();
+  const [health, setHealth] = useState<HealthData | null>(null);
+
+  useEffect(() => {
+    if (!serverAddress) return;
+    const baseUrl = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+    const proto = serverAddress.startsWith("wss") ? "https" : "http";
+    const url = `${proto}://${baseUrl}/health`;
+    let cancelled = false;
+    const fetchHealth = () => {
+      fetch(url)
+        .then((r) => r.json())
+        .then((data) => { if (!cancelled) setHealth(data); })
+        .catch(() => {});
+    };
+    fetchHealth();
+    const interval = setInterval(fetchHealth, 30000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [serverAddress]);
 
   const stats = useMemo(() => {
     const now = Date.now();
@@ -135,6 +175,34 @@ export function ServerStats({ messages, userCount, channelCount, serverName, onC
               ))}
             </ul>
           </div>
+
+          {health && (
+            <div className="stats-section">
+              <span className="stats-section-title">{t("health.title")}</span>
+              <div className="stats-health-grid">
+                <div className="stats-health-item">
+                  <Clock size={14} />
+                  <span className="stats-health-label">{t("health.uptime")}</span>
+                  <span className="stats-health-value">{formatUptime(health.uptime)}</span>
+                </div>
+                <div className="stats-health-item">
+                  <HardDrive size={14} />
+                  <span className="stats-health-label">{t("health.memory")}</span>
+                  <span className="stats-health-value">{health.memoryMB.toFixed(1)} MB</span>
+                </div>
+                <div className="stats-health-item">
+                  <Cpu size={14} />
+                  <span className="stats-health-label">{t("health.goroutines")}</span>
+                  <span className="stats-health-value">{health.goroutines}</span>
+                </div>
+                <div className="stats-health-item">
+                  <Activity size={14} />
+                  <span className="stats-health-label">{t("health.version")}</span>
+                  <span className="stats-health-value">v{health.version}</span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <style>{`
@@ -283,6 +351,33 @@ export function ServerStats({ messages, userCount, channelCount, serverName, onC
             background: var(--bg-tertiary);
             padding: 1px 6px;
             border-radius: 8px;
+          }
+          .stats-health-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+          }
+          .stats-health-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 10px;
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--accent);
+          }
+          .stats-health-label {
+            color: var(--text-muted);
+            font-size: 10px;
+            font-weight: 500;
+          }
+          .stats-health-value {
+            margin-left: auto;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
           }
         `}</style>
       </div>

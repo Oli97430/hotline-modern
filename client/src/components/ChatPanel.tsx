@@ -1,4 +1,4 @@
-import { ArrowDown, Bookmark, Loader, Mic, Pin, Search, Send, Smile, Upload } from "lucide-react";
+import { ArrowDown, Bookmark, Loader, Megaphone, Mic, Pin, Search, Send, Smile, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage, ServerCustomEmoji, TypingUser } from "../hooks/useWebSocket";
@@ -65,6 +65,9 @@ interface ChatPanelProps {
   onSendReadReceipt?: (channel: string, messageId: string) => void;
   customEmojis?: ServerCustomEmoji[];
   serverBaseUrl?: string;
+  motd?: string;
+  automodWarning?: string | null;
+  onDismissAutomodWarning?: () => void;
 }
 
 export function ChatPanel({
@@ -111,6 +114,9 @@ export function ChatPanel({
   onSendReadReceipt,
   customEmojis,
   serverBaseUrl,
+  motd,
+  automodWarning,
+  onDismissAutomodWarning,
 }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
@@ -131,6 +137,36 @@ export function ChatPanel({
   const isLoadingHistoryRef = useRef(false);
   const prevMsgCountRef = useRef(0);
   const lastSentReceiptRef = useRef<string>("");
+
+  // --- MOTD dismiss tracking ---
+  const motdHash = motd ? btoa(unescape(encodeURIComponent(motd))).slice(0, 16) : "";
+  const [motdDismissed, setMotdDismissed] = useState<boolean>(() => {
+    if (!motdHash) return true;
+    try {
+      return localStorage.getItem("hotline-motd-dismissed") === motdHash;
+    } catch {
+      return false;
+    }
+  });
+  // Re-check when motd changes
+  useEffect(() => {
+    if (!motdHash) {
+      setMotdDismissed(true);
+      return;
+    }
+    try {
+      setMotdDismissed(localStorage.getItem("hotline-motd-dismissed") === motdHash);
+    } catch {
+      setMotdDismissed(false);
+    }
+  }, [motdHash]);
+
+  const handleDismissMotd = () => {
+    setMotdDismissed(true);
+    try {
+      localStorage.setItem("hotline-motd-dismissed", motdHash);
+    } catch { /* ignore */ }
+  };
 
   // --- localStorage last-read tracking ---
   const lastReadStorageKey = `hotline-last-read-${activeChannel}`;
@@ -480,6 +516,18 @@ export function ChatPanel({
       </div>
 
       <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
+        {motd && !motdDismissed && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", margin: "8px 12px", borderRadius: 8, background: "var(--accent, #7c5cbf)", color: "#fff", fontSize: 13 }}>
+            <Megaphone size={16} style={{ flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
+              <strong style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>{t("motd.announcement")}</strong>
+              <span>{motd}</span>
+            </div>
+            <button type="button" onClick={handleDismissMotd} title={t("motd.dismiss")} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 4, borderRadius: 4, opacity: 0.7 }}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {stickyDate && (
           <div className="chat-sticky-date">
             <span>{stickyDate}</span>
@@ -638,6 +686,14 @@ export function ChatPanel({
             }}
             onCancel={() => setShowVoiceRecorder(false)}
           />
+        </div>
+      )}
+      {automodWarning && (
+        <div className="automod-warning-banner">
+          <span>{t("automod.warningPrefix")}: {automodWarning}</span>
+          <button className="automod-warning-dismiss" onClick={onDismissAutomodWarning}>
+            <X size={14} />
+          </button>
         </div>
       )}
       <FormatToolbar onFormat={handleFormat} />
@@ -1082,6 +1138,31 @@ export function ChatPanel({
           padding: 0 4px;
           animation: fadeIn 0.15s ease;
         }
+        .automod-warning-banner {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 14px;
+          margin: 0 16px;
+          background: rgba(245,158,11,0.1);
+          border: 1px solid rgba(245,158,11,0.3);
+          border-radius: var(--radius-sm);
+          font-size: 12px;
+          color: #f59e0b;
+          animation: fadeIn 0.15s ease;
+        }
+        .automod-warning-banner span { flex: 1; }
+        .automod-warning-dismiss {
+          color: #f59e0b;
+          opacity: 0.7;
+          padding: 2px;
+          border-radius: var(--radius-sm);
+          transition: opacity var(--transition-fast);
+          cursor: pointer;
+          background: none;
+          border: none;
+        }
+        .automod-warning-dismiss:hover { opacity: 1; }
       `}</style>
     </div>
   );

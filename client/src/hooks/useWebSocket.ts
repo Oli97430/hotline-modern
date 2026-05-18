@@ -174,6 +174,23 @@ export interface UserNote {
   createdAt: string;
 }
 
+export interface WelcomeMessageConfig {
+  channel: string;
+  message: string;
+  enabled: boolean;
+}
+
+export interface AutomodRule {
+  id: number;
+  ruleType: string;
+  pattern: string;
+  action: string;
+  reason: string;
+  enabled: boolean;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface RetentionStats {
   totalMessages: number;
   byChannel: ChannelMessageCount[];
@@ -195,6 +212,7 @@ export interface ExportedMessage {
 
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
+  latency: number | null;
   serverInfo: ServerInfo | null;
   messages: ChatMessage[];
   dmMessages: DMMessage[];
@@ -227,6 +245,9 @@ export interface UseWebSocketReturn {
   voiceState: VoiceStatePayload | null;
   userNotes: Record<string, UserNote[]>;
   channelPermissions: Record<string, ChannelPermissionData[]>;
+  welcomeMessages: WelcomeMessageConfig[];
+  automodRules: AutomodRule[];
+  automodWarning: string | null;
   wsRef: React.RefObject<WebSocket | null>;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
@@ -285,6 +306,13 @@ export interface UseWebSocketReturn {
   addUserNote: (targetUserId: string, content: string) => void;
   requestUserNotes: (targetUserId: string) => void;
   deleteUserNote: (noteId: number, targetUserId: string) => void;
+  setWelcomeMessage: (channel: string, message: string, enabled: boolean) => void;
+  requestWelcomeMessages: () => void;
+  addAutomodRule: (ruleType: string, pattern: string, action: string, reason: string) => void;
+  deleteAutomodRule: (id: number) => void;
+  toggleAutomodRule: (id: number, enabled: boolean) => void;
+  requestAutomodRules: () => void;
+  dismissAutomodWarning: () => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -305,6 +333,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const nicknameRef = useRef<string>("");
 
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
+  const [latency, setLatency] = useState<number | null>(null);
   const [serverInfo, setServerInfo] = useState<ServerInfo | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
@@ -335,6 +364,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [voiceState, setVoiceState] = useState<VoiceStatePayload | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<Record<string, ChannelPermissionData[]>>({});
   const [userNotes, setUserNotes] = useState<Record<string, UserNote[]>>({});
+  const [welcomeMessages, setWelcomeMessages] = useState<WelcomeMessageConfig[]>([]);
+  const [automodRules, setAutomodRules] = useState<AutomodRule[]>([]);
+  const [automodWarning, setAutomodWarning] = useState<string | null>(null);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -739,6 +771,46 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           }));
           break;
         }
+        case "pong": {
+          const payload = msg.payload as { timestamp: number; serverTime: number };
+          setLatency(Date.now() - payload.timestamp);
+          break;
+        }
+        case "welcome.list": {
+          const payload = msg.payload as { welcomeMessages: WelcomeMessageConfig[] };
+          setWelcomeMessages(payload.welcomeMessages || []);
+          break;
+        }
+        case "welcome.message": {
+          const payload = msg.payload as { channel: string; content: string };
+          setMessages((prev) =>
+            insertAndCap(
+              prev,
+              {
+                id: msg.id,
+                channel: payload.channel,
+                userId: "system",
+                nickname: "",
+                content: payload.content,
+                role: "",
+                timestamp: msg.timestamp,
+                system: true,
+              },
+              2000,
+            ),
+          );
+          break;
+        }
+        case "automod.rule.list": {
+          const payload = msg.payload as { rules: AutomodRule[] };
+          setAutomodRules(payload.rules || []);
+          break;
+        }
+        case "automod.warning": {
+          const payload = msg.payload as { reason: string };
+          setAutomodWarning(payload.reason || "Message blocked by auto-moderation");
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -768,7 +840,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
       } catch {}
 
-      // Build WebSocket URL — support ws://, wss://, or bare address:port
+      // Build WebSocket URL â€” support ws://, wss://, or bare address:port
       let url: string;
       if (address.includes("://")) {
         url = address.endsWith("/ws") ? address : `${address}/ws`;
@@ -846,6 +918,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setVoiceState(null);
     setChannelPermissions({});
     setUserNotes({});
+    setWelcomeMessages([]);
+    setAutomodRules([]);
+    setAutomodWarning(null);
   }, []);
 
   const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
@@ -1231,6 +1306,46 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     [wsSend],
   );
 
+  const setWelcomeMessage = useCallback(
+    (channel: string, message: string, enabled: boolean) => {
+      wsSend("welcome.set", { channel, message, enabled });
+    },
+    [wsSend],
+  );
+
+  const requestWelcomeMessages = useCallback(() => {
+    wsSend("welcome.list", {});
+  }, [wsSend]);
+
+  const addAutomodRule = useCallback(
+    (ruleType: string, pattern: string, action: string, reason: string) => {
+      wsSend("automod.rule.add", { ruleType, pattern, action, reason });
+    },
+    [wsSend],
+  );
+
+  const deleteAutomodRule = useCallback(
+    (id: number) => {
+      wsSend("automod.rule.delete", { id });
+    },
+    [wsSend],
+  );
+
+  const toggleAutomodRule = useCallback(
+    (id: number, enabled: boolean) => {
+      wsSend("automod.rule.toggle", { id, enabled });
+    },
+    [wsSend],
+  );
+
+  const requestAutomodRules = useCallback(() => {
+    wsSend("automod.rule.list", {});
+  }, [wsSend]);
+
+  const dismissAutomodWarning = useCallback(() => {
+    setAutomodWarning(null);
+  }, []);
+
   const requestProfile = useCallback(
     (userId: string) => {
       wsSend("profile.get", { userId });
@@ -1252,6 +1367,23 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     return () => clearInterval(interval);
   }, []);
 
+  // Send latency ping every 15 seconds while connected
+  useEffect(() => {
+    if (status !== "connected") {
+      setLatency(null);
+      return;
+    }
+    const sendPing = () => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        const pingMsg = createMessage("ping", { timestamp: Date.now() });
+        wsRef.current.send(JSON.stringify(pingMsg));
+      }
+    };
+    sendPing();
+    const pingInterval = setInterval(sendPing, 15000);
+    return () => clearInterval(pingInterval);
+  }, [status]);
+
   useEffect(() => {
     return () => {
       if (reconnectTimerRef.current) {
@@ -1265,6 +1397,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
 
   return {
     status,
+    latency,
     serverInfo,
     messages,
     dmMessages,
@@ -1346,6 +1479,16 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setChannelPermission,
     setChannelSlowmode,
     setChannelDescription,
+    welcomeMessages,
+    setWelcomeMessage,
+    requestWelcomeMessages,
+    automodRules,
+    automodWarning,
+    addAutomodRule,
+    deleteAutomodRule,
+    toggleAutomodRule,
+    requestAutomodRules,
+    dismissAutomodWarning,
     wsRef,
   };
 }

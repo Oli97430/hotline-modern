@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -25,6 +26,10 @@ import (
 	"github.com/hotline-modern/server/internal/permissions"
 	"github.com/hotline-modern/server/internal/tracker"
 )
+
+const serverVersion = "1.0.0"
+
+var startTime = time.Now()
 
 func main() {
 	addr := flag.String("addr", ":9998", "Listen address (WebSocket + HTTP on same port)")
@@ -103,6 +108,33 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", h.HandleWebSocket)
 	fileServer.RegisterRoutes(mux)
+
+	// Health endpoint (no auth required)
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		var mem runtime.MemStats
+		runtime.ReadMemStats(&mem)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     "ok",
+			"uptime":     int64(time.Since(startTime).Seconds()),
+			"users":      h.ClientCount(),
+			"channels":   h.ChannelCount(),
+			"goroutines": runtime.NumGoroutine(),
+			"memoryMB":   float64(mem.Alloc) / 1024 / 1024,
+			"version":    serverVersion,
+		})
+	})
 
 	// Invite validation endpoint
 	mux.HandleFunc("/invite/", func(w http.ResponseWriter, r *http.Request) {

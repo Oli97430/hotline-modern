@@ -1,6 +1,7 @@
 import { BellOff, Hash, Lock, LogOut, MessageSquare, Plus, Settings, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { VoiceParticipant } from "../hooks/useVoiceChat";
+import { ConnectionQuality } from "./ConnectionQuality";
 import { StatusDot } from "./StatusSelector";
 import { VoicePanel } from "./VoicePanel";
 
@@ -41,6 +42,8 @@ interface SidebarProps {
   onToggleVoiceMute?: () => void;
   onToggleVoiceDeafen?: () => void;
   customStatus?: string;
+  latency?: number | null;
+  connectedSince?: number;
 }
 
 export function Sidebar({
@@ -73,6 +76,8 @@ export function Sidebar({
   onToggleVoiceMute,
   onToggleVoiceDeafen,
   customStatus,
+  latency,
+  connectedSince,
 }: SidebarProps) {
   const { t } = useTranslation();
 
@@ -252,6 +257,7 @@ export function Sidebar({
             <span className="sidebar-nick">{nickname}</span>
             {customStatus && <span className="sidebar-custom-status">{customStatus}</span>}
           </div>
+          <ConnectionQuality latency={latency ?? null} connectedSince={connectedSince} />
           <span className="sidebar-role" data-role={role}>
             {role}
           </span>

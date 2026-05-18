@@ -954,6 +954,9 @@ export default function App() {
             onSendReadReceipt={ws.sendReadReceipt}
             customEmojis={ws.customEmojis}
             serverBaseUrl={serverBaseUrl}
+            automodWarning={ws.automodWarning}
+            onDismissAutomodWarning={ws.dismissAutomodWarning}
+            motd={ws.serverInfo?.motd || ""}
           />
 
           {threadRootId &&
@@ -1101,6 +1104,14 @@ export default function App() {
           onExportMessages={ws.exportMessages}
           serverBaseUrl={serverBaseUrl}
           currentUserId={ws.serverInfo?.userId || ""}
+          automodRules={ws.automodRules}
+          onAddAutomodRule={ws.addAutomodRule}
+          onDeleteAutomodRule={ws.deleteAutomodRule}
+          onToggleAutomodRule={ws.toggleAutomodRule}
+          onRequestAutomodRules={ws.requestAutomodRules}
+          welcomeMessages={ws.welcomeMessages}
+          onSetWelcomeMessage={ws.setWelcomeMessage}
+          onRequestWelcomeMessages={ws.requestWelcomeMessages}
         />
       )}
 

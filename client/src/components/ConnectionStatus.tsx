@@ -1,15 +1,29 @@
 import { Loader, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { ConnectionQuality } from "./ConnectionQuality";
 
 interface ConnectionStatusProps {
   status: string;
   reconnectIn: number;
+  latency?: number | null;
+  connectedSince?: number;
 }
 
-export function ConnectionStatus({ status, reconnectIn }: ConnectionStatusProps) {
+export function ConnectionStatus({ status, reconnectIn, latency, connectedSince }: ConnectionStatusProps) {
   const { t } = useTranslation();
 
-  if (status === "connected") return null;
+  if (status === "connected") {
+    if (latency !== null && latency !== undefined) {
+      return (
+        <div className="connection-status connected">
+          <div className="connection-status-content connected-bar">
+            <ConnectionQuality latency={latency} connectedSince={connectedSince} />
+          </div>
+        </div>
+      );
+    }
+    return null;
+  }
 
   return (
     <div className={`connection-status ${status}`}>
@@ -46,6 +60,11 @@ export function ConnectionStatus({ status, reconnectIn }: ConnectionStatusProps)
         .connection-status {
           animation: slideDown 0.2s ease;
           overflow: hidden;
+        }
+        .connected-bar {
+          justify-content: flex-end;
+          padding: 4px 12px;
+          background: transparent;
         }
         .connection-status-content {
           display: flex;

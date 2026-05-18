@@ -253,3 +253,22 @@ func (m *Manager) GetUserNotes(targetKey string) ([]db.UserNote, error) {
 func (m *Manager) DeleteUserNote(id int) error {
 	return m.db.DeleteUserNote(id)
 }
+
+// Automod rule pass-through
+func (m *Manager) AddAutomodRule(rule db.AutomodRule) error { return m.db.AddAutomodRule(rule) }
+func (m *Manager) GetAutomodRules() ([]db.AutomodRule, error) { return m.db.GetAutomodRules() }
+func (m *Manager) UpdateAutomodRule(id int, enabled bool) error {
+	return m.db.UpdateAutomodRule(id, enabled)
+}
+func (m *Manager) DeleteAutomodRule(id int) error { return m.db.DeleteAutomodRule(id) }
+
+// Welcome message pass-through
+func (m *Manager) SetWelcomeMessage(channel, message string, enabled bool) error {
+	return m.db.SetWelcomeMessage(channel, message, enabled)
+}
+func (m *Manager) GetWelcomeMessage(channel string) (*db.WelcomeMessage, error) {
+	return m.db.GetWelcomeMessage(channel)
+}
+func (m *Manager) GetAllWelcomeMessages() ([]db.WelcomeMessage, error) {
+	return m.db.GetAllWelcomeMessages()
+}

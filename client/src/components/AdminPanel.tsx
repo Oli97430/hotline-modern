@@ -1,25 +1,31 @@
 import {
+  AlertTriangle,
   Check,
   ClipboardList,
   Database,
   Download,
   Hash,
+  Link2,
   Pencil,
+  Plus,
   Save,
   Settings,
   Shield,
+  ShieldAlert,
   Trash2,
+  Type,
   Upload,
   Users,
   UserX,
   VolumeX,
   X,
+  Zap,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AdminBan, AdminMute, AdminUser, AuditEntry, RetentionStats } from "../hooks/useWebSocket";
+import type { AdminBan, AdminMute, AdminUser, AuditEntry, AutomodRule, RetentionStats, WelcomeMessageConfig } from "../hooks/useWebSocket";
 
-type Tab = "settings" | "users" | "channels" | "bans" | "audit" | "retention";
+type Tab = "settings" | "users" | "channels" | "bans" | "audit" | "retention" | "automod";
 
 interface AdminPanelProps {
   serverName: string;
@@ -51,6 +57,14 @@ interface AdminPanelProps {
   onExportMessages: (channel: string, limit: number) => void;
   serverBaseUrl: string;
   currentUserId: string;
+  automodRules: AutomodRule[];
+  onAddAutomodRule: (ruleType: string, pattern: string, action: string, reason: string) => void;
+  onDeleteAutomodRule: (id: number) => void;
+  onToggleAutomodRule: (id: number, enabled: boolean) => void;
+  onRequestAutomodRules: () => void;
+  welcomeMessages: WelcomeMessageConfig[];
+  onSetWelcomeMessage: (channel: string, message: string, enabled: boolean) => void;
+  onRequestWelcomeMessages: () => void;
 }
 
 function auditActionIcon(action: string) {
@@ -105,6 +119,14 @@ export function AdminPanel({
   onExportMessages,
   serverBaseUrl,
   currentUserId,
+  automodRules,
+  onAddAutomodRule,
+  onDeleteAutomodRule,
+  onToggleAutomodRule,
+  onRequestAutomodRules,
+  welcomeMessages,
+  onSetWelcomeMessage,
+  onRequestWelcomeMessages,
 }: AdminPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("settings");
@@ -135,10 +157,23 @@ export function AdminPanel({
   const [restoreResult, setRestoreResult] = useState<string | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
+  // Automod form
+  const [automodType, setAutomodType] = useState("word");
+  const [automodPattern, setAutomodPattern] = useState("");
+  const [automodAction, setAutomodAction] = useState("warn");
+  const [automodReason, setAutomodReason] = useState("");
+
+  // Welcome message editor
+  const [welcomeExpanded, setWelcomeExpanded] = useState<string | null>(null);
+  const [welcomeEditMsg, setWelcomeEditMsg] = useState("");
+  const [welcomeEditEnabled, setWelcomeEditEnabled] = useState(true);
+  const [welcomeSaved, setWelcomeSaved] = useState(false);
+
   useEffect(() => {
     onRequestBanList();
     onRequestMuteList();
     onRequestAdminUserList();
+    onRequestWelcomeMessages();
   }, []);
 
   const handleSave = () => {
@@ -271,6 +306,16 @@ export function AdminPanel({
           >
             <Database size={14} />
             {t("retention.title")}
+          </button>
+          <button
+            className={`admin-tab ${tab === "automod" ? "active" : ""}`}
+            onClick={() => {
+              setTab("automod");
+              onRequestAutomodRules();
+            }}
+          >
+            <ShieldAlert size={14} />
+            {t("automod.title")}
           </button>
         </div>
 
@@ -472,7 +517,64 @@ export function AdminPanel({
                         </>
                       )}
                       {ch.name === "lobby" && <span className="admin-text-muted">{t("admin.cannotDeleteLobby")}</span>}
+                      <button
+                        className="admin-btn-sm"
+                        onClick={() => {
+                          if (welcomeExpanded === ch.name) {
+                            setWelcomeExpanded(null);
+                          } else {
+                            const wm = welcomeMessages.find((w) => w.channel === ch.name);
+                            setWelcomeEditMsg(wm?.message || "");
+                            setWelcomeEditEnabled(wm?.enabled ?? true);
+                            setWelcomeExpanded(ch.name);
+                            setWelcomeSaved(false);
+                          }
+                        }}
+                        title={t("welcome.title")}
+                      >
+                        <Type size={12} />
+                      </button>
                     </div>
+                    {welcomeExpanded === ch.name && (
+                      <div style={{ padding: "8px 0 4px", borderTop: "1px solid var(--border, #333)", marginTop: 6 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: "var(--text-secondary, #999)" }}>
+                          {t("welcome.title")}
+                        </div>
+                        <textarea
+                          value={welcomeEditMsg}
+                          onChange={(e) => setWelcomeEditMsg(e.target.value)}
+                          placeholder={t("welcome.placeholder", { channel: ch.name })}
+                          style={{ width: "100%", minHeight: 60, resize: "vertical", padding: 6, borderRadius: 4, border: "1px solid var(--border, #444)", background: "var(--bg-input, #1a1a2e)", color: "var(--text, #eee)", fontSize: 12 }}
+                          maxLength={500}
+                        />
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={welcomeEditEnabled}
+                              onChange={(e) => setWelcomeEditEnabled(e.target.checked)}
+                            />
+                            {t("welcome.enabled")}
+                          </label>
+                          <button
+                            className="admin-btn-sm accent"
+                            onClick={() => {
+                              onSetWelcomeMessage(ch.name, welcomeEditMsg, welcomeEditEnabled);
+                              setWelcomeSaved(true);
+                              setTimeout(() => setWelcomeSaved(false), 2000);
+                            }}
+                          >
+                            <Save size={12} /> {t("welcome.save")}
+                          </button>
+                          {welcomeSaved && <span style={{ fontSize: 11, color: "var(--accent, #7c5cbf)" }}>{t("welcome.saved")}</span>}
+                        </div>
+                        {welcomeEditMsg && (
+                          <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "var(--bg-hover, #222)", fontSize: 12, fontStyle: "italic", color: "var(--accent, #7c5cbf)", display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ opacity: 0.7 }}>{t("welcome.preview")}:</span> {welcomeEditMsg}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -756,6 +858,160 @@ export function AdminPanel({
                   {t("retention.exportBtn")}
                 </button>
               </div>
+            </>
+          )}
+
+          {/* === AUTOMOD TAB === */}
+          {tab === "automod" && (
+            <>
+              {/* Add Rule Form */}
+              <div className="admin-section-label">
+                <Plus size={13} /> {t("automod.addRule")}
+              </div>
+              <div className="automod-form">
+                <div className="admin-field">
+                  <label>{t("automod.ruleType")}</label>
+                  <select
+                    value={automodType}
+                    onChange={(e) => setAutomodType(e.target.value)}
+                    className="admin-mute-select"
+                  >
+                    <option value="word">{t("automod.typeWord")}</option>
+                    <option value="regex">{t("automod.typeRegex")}</option>
+                    <option value="spam">{t("automod.typeSpam")}</option>
+                    <option value="caps">{t("automod.typeCaps")}</option>
+                    <option value="links">{t("automod.typeLinks")}</option>
+                  </select>
+                </div>
+                {automodType !== "spam" && automodType !== "caps" && automodType !== "links" && (
+                  <div className="admin-field">
+                    <label>{t("automod.pattern")}</label>
+                    <input
+                      type="text"
+                      value={automodPattern}
+                      onChange={(e) => setAutomodPattern(e.target.value)}
+                      placeholder={automodType === "regex" ? "\\bword\\b" : t("automod.patternPlaceholder")}
+                      style={{ padding: "8px 12px", fontSize: "13px" }}
+                    />
+                  </div>
+                )}
+                <div className="admin-field">
+                  <label>{t("automod.action")}</label>
+                  <select
+                    value={automodAction}
+                    onChange={(e) => setAutomodAction(e.target.value)}
+                    className="admin-mute-select"
+                  >
+                    <option value="warn">{t("automod.actionWarn")}</option>
+                    <option value="block">{t("automod.actionBlock")}</option>
+                    <option value="mute">{t("automod.actionMute")}</option>
+                  </select>
+                </div>
+                <div className="admin-field">
+                  <label>{t("automod.reason")}</label>
+                  <input
+                    type="text"
+                    value={automodReason}
+                    onChange={(e) => setAutomodReason(e.target.value)}
+                    placeholder={t("automod.reasonPlaceholder")}
+                    style={{ padding: "8px 12px", fontSize: "13px" }}
+                  />
+                </div>
+                <button
+                  className="admin-btn-sm accent"
+                  onClick={() => {
+                    const pat = (automodType === "spam" || automodType === "caps" || automodType === "links")
+                      ? automodType
+                      : automodPattern;
+                    if (!pat.trim()) return;
+                    onAddAutomodRule(automodType, pat, automodAction, automodReason);
+                    setAutomodPattern("");
+                    setAutomodReason("");
+                  }}
+                >
+                  <Plus size={12} />
+                  {t("automod.addRule")}
+                </button>
+              </div>
+
+              {/* Presets */}
+              <div className="admin-section-label" style={{ marginTop: 12 }}>
+                <Zap size={13} /> {t("automod.presets")}
+              </div>
+              <div className="automod-presets">
+                <button
+                  className="admin-btn-sm"
+                  onClick={() => onAddAutomodRule("word", "badword", "block", "Profanity filter")}
+                >
+                  {t("automod.presetProfanity")}
+                </button>
+                <button
+                  className="admin-btn-sm"
+                  onClick={() => onAddAutomodRule("spam", "spam", "mute", "Anti-spam")}
+                >
+                  {t("automod.presetSpam")}
+                </button>
+                <button
+                  className="admin-btn-sm"
+                  onClick={() => onAddAutomodRule("caps", "caps", "warn", "No caps lock")}
+                >
+                  {t("automod.presetCaps")}
+                </button>
+                <button
+                  className="admin-btn-sm"
+                  onClick={() => onAddAutomodRule("links", "links", "block", "No links")}
+                >
+                  {t("automod.presetLinks")}
+                </button>
+              </div>
+
+              {/* Rules List */}
+              <div className="admin-section-label" style={{ marginTop: 12 }}>
+                <Shield size={13} /> {t("automod.activeRules")}
+              </div>
+              {automodRules.length === 0 ? (
+                <div className="admin-empty">{t("automod.noRules")}</div>
+              ) : (
+                <ul className="admin-list">
+                  {automodRules.map((rule) => (
+                    <li key={rule.id} className="admin-list-item" style={{ opacity: rule.enabled ? 1 : 0.5 }}>
+                      <div className="admin-list-main">
+                        <span className="automod-type-icon">
+                          {rule.ruleType === "word" && <Type size={14} />}
+                          {rule.ruleType === "regex" && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>.*</span>}
+                          {rule.ruleType === "spam" && <Zap size={14} />}
+                          {rule.ruleType === "caps" && <AlertTriangle size={14} />}
+                          {rule.ruleType === "links" && <Link2 size={14} />}
+                        </span>
+                        <span className="automod-rule-pattern">{rule.pattern}</span>
+                        <span className={`admin-badge ${rule.action === "block" ? "danger-badge" : rule.action === "mute" ? "mute-badge" : ""}`}>
+                          {rule.action}
+                        </span>
+                      </div>
+                      <div className="admin-list-actions">
+                        <button
+                          className="admin-btn-sm"
+                          onClick={() => onToggleAutomodRule(rule.id, !rule.enabled)}
+                          title={rule.enabled ? t("automod.disable") : t("automod.enable")}
+                        >
+                          {rule.enabled ? t("automod.disable") : t("automod.enable")}
+                        </button>
+                        <button
+                          className="admin-btn-sm danger"
+                          onClick={() => onDeleteAutomodRule(rule.id)}
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      {rule.reason && (
+                        <div className="admin-list-meta">
+                          <span>{rule.reason}</span>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </>
           )}
         </div>
@@ -1138,6 +1394,46 @@ export function AdminPanel({
           background: rgba(16,185,129,0.1);
           color: #10b981;
           font-weight: 500;
+        }
+
+        /* Automod tab styles */
+        .automod-form {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .automod-presets {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .automod-type-icon {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          border-radius: var(--radius-sm);
+          background: var(--bg-secondary);
+          color: var(--text-muted);
+          flex-shrink: 0;
+        }
+        .automod-rule-pattern {
+          font-family: var(--font-mono);
+          font-size: 12px;
+          color: var(--text-primary);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          max-width: 160px;
+        }
+        .admin-badge.danger-badge {
+          background: rgba(239,68,68,0.12);
+          color: #ef4444;
+        }
+        .admin-badge.mute-badge {
+          background: rgba(245,158,11,0.12);
+          color: #f59e0b;
         }
       `}</style>
     </div>

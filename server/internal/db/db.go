@@ -227,6 +227,25 @@ func migrate(conn *sql.DB) error {
 	)`)
 	conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_notes_target ON user_notes(target_key)`)
 
+	// Migration: automod_rules table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS automod_rules (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_type TEXT NOT NULL,
+		pattern TEXT NOT NULL,
+		action TEXT NOT NULL DEFAULT 'warn',
+		reason TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1,
+		created_by TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Migration: welcome_messages table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS welcome_messages (
+		channel TEXT PRIMARY KEY,
+		message TEXT NOT NULL DEFAULT '',
+		enabled INTEGER NOT NULL DEFAULT 1
+	)`)
+
 	return nil
 }
 
@@ -1177,4 +1196,116 @@ func (d *DB) GetUserNotes(targetKey string) ([]UserNote, error) {
 func (d *DB) DeleteUserNote(id int) error {
 	_, err := d.conn.Exec("DELETE FROM user_notes WHERE id = ?", id)
 	return err
+}
+
+// Automod rule management
+
+type AutomodRule struct {
+	ID        int
+	RuleType  string
+	Pattern   string
+	Action    string
+	Reason    string
+	CreatedBy string
+	Enabled   bool
+	CreatedAt string
+}
+
+func (d *DB) AddAutomodRule(rule AutomodRule) error {
+	enabled := 0
+	if rule.Enabled {
+		enabled = 1
+	}
+	_, err := d.conn.Exec(
+		"INSERT INTO automod_rules (rule_type, pattern, action, reason, enabled, created_by) VALUES (?, ?, ?, ?, ?, ?)",
+		rule.RuleType, rule.Pattern, rule.Action, rule.Reason, enabled, rule.CreatedBy,
+	)
+	return err
+}
+
+func (d *DB) GetAutomodRules() ([]AutomodRule, error) {
+	rows, err := d.conn.Query("SELECT id, rule_type, pattern, action, reason, enabled, created_by, created_at FROM automod_rules ORDER BY id ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var rules []AutomodRule
+	for rows.Next() {
+		var r AutomodRule
+		var enabled int
+		if err := rows.Scan(&r.ID, &r.RuleType, &r.Pattern, &r.Action, &r.Reason, &enabled, &r.CreatedBy, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		r.Enabled = enabled == 1
+		rules = append(rules, r)
+	}
+	return rules, nil
+}
+
+func (d *DB) UpdateAutomodRule(id int, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	_, err := d.conn.Exec("UPDATE automod_rules SET enabled = ? WHERE id = ?", val, id)
+	return err
+}
+
+func (d *DB) DeleteAutomodRule(id int) error {
+	_, err := d.conn.Exec("DELETE FROM automod_rules WHERE id = ?", id)
+	return err
+}
+
+// Welcome message management
+
+type WelcomeMessage struct {
+	Channel string
+	Message string
+	Enabled bool
+}
+
+func (d *DB) SetWelcomeMessage(channel, message string, enabled bool) error {
+	val := 0
+	if enabled {
+		val = 1
+	}
+	_, err := d.conn.Exec(
+		"INSERT OR REPLACE INTO welcome_messages (channel, message, enabled) VALUES (?, ?, ?)",
+		channel, message, val,
+	)
+	return err
+}
+
+func (d *DB) GetWelcomeMessage(channel string) (*WelcomeMessage, error) {
+	var w WelcomeMessage
+	var enabled int
+	err := d.conn.QueryRow(
+		"SELECT channel, message, enabled FROM welcome_messages WHERE channel = ?", channel,
+	).Scan(&w.Channel, &w.Message, &enabled)
+	if err != nil {
+		return nil, err
+	}
+	w.Enabled = enabled == 1
+	return &w, nil
+}
+
+func (d *DB) GetAllWelcomeMessages() ([]WelcomeMessage, error) {
+	rows, err := d.conn.Query("SELECT channel, message, enabled FROM welcome_messages ORDER BY channel ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var messages []WelcomeMessage
+	for rows.Next() {
+		var w WelcomeMessage
+		var enabled int
+		if err := rows.Scan(&w.Channel, &w.Message, &enabled); err != nil {
+			return nil, err
+		}
+		w.Enabled = enabled == 1
+		messages = append(messages, w)
+	}
+	return messages, nil
 }
