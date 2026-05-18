@@ -79,7 +79,7 @@ func (m *Manager) CanSetRole(actorRole, targetRole string) bool {
 	return targetRole == RoleOperator || targetRole == RoleMember || targetRole == RoleGuest
 }
 
-func CanMute(role string) bool {
+func (m *Manager) CanMute(role string) bool {
 	return role == RoleAdmin || role == RoleOperator
 }
 

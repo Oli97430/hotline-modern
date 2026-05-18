@@ -104,6 +104,19 @@ func main() {
 		}
 	}()
 
+	// getAdminKey extracts the admin public key from Authorization header (preferred)
+	// or falls back to ?key= query param for backward compatibility.
+	getAdminKey := func(r *http.Request) string {
+		// Prefer Authorization: Bearer <publicKey>
+		if auth := r.Header.Get("Authorization"); auth != "" {
+			if strings.HasPrefix(auth, "Bearer ") {
+				return strings.TrimPrefix(auth, "Bearer ")
+			}
+			return auth
+		}
+		return r.URL.Query().Get("key")
+	}
+
 	// --- Single HTTP mux: WebSocket + Files + Tracker ---
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", h.HandleWebSocket)
@@ -155,7 +168,7 @@ func main() {
 			json.NewEncoder(w).Encode(map[string]interface{}{"valid": false})
 			return
 		}
-		valid, err := chatManager.UseInvite(code)
+		valid, err := chatManager.ValidateInvite(code)
 		if err != nil || !valid {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"valid": false})
@@ -165,11 +178,11 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]interface{}{"valid": true, "serverName": *serverName})
 	})
 
-	// Export endpoint: GET /export/{channel}?key=publicKey
+	// Export endpoint: GET /export/{channel} with Authorization header or ?key=publicKey
 	mux.HandleFunc("/export/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -178,9 +191,9 @@ func main() {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
-		key := r.URL.Query().Get("key")
+		key := getAdminKey(r)
 		if key == "" {
-			http.Error(w, "missing key parameter", http.StatusUnauthorized)
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
 			return
 		}
 		role := permManager.GetRole(key)
@@ -215,11 +228,11 @@ func main() {
 		}
 	})
 
-	// Backup: GET /backup?key=adminPublicKey
+	// Backup: GET /backup with Authorization header or ?key=adminPublicKey
 	mux.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -228,9 +241,9 @@ func main() {
 			http.Error(w, "GET only", http.StatusMethodNotAllowed)
 			return
 		}
-		key := r.URL.Query().Get("key")
+		key := getAdminKey(r)
 		if key == "" {
-			http.Error(w, "missing key parameter", http.StatusUnauthorized)
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
 			return
 		}
 		role := permManager.GetRole(key)
@@ -279,7 +292,7 @@ func main() {
 		}
 		fw.Write(dbData)
 
-		// Add files directory to zip
+		// Add files directory to zip (stream files to avoid loading all into memory)
 		filepath.Walk(filesDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil || info.IsDir() {
 				return nil
@@ -292,11 +305,12 @@ func main() {
 			if err != nil {
 				return nil
 			}
-			data, err := os.ReadFile(path)
+			f, err := os.Open(path)
 			if err != nil {
 				return nil
 			}
-			fw.Write(data)
+			io.Copy(fw, f)
+			f.Close()
 			return nil
 		})
 
@@ -310,11 +324,13 @@ func main() {
 		http.ServeFile(w, r, zipPath)
 	})
 
-	// Restore: POST /restore?key=adminPublicKey
+	// Restore: POST /restore with Authorization header or ?key=adminPublicKey
+	// WARNING: Restoring while the server is running replaces the database file.
+	// A server restart is required after restore for changes to take effect.
 	mux.HandleFunc("/restore", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
@@ -323,9 +339,9 @@ func main() {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
 			return
 		}
-		key := r.URL.Query().Get("key")
+		key := getAdminKey(r)
 		if key == "" {
-			http.Error(w, "missing key parameter", http.StatusUnauthorized)
+			http.Error(w, "missing authorization", http.StatusUnauthorized)
 			return
 		}
 		role := permManager.GetRole(key)

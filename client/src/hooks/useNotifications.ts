@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const getCapacitor = () => (window as any).Capacitor;
+interface CapacitorLike {
+  isNativePlatform?: () => boolean;
+}
+
+const getCapacitor = (): CapacitorLike | undefined =>
+  (window as unknown as Record<string, unknown>).Capacitor as CapacitorLike | undefined;
 
 const isNative = (): boolean => {
   const cap = getCapacitor();
@@ -28,9 +32,27 @@ async function getLocalNotifications() {
   return localNotificationsModule.LocalNotifications;
 }
 
-function playBeep() {
+let sharedAudioCtx: AudioContext | null = null;
+
+function getAudioContext(): AudioContext | null {
   try {
-    const ctx = new AudioContext();
+    if (!sharedAudioCtx || sharedAudioCtx.state === "closed") {
+      sharedAudioCtx = new AudioContext();
+    }
+    // Resume if suspended (e.g. due to autoplay policy)
+    if (sharedAudioCtx.state === "suspended") {
+      sharedAudioCtx.resume();
+    }
+    return sharedAudioCtx;
+  } catch {
+    return null;
+  }
+}
+
+function playBeep() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+  try {
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -42,7 +64,7 @@ function playBeep() {
     osc.start();
     osc.stop(ctx.currentTime + 0.2);
   } catch {
-    // AudioContext may not be available
+    // AudioContext operation failed
   }
 }
 
@@ -125,11 +147,11 @@ export function useNotifications(options: UseNotificationsOptions): UseNotificat
       if (typeof Notification === "undefined") return;
       if (Notification.permission !== "granted") return;
 
-      const truncatedBody = body.length > 100 ? body.slice(0, 100) + "..." : body;
+      const truncatedBody = body.length > 100 ? `${body.slice(0, 100)}...` : body;
 
       const notif = new Notification(title, {
         body: truncatedBody,
-        tag: tag || "hotline-" + now,
+        tag: tag || `hotline-${now}`,
         icon: "/favicon.ico",
       });
 

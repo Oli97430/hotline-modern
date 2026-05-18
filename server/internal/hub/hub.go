@@ -308,6 +308,11 @@ func (h *Hub) Run() {
 					if indexed := h.pubKeyIndex[client.PublicKey]; indexed != nil && indexed.ID == client.ID {
 						delete(h.pubKeyIndex, client.PublicKey)
 					}
+					// Clean up per-user trackers to prevent memory leaks
+					delete(h.spamTracker, client.PublicKey)
+					for ch := range h.slowmodeTracker {
+						delete(h.slowmodeTracker[ch], client.PublicKey)
+					}
 				}
 				shouldBroadcast = client.PublicKey != ""
 			}
@@ -557,6 +562,12 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleAutomodRuleDelete(client, msg)
 	case MsgAutomodRuleToggle:
 		h.handleAutomodRuleToggle(client, msg)
+	case MsgProfileGet:
+		h.handleProfileGet(client, msg)
+	case MsgProfileUpdate:
+		h.handleProfileUpdate(client, msg)
+	case MsgAuditLog:
+		h.handleAuditLog(client, msg)
 	}
 }
 
@@ -1339,13 +1350,17 @@ func (h *Hub) handleAdminSettings(client *Client, msg Message) {
 		return
 	}
 
+	h.mu.Lock()
 	if payload.ServerName != "" {
 		h.serverName = payload.ServerName
 	}
 	h.motd = payload.Motd
+	serverName := h.serverName
+	motd := h.motd
+	h.mu.Unlock()
 
-	h.chat.SetSetting("server_name", h.serverName)
-	h.chat.SetSetting("motd", h.motd)
+	h.chat.SetSetting("server_name", serverName)
+	h.chat.SetSetting("motd", motd)
 
 	// Broadcast updated info to all clients
 	h.broadcastAll(Message{
@@ -1353,12 +1368,12 @@ func (h *Hub) handleAdminSettings(client *Client, msg Message) {
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
-			"serverName": h.serverName,
-			"motd":       h.motd,
+			"serverName": serverName,
+			"motd":       motd,
 		}),
 	})
 
-	h.chat.AddAuditLog("settings_update", client.PublicKey, client.Nickname, "", "", "serverName="+h.serverName)
+	h.chat.AddAuditLog("settings_update", client.PublicKey, client.Nickname, "", "", "serverName="+serverName)
 }
 
 func (h *Hub) handleBanList(client *Client) {
@@ -1696,8 +1711,10 @@ func (h *Hub) handleNickChange(client *Client, msg Message) {
 		return
 	}
 
+	h.mu.Lock()
 	oldNick := client.Nickname
 	client.Nickname = payload.Nickname
+	h.mu.Unlock()
 
 	h.broadcastAll(Message{
 		Type:      MsgUserNickChanged,
@@ -1774,7 +1791,9 @@ func (h *Hub) handleUserStatus(client *Client, msg Message) {
 		return
 	}
 
+	h.mu.Lock()
 	client.Status = payload.Status
+	h.mu.Unlock()
 
 	h.broadcastAll(Message{
 		Type:      MsgUserStatusChanged,
@@ -1919,7 +1938,7 @@ func (h *Hub) handleChatRead(client *Client, msg Message) {
 }
 
 func (h *Hub) handleMute(client *Client, msg Message) {
-	if !permissions.CanMute(client.Role) {
+	if !h.permissions.CanMute(client.Role) {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -1963,7 +1982,7 @@ func (h *Hub) handleMute(client *Client, msg Message) {
 }
 
 func (h *Hub) handleUnmute(client *Client, msg Message) {
-	if !permissions.CanMute(client.Role) {
+	if !h.permissions.CanMute(client.Role) {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -1980,7 +1999,7 @@ func (h *Hub) handleUnmute(client *Client, msg Message) {
 }
 
 func (h *Hub) handleMuteList(client *Client) {
-	if !permissions.CanMute(client.Role) {
+	if !h.permissions.CanMute(client.Role) {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -2920,6 +2939,18 @@ func (h *Hub) handleWelcomeList(client *Client, msg Message) {
 func (h *Hub) refreshAutomodRules() {
 	if rules, err := h.chat.GetAutomodRules(); err == nil {
 		h.automodRules = rules
+		// Rebuild regex cache: keep only patterns still referenced by active rules
+		activePatterns := make(map[string]bool)
+		for _, r := range rules {
+			if r.RuleType == "regex" {
+				activePatterns[r.Pattern] = true
+			}
+		}
+		for pattern := range h.regexCache {
+			if !activePatterns[pattern] {
+				delete(h.regexCache, pattern)
+			}
+		}
 	}
 }
 
@@ -3215,6 +3246,179 @@ var linkPattern = regexp.MustCompile(`(?i)(https?://|www\.)`)
 
 func (h *Hub) checkLinks(contentLower string) bool {
 	return linkPattern.MatchString(contentLower)
+}
+
+// ── Profile handlers ────────────────────────────────────────────────
+
+func (h *Hub) handleProfileGet(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		UserId string `json:"userId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	targetKey := payload.UserId
+	if targetKey == "" {
+		targetKey = client.PublicKey
+	}
+
+	profile, err := h.chat.GetUserProfile(targetKey)
+	if err != nil || profile == nil {
+		// Return empty profile
+		h.sendToClient(client, Message{
+			Type:      MsgProfileData,
+			ID:        uuid.New().String(),
+			Timestamp: time.Now().UnixMilli(),
+			Payload: mustMarshal(map[string]interface{}{
+				"userId":       targetKey,
+				"bio":          "",
+				"customStatus": "",
+				"pronouns":     "",
+				"timezone":     "",
+			}),
+		})
+		return
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgProfileData,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"userId":       profile.PublicKey,
+			"bio":          profile.Bio,
+			"customStatus": profile.CustomStatus,
+			"pronouns":     profile.Pronouns,
+			"timezone":     profile.Timezone,
+		}),
+	})
+}
+
+func (h *Hub) handleProfileUpdate(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		Bio          string `json:"bio"`
+		CustomStatus string `json:"customStatus"`
+		Pronouns     string `json:"pronouns"`
+		Timezone     string `json:"timezone"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		h.sendError(client, "invalid payload")
+		return
+	}
+
+	// Validation
+	if len(payload.Bio) > 500 {
+		h.sendError(client, "bio too long (max 500 characters)")
+		return
+	}
+	if len(payload.CustomStatus) > 100 {
+		h.sendError(client, "custom status too long (max 100 characters)")
+		return
+	}
+	if len(payload.Pronouns) > 50 {
+		h.sendError(client, "pronouns too long (max 50 characters)")
+		return
+	}
+	if len(payload.Timezone) > 50 {
+		h.sendError(client, "timezone too long (max 50 characters)")
+		return
+	}
+
+	profile := db.UserProfile{
+		PublicKey:    client.PublicKey,
+		Bio:          payload.Bio,
+		CustomStatus: payload.CustomStatus,
+		Pronouns:     payload.Pronouns,
+		Timezone:     payload.Timezone,
+	}
+
+	if err := h.chat.SetUserProfile(profile); err != nil {
+		h.sendError(client, "failed to update profile")
+		return
+	}
+
+	// Notify all clients that profile was updated
+	h.broadcastAll(Message{
+		Type:      MsgProfileUpdated,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"userId":       client.PublicKey,
+			"bio":          payload.Bio,
+			"customStatus": payload.CustomStatus,
+			"pronouns":     payload.Pronouns,
+			"timezone":     payload.Timezone,
+		}),
+	})
+}
+
+// ── Audit log handler ───────────────────────────────────────────────
+
+func (h *Hub) handleAuditLog(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Limit  int `json:"limit"`
+		Offset int `json:"offset"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		h.sendError(client, "invalid payload")
+		return
+	}
+
+	if payload.Limit <= 0 || payload.Limit > 100 {
+		payload.Limit = 50
+	}
+	if payload.Offset < 0 {
+		payload.Offset = 0
+	}
+
+	entries, err := h.chat.GetAuditLog(payload.Limit, payload.Offset)
+	if err != nil {
+		h.sendError(client, "failed to get audit log")
+		return
+	}
+
+	total, _ := h.chat.GetAuditLogCount()
+
+	var list []map[string]interface{}
+	for _, e := range entries {
+		list = append(list, map[string]interface{}{
+			"id":         e.ID,
+			"action":     e.Action,
+			"actorKey":   e.ActorKey,
+			"actorName":  e.ActorName,
+			"targetKey":  e.TargetKey,
+			"targetName": e.TargetName,
+			"details":    e.Details,
+			"createdAt":  e.CreatedAt,
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgAuditLog,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"entries": list,
+			"total":   total,
+			"offset":  payload.Offset,
+		}),
+	})
 }
 
 func mustMarshal(v interface{}) json.RawMessage {

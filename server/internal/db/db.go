@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/rand"
 	"database/sql"
+	"io"
 	"os"
 	"time"
 
@@ -63,16 +64,24 @@ func (d *DB) Close() error {
 }
 
 // BackupTo copies the database file to destPath after checkpointing the WAL.
+// Uses streaming to avoid loading the entire DB into memory.
 func (d *DB) BackupTo(destPath string) error {
 	_, err := d.conn.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
 	if err != nil {
 		return err
 	}
-	src, err := os.ReadFile(d.path)
+	srcFile, err := os.Open(d.path)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(destPath, src, 0644)
+	defer srcFile.Close()
+	dstFile, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer dstFile.Close()
+	_, err = io.Copy(dstFile, srcFile)
+	return err
 }
 
 // Path returns the filesystem path of the database file.
@@ -850,6 +859,25 @@ func (d *DB) CreateInvite(code, createdBy string, maxUses int, expiresAt *time.T
 		code, createdBy, maxUses, expiresAt,
 	)
 	return err
+}
+
+// ValidateInvite checks if an invite code is valid without consuming a use.
+func (d *DB) ValidateInvite(code string) (bool, error) {
+	var uses, maxUses int
+	var expiresAt *time.Time
+	err := d.conn.QueryRow(
+		"SELECT uses, max_uses, expires_at FROM invites WHERE code = ?", code,
+	).Scan(&uses, &maxUses, &expiresAt)
+	if err != nil {
+		return false, nil // not found = invalid
+	}
+	if expiresAt != nil && time.Now().After(*expiresAt) {
+		return false, nil
+	}
+	if maxUses > 0 && uses >= maxUses {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (d *DB) UseInvite(code string) (bool, error) {

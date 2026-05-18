@@ -311,12 +311,18 @@ export function useVoiceChat({ wsRef, currentUserId }: UseVoiceChatOptions): Use
     };
   }, [wsRef, handleVoiceMessage]);
 
-  // Re-attach listener when WS reconnects
+  // Re-attach listener when WS reconnects (track the ws instance to detect reconnects)
+  const lastWsRef = useRef<WebSocket | null>(null);
   useEffect(() => {
     const checkInterval = window.setInterval(() => {
       const ws = wsRef.current;
-      if (ws && ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN && ws !== lastWsRef.current) {
+        // WS instance changed — this is a reconnect, attach the listener
+        if (lastWsRef.current) {
+          lastWsRef.current.removeEventListener("message", handleVoiceMessage);
+        }
         ws.addEventListener("message", handleVoiceMessage);
+        lastWsRef.current = ws;
       }
     }, 2000);
 

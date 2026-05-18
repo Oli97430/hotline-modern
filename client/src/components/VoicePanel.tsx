@@ -1,7 +1,19 @@
 import { Headphones, Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from "lucide-react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import type { VoiceParticipant } from "../hooks/useVoiceChat";
 import { UserAvatar } from "./UserAvatar";
+
+// Inject styles once globally, not per render
+let stylesInjected = false;
+function injectVoicePanelStyles() {
+  if (stylesInjected) return;
+  stylesInjected = true;
+  const style = document.createElement("style");
+  style.setAttribute("data-voice-panel", "");
+  style.textContent = voicePanelStyles;
+  document.head.appendChild(style);
+}
 
 interface VoicePanelProps {
   voiceChannel: string | null;
@@ -28,14 +40,22 @@ export function VoicePanel({
 }: VoicePanelProps) {
   const { t } = useTranslation();
 
+  useEffect(() => {
+    injectVoicePanelStyles();
+  }, []);
+
   if (!voiceChannel) {
     return (
       <div className="voice-panel">
-        <button className="voice-join-btn" onClick={() => onJoin(activeChannel)} title={t("voice.joinChannel")}>
+        <button
+          type="button"
+          className="voice-join-btn"
+          onClick={() => onJoin(activeChannel)}
+          title={t("voice.joinChannel")}
+        >
           <Phone size={14} />
           <span>{t("voice.joinChannel")}</span>
         </button>
-        <style>{voicePanelStyles}</style>
       </div>
     );
   }
@@ -63,6 +83,7 @@ export function VoicePanel({
 
       <div className="voice-controls">
         <button
+          type="button"
           className={`voice-control-btn ${isMuted ? "active" : ""}`}
           onClick={onToggleMute}
           title={isMuted ? t("voice.unmute") : t("voice.mute")}
@@ -71,6 +92,7 @@ export function VoicePanel({
           {isMuted ? <MicOff size={16} /> : <Mic size={16} />}
         </button>
         <button
+          type="button"
           className={`voice-control-btn ${isDeafened ? "active" : ""}`}
           onClick={onToggleDeafen}
           title={isDeafened ? t("voice.undeafen") : t("voice.deafen")}
@@ -79,6 +101,7 @@ export function VoicePanel({
           {isDeafened ? <VolumeX size={16} /> : <Volume2 size={16} />}
         </button>
         <button
+          type="button"
           className="voice-control-btn leave"
           onClick={onLeave}
           title={t("voice.leaveChannel")}
@@ -87,8 +110,6 @@ export function VoicePanel({
           <PhoneOff size={16} />
         </button>
       </div>
-
-      <style>{voicePanelStyles}</style>
     </div>
   );
 }

@@ -189,7 +189,8 @@ func (m *Manager) GetHistoryBefore(channel string, before time.Time, limit int) 
 func (m *Manager) CreateInvite(code, createdBy string, maxUses int, expiresAt *time.Time) error {
 	return m.db.CreateInvite(code, createdBy, maxUses, expiresAt)
 }
-func (m *Manager) UseInvite(code string) (bool, error) { return m.db.UseInvite(code) }
+func (m *Manager) ValidateInvite(code string) (bool, error) { return m.db.ValidateInvite(code) }
+func (m *Manager) UseInvite(code string) (bool, error)     { return m.db.UseInvite(code) }
 func (m *Manager) GetInvites() ([]db.Invite, error)    { return m.db.GetInvites() }
 func (m *Manager) DeleteInvite(code string) error       { return m.db.DeleteInvite(code) }
 
