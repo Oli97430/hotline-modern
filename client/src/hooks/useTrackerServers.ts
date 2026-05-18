@@ -51,11 +51,11 @@ async function fetchBootstrapConfig(): Promise<string | null> {
 function getDefaultTracker(): string {
   if (isNativeApp()) {
     const lastIp = localStorage.getItem(LAST_SERVER_IP_KEY);
-    if (lastIp) return `http://${lastIp}:9997`;
+    if (lastIp) return `http://${lastIp}:9998`;
     return "";
   }
   const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
-  return `http://${host}:9997`;
+  return `http://${host}:9998`;
 }
 
 function loadTrackerUrls(): string[] {

@@ -1,11 +1,25 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Shield, Star, User, Eye } from "lucide-react";
+import { Shield, Star, User, Eye, Clock } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
 import { UserAvatar } from "./UserAvatar";
 
+function formatDuration(connectedAt?: number): string {
+  if (!connectedAt) return "";
+  const diff = Math.floor((Date.now() - connectedAt) / 1000);
+  if (diff < 60) return "< 1 min";
+  const mins = Math.floor(diff / 60);
+  if (mins < 60) return `${mins} min`;
+  const hours = Math.floor(mins / 60);
+  const remainMins = mins % 60;
+  if (hours < 24) return remainMins > 0 ? `${hours}h ${remainMins}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remainHours = hours % 24;
+  return remainHours > 0 ? `${days}d ${remainHours}h` : `${days}d`;
+}
+
 interface UserListProps {
-  users: { userId: string; nickname: string; role: string; status: string }[];
+  users: { userId: string; nickname: string; role: string; status: string; connectedAt?: number }[];
   currentUserId?: string;
   currentRole?: string;
   onKick?: (userId: string) => void;
@@ -40,9 +54,21 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
     const close = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuUser(null);
     };
+    const closeOnEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuUser(null);
+    };
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("keydown", closeOnEsc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", closeOnEsc); };
   }, []);
+
+  // Focus first menu item when context menu opens
+  useEffect(() => {
+    if (menuUser && menuRef.current) {
+      const firstBtn = menuRef.current.querySelector<HTMLButtonElement>("button");
+      firstBtn?.focus();
+    }
+  }, [menuUser]);
 
   const handleUserClick = (userId: string, e: React.MouseEvent) => {
     if (userId === currentUserId) return;
@@ -73,7 +99,9 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           <li
             key={`${user.userId}-${user.nickname}`}
             className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""} ${user.userId === currentUserId ? "self" : ""}`}
+            tabIndex={user.userId !== currentUserId ? 0 : undefined}
             onClick={(e) => handleUserClick(user.userId, e)}
+            onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && user.userId !== currentUserId) { e.preventDefault(); handleUserClick(user.userId, e as unknown as React.MouseEvent); } }}
           >
             <div className="user-entry-avatar">
               <UserAvatar userId={user.userId} nickname={user.nickname} size={22} />
@@ -88,7 +116,7 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
       </ul>
 
       {menuUser && menuTarget && (
-        <div ref={menuRef} className="user-menu" style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}>
+        <div ref={menuRef} className="user-menu" role="menu" aria-label={`Actions for ${menuTarget.nickname}`} style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}>
           <div className="user-menu-header">
             <span className="user-menu-nick">{menuTarget.nickname}</span>
             <span className="user-menu-role" style={{ color: `var(--role-${menuTarget.role})` }}>
@@ -98,6 +126,12 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           <div className="user-menu-pubkey" title={menuTarget.userId}>
             {menuTarget.userId.slice(0, 16)}...
           </div>
+          {menuTarget.connectedAt && (
+            <div className="user-menu-info">
+              <Clock size={12} />
+              <span>{t("users.onlineSince")}: {formatDuration(menuTarget.connectedAt)}</span>
+            </div>
+          )}
           <div className="user-menu-actions">
             <button onClick={() => { onDM?.(menuUser); setMenuUser(null); }}>
               {t("users.sendDM")}
@@ -124,13 +158,12 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
 
       <style>{`
         .user-list {
-          width: 200px;
-          min-width: 200px;
+          width: 100%;
+          min-width: 0;
           background: var(--bg-secondary);
           display: flex;
           flex-direction: column;
           height: 100%;
-          border-left: 1px solid var(--border);
         }
         .user-list-header {
           padding: 12px 16px;
@@ -255,6 +288,14 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
         }
         .user-menu-actions button.danger:hover {
           background: var(--danger-dim);
+        }
+        .user-menu-info {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 6px 12px;
+          font-size: 11px;
+          color: var(--text-muted);
         }
       `}</style>
     </aside>

@@ -102,7 +102,10 @@ button {
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-select:focus-visible {
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="option"]:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -294,7 +297,8 @@ body,
     top: 0;
     left: 0;
     bottom: 0;
-    width: 280px;
+    width: 280px !important;
+    min-width: 280px !important;
     z-index: 100;
     transform: translateX(-100%);
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -304,6 +308,11 @@ body,
   .app-sidebar-col.mobile-open {
     transform: translateX(0);
     box-shadow: var(--shadow-lg);
+  }
+
+  /* Hide sidebar resize divider on mobile (sidebar is a drawer) */
+  .app-layout > .resize-divider:first-of-type {
+    display: none;
   }
 
   .mobile-sidebar-overlay {

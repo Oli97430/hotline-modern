@@ -7,7 +7,7 @@ import { MentionSuggestions } from "./MentionSuggestions";
 import { FormatToolbar } from "./FormatToolbar";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { E2EIndicator } from "./E2EIndicator";
-import { ChatMessage, TypingUser } from "../hooks/useWebSocket";
+import { ChatMessage, TypingUser, ServerCustomEmoji } from "../hooks/useWebSocket";
 
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
   const date = new Date(ts);
@@ -62,9 +62,11 @@ interface ChatPanelProps {
   onForward?: (messageId: string) => void;
   readReceipts?: Record<string, string[]>;
   onSendReadReceipt?: (channel: string, messageId: string) => void;
+  customEmojis?: ServerCustomEmoji[];
+  serverBaseUrl?: string;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick, lastReadMessageId, pinnedMessageIds, onQuote, quotedText, onQuoteClear, onThreadOpen, onForward, readReceipts, onSendReadReceipt }: ChatPanelProps) {
+export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick, lastReadMessageId, pinnedMessageIds, onQuote, quotedText, onQuoteClear, onThreadOpen, onForward, readReceipts, onSendReadReceipt, customEmojis, serverBaseUrl }: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -286,17 +288,17 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         )}
         <div className="chat-header-actions">
           {onPinsOpen && (
-            <button className="chat-header-btn" onClick={onPinsOpen} title={t("pins.title")}>
+            <button className="chat-header-btn" onClick={onPinsOpen} title={t("pins.title")} aria-label={t("pins.title")}>
               <Pin size={15} />
             </button>
           )}
           {onBookmarksOpen && (
-            <button className="chat-header-btn" onClick={onBookmarksOpen} title={t("bookmarks.title")}>
+            <button className="chat-header-btn" onClick={onBookmarksOpen} title={t("bookmarks.title")} aria-label={t("bookmarks.title")}>
               <Bookmark size={15} />
             </button>
           )}
           {onSearchOpen && (
-            <button className="chat-header-btn" onClick={onSearchOpen} title={t("search.title")}>
+            <button className="chat-header-btn" onClick={onSearchOpen} title={t("search.title")} aria-label={t("search.title")}>
               <Search size={15} />
             </button>
           )}

@@ -38,6 +38,7 @@ import { useTabNotification } from "./hooks/useTabNotification";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { getFileAuthHeaders, getBoxPublicKeyHex } from "./lib/crypto";
 import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal, Palette, TrendingUp, Menu, Users as UsersIcon, Clock, Smile as SmileIcon, Filter } from "lucide-react";
+import { ResizeDivider } from "./components/ResizeDivider";
 
 export default function App() {
   const { t } = useTranslation();
@@ -68,6 +69,14 @@ export default function App() {
   const [customEmojis, setCustomEmojis] = useState(loadCustomEmojis);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
   const [channelOrder, setChannelOrder] = useState<string[]>(loadChannelOrder);
+
+  // Resizable panel widths (persisted in localStorage)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try { return Number(localStorage.getItem("hotline-sidebar-w")) || 240; } catch { return 240; }
+  });
+  const [rightPanelWidth, setRightPanelWidth] = useState(() => {
+    try { return Number(localStorage.getItem("hotline-right-w")) || 200; } catch { return 200; }
+  });
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
@@ -417,19 +426,44 @@ export default function App() {
     if (msg) setForwardMsg({ content: msg.content, author: msg.nickname });
   }, [ws.messages]);
 
-  const handleEmojiUpload = useCallback((name: string, file: File) => {
-    const url = URL.createObjectURL(file);
-    const emoji = { id: Date.now().toString(36), name, url };
-    const updated = [...customEmojis, emoji];
-    setCustomEmojis(updated);
-    saveCustomEmojis(updated);
-  }, [customEmojis]);
+  const serverBaseUrl = useMemo(() => {
+    if (!serverAddress) return "";
+    const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
+    const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+    return `${protocol}${base}`;
+  }, [serverAddress]);
 
-  const handleEmojiDelete = useCallback((id: string) => {
-    const updated = customEmojis.filter((e) => e.id !== id);
-    setCustomEmojis(updated);
-    saveCustomEmojis(updated);
-  }, [customEmojis]);
+  const handleEmojiUpload = useCallback(async (name: string, file: File) => {
+    try {
+      const authHeaders = getFileAuthHeaders(identity);
+      const ext = file.name.split(".").pop() || "png";
+      const filename = `${name}.${ext}`;
+      const uploadUrl = `${serverBaseUrl}/files/emojis/${filename}`;
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const resp = await fetch(uploadUrl, {
+        method: "POST",
+        headers: authHeaders,
+        body: formData,
+      });
+
+      if (!resp.ok) {
+        handleError("Emoji upload failed");
+        return;
+      }
+
+      // Tell the server to register the emoji
+      ws.addCustomEmoji(name, filename);
+    } catch {
+      handleError("Emoji upload error");
+    }
+  }, [serverBaseUrl, identity, ws, handleError]);
+
+  const handleEmojiDelete = useCallback((name: string) => {
+    ws.removeCustomEmoji(name);
+  }, [ws]);
 
   const handleScheduleMessage = useCallback((msg: ScheduledMessage) => {
     const updated = [...scheduledMessages, msg];
@@ -473,8 +507,8 @@ export default function App() {
     try {
       const authHeaders = getFileAuthHeaders(identity);
       const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
-      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "").replace(/:9998/, ":9999");
-      const uploadUrl = `${protocol}${base}/files/uploads/`;
+      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+      const uploadUrl = `${protocol}${base}/files/`;
 
       const formData = new FormData();
       formData.append("file", file);
@@ -558,6 +592,20 @@ export default function App() {
   };
 
 
+  // Resize handlers
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth((w) => Math.max(160, Math.min(400, w + delta)));
+  }, []);
+  const handleSidebarResizeEnd = useCallback(() => {
+    setSidebarWidth((w) => { localStorage.setItem("hotline-sidebar-w", String(w)); return w; });
+  }, []);
+  const handleRightPanelResize = useCallback((delta: number) => {
+    setRightPanelWidth((w) => Math.max(140, Math.min(400, w - delta)));
+  }, []);
+  const handleRightPanelResizeEnd = useCallback(() => {
+    setRightPanelWidth((w) => { localStorage.setItem("hotline-right-w", String(w)); return w; });
+  }, []);
+
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canUpload = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
   const canDownload = ws.serverInfo?.role !== "guest";
@@ -566,7 +614,7 @@ export default function App() {
   return (
     <div className="app-layout">
       {mobileSidebarOpen && <div className="mobile-sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />}
-      <div className={`app-sidebar-col ${mobileSidebarOpen ? "mobile-open" : ""}`}>
+      <nav className={`app-sidebar-col ${mobileSidebarOpen ? "mobile-open" : ""}`} style={{ width: sidebarWidth, minWidth: sidebarWidth }} aria-label={t("sidebar.channels")}>
         <Sidebar
           serverName={ws.serverInfo?.name || t("app.name")}
           channels={orderedChannels}
@@ -592,27 +640,29 @@ export default function App() {
         <div className="app-sidebar-bottom">
           <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />
           <NotificationSettings prefs={notifPrefs} onChange={setNotifPrefs} />
-          <button className="compact-toggle" onClick={toggleCompact} title={compact ? "Comfortable view" : "Compact view"}>
+          <button className="compact-toggle" onClick={toggleCompact} title={compact ? "Comfortable view" : "Compact view"} aria-label={compact ? "Comfortable view" : "Compact view"}>
             {compact ? <StretchHorizontal size={14} /> : <Rows3 size={14} />}
           </button>
-          <button className="compact-toggle" onClick={() => setShowThemeEditor(true)} title={t("theme.title")}>
+          <button className="compact-toggle" onClick={() => setShowThemeEditor(true)} title={t("theme.title")} aria-label={t("theme.title")}>
             <Palette size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowStats(true)} title={t("stats.title")}>
+          <button className="compact-toggle" onClick={() => setShowStats(true)} title={t("stats.title")} aria-label={t("stats.title")}>
             <TrendingUp size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowScheduler(true)} title={t("scheduler.title")}>
+          <button className="compact-toggle" onClick={() => setShowScheduler(true)} title={t("scheduler.title")} aria-label={t("scheduler.title")}>
             <Clock size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowCustomEmoji(true)} title={t("customEmoji.title")}>
+          <button className="compact-toggle" onClick={() => setShowCustomEmoji(true)} title={t("customEmoji.title")} aria-label={t("customEmoji.title")}>
             <SmileIcon size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowNotifFilters(true)} title={t("notifFilters.title")}>
+          <button className="compact-toggle" onClick={() => setShowNotifFilters(true)} title={t("notifFilters.title")} aria-label={t("notifFilters.title")}>
             <Filter size={14} />
           </button>
           <LanguageSelector />
         </div>
-      </div>
+      </nav>
+
+      <ResizeDivider direction="horizontal" onResize={handleSidebarResize} onResizeEnd={handleSidebarResizeEnd} />
 
       <main className="app-main">
         <div className="mobile-header">
@@ -745,7 +795,8 @@ export default function App() {
         </div>
       </main>
 
-      <div className={`app-right-panel ${rightPanelOpen ? "open" : "closed"}`}>
+      {rightPanelOpen && <ResizeDivider direction="horizontal" onResize={handleRightPanelResize} onResizeEnd={handleRightPanelResizeEnd} />}
+      <div className={`app-right-panel ${rightPanelOpen ? "open" : "closed"}`} style={rightPanelOpen ? { width: rightPanelWidth, minWidth: rightPanelWidth } : undefined}>
         <UserList
           users={ws.users}
           currentUserId={ws.serverInfo?.userId}
@@ -792,6 +843,20 @@ export default function App() {
           onRequestBanList={ws.requestBanList}
           onUnban={ws.unbanUser}
           onClose={() => setShowAdmin(false)}
+          adminBans={ws.adminBans}
+          adminMutes={ws.adminMutes}
+          adminUsers={ws.adminUsers}
+          channels={ws.channels}
+          onMuteUser={ws.muteUser}
+          onUnmuteUser={ws.unmuteUser}
+          onRequestMuteList={ws.requestMuteList}
+          onRequestAdminUserList={ws.requestAdminUserList}
+          onRenameChannel={ws.renameChannel}
+          onDeleteChannel={ws.deleteChannel}
+          onCreateChannel={(name, topic) => ws.createChannel(name, topic)}
+          onKickUser={ws.kickUser}
+          onBanUser={ws.banUser}
+          onSetUserRole={ws.setUserRole}
         />
       )}
 
@@ -834,8 +899,9 @@ export default function App() {
 
       {showCustomEmoji && (
         <CustomEmojiUpload
-          emojis={customEmojis}
-          onUpload={handleEmojiUpload}
+          emojis={ws.customEmojis}
+          serverBaseUrl={serverBaseUrl}
+          onUploadToServer={handleEmojiUpload}
           onDelete={handleEmojiDelete}
           onClose={() => setShowCustomEmoji(false)}
         />
@@ -878,7 +944,6 @@ export default function App() {
           display: flex;
           flex-direction: column;
           background: var(--bg-secondary);
-          border-right: 1px solid var(--border);
         }
         .app-sidebar-bottom {
           display: flex;
@@ -916,20 +981,15 @@ export default function App() {
         .app-right-panel {
           display: flex;
           flex-direction: column;
-          width: 200px;
-          min-width: 200px;
-          border-left: 1px solid var(--border);
           background: var(--bg-secondary);
-          transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-                      min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
-                      opacity 0.2s ease;
+          transition: opacity 0.2s ease;
           overflow: hidden;
         }
         .app-right-panel.closed {
-          width: 0;
-          min-width: 0;
-          border-left: none;
+          width: 0 !important;
+          min-width: 0 !important;
           opacity: 0;
+          pointer-events: none;
         }
         .app-error {
           padding: 8px 16px;

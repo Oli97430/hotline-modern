@@ -57,9 +57,9 @@ export function ServerAgreement({ agreement, serverAddress, onAccept, onDecline 
   };
 
   return (
-    <div className="agreement-overlay">
+    <div className="agreement-overlay" role="dialog" aria-modal="true" aria-labelledby="agreement-title">
       <div className="agreement-modal">
-        <h2 className="agreement-title">{t("agreement.title")}</h2>
+        <h2 id="agreement-title" className="agreement-title">{t("agreement.title")}</h2>
         <div className="agreement-content">
           <pre className="agreement-text">{agreement}</pre>
         </div>

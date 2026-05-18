@@ -59,8 +59,9 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
         </div>
 
         <div className="connect-field">
-          <label>{t("connect.serverAddress")}</label>
+          <label htmlFor="server-address">{t("connect.serverAddress")}</label>
           <input
+            id="server-address"
             type="text"
             value={address}
             onChange={(e) => setAddress(e.target.value)}
@@ -70,8 +71,9 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
         </div>
 
         <div className="connect-field">
-          <label>{t("connect.nickname")}</label>
+          <label htmlFor="nickname">{t("connect.nickname")}</label>
           <input
+            id="nickname"
             type="text"
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}

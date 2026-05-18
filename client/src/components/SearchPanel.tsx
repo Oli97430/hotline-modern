@@ -26,12 +26,34 @@ function highlightText(text: string, query: string): (string | JSX.Element)[] {
   return parts;
 }
 
+const SEARCH_HISTORY_KEY = "hotline-search-history";
+
 export function SearchPanel({ onSearch, onClose, results, activeChannel }: SearchPanelProps) {
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState("");
   const [searchAll, setSearchAll] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number>(0);
+  const [searchHistory, setSearchHistory] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [inputFocused, setInputFocused] = useState(true);
+
+  const saveToHistory = (q: string) => {
+    if (q.length < 2) return;
+    const updated = [q, ...searchHistory.filter(h => h !== q)].slice(0, 20);
+    setSearchHistory(updated);
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
+  };
+
+  const removeFromHistory = (q: string) => {
+    const updated = searchHistory.filter(h => h !== q);
+    setSearchHistory(updated);
+    localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
+  };
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -43,6 +65,7 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
     if (value.length >= 2) {
       debounceRef.current = window.setTimeout(() => {
         onSearch(value, searchAll ? undefined : activeChannel);
+        saveToHistory(value);
       }, 300);
     }
   };
@@ -70,6 +93,8 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           value={query}
           onChange={(e) => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
+          onFocus={() => setInputFocused(true)}
+          onBlur={() => setTimeout(() => setInputFocused(false), 200)}
           placeholder={t("search.placeholder")}
         />
         {results.length > 0 && (
@@ -87,6 +112,22 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           <X size={16} />
         </button>
       </div>
+
+      {query === "" && inputFocused && searchHistory.length > 0 && (
+        <ul className="search-history">
+          {searchHistory.map((h) => (
+            <li key={h} className="search-history-item">
+              <button className="search-history-btn" onClick={() => { setQuery(h); handleChange(h); }}>
+                <Search size={12} />
+                <span>{h}</span>
+              </button>
+              <button className="search-history-remove" onClick={() => removeFromHistory(h)}>
+                <X size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {results.length > 0 && (
         <ul className="search-results">
@@ -254,6 +295,45 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
         }
         .search-empty-icon {
           opacity: 0.4;
+        }
+        .search-history {
+          list-style: none;
+          border-bottom: 1px solid var(--border);
+          max-height: 200px;
+          overflow-y: auto;
+        }
+        .search-history-item {
+          display: flex;
+          align-items: center;
+          padding: 0 8px 0 0;
+        }
+        .search-history-btn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          font-size: 13px;
+          color: var(--text-secondary);
+          text-align: left;
+          transition: background var(--transition-fast), color var(--transition-fast);
+        }
+        .search-history-btn:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+        .search-history-remove {
+          color: var(--text-muted);
+          padding: 4px;
+          border-radius: var(--radius-sm);
+          opacity: 0;
+          transition: opacity var(--transition-fast), color var(--transition-fast);
+        }
+        .search-history-item:hover .search-history-remove {
+          opacity: 1;
+        }
+        .search-history-remove:hover {
+          color: var(--danger);
         }
       `}</style>
     </div>

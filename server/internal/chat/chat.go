@@ -138,6 +138,29 @@ func (m *Manager) IsBanned(publicKey string) (bool, error) {
 	return m.db.IsBanned(publicKey)
 }
 
+// Settings persistence
+func (m *Manager) GetSetting(key string) (string, error) { return m.db.GetSetting(key) }
+func (m *Manager) SetSetting(key, value string) error     { return m.db.SetSetting(key, value) }
+
+// Mute management
+func (m *Manager) AddMute(publicKey, mutedBy, reason string, expiresAt *time.Time) error {
+	return m.db.AddMute(publicKey, mutedBy, reason, expiresAt)
+}
+func (m *Manager) RemoveMute(publicKey string) error    { return m.db.RemoveMute(publicKey) }
+func (m *Manager) IsMuted(publicKey string) (bool, error) { return m.db.IsMuted(publicKey) }
+func (m *Manager) GetMutes() ([]db.Mute, error)         { return m.db.GetMutes() }
+func (m *Manager) GetAllUsers() ([]db.User, error)      { return m.db.GetAllUsers() }
+
+// Channel rename
+func (m *Manager) RenameChannel(oldName, newName string) error { return m.db.RenameChannel(oldName, newName) }
+
+// Custom emoji management
+func (m *Manager) AddCustomEmoji(name, uploadedBy, filename string) error {
+	return m.db.AddCustomEmoji(name, uploadedBy, filename)
+}
+func (m *Manager) RemoveCustomEmoji(name string) error { return m.db.RemoveCustomEmoji(name) }
+func (m *Manager) GetCustomEmojis() ([]db.CustomEmoji, error) { return m.db.GetCustomEmojis() }
+
 func (m *Manager) GetHistoryBefore(channel string, before time.Time, limit int) ([]db.Message, error) {
 	if limit <= 0 {
 		limit = 50

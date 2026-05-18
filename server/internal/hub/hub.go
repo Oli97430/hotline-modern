@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,11 +14,6 @@ import (
 	"github.com/hotline-modern/server/internal/chat"
 	"github.com/hotline-modern/server/internal/permissions"
 )
-
-var upgrader = websocket.Upgrader{
-	// TODO: restrict to known origins in production deployments
-	CheckOrigin: func(r *http.Request) bool { return true },
-}
 
 type Message struct {
 	Type      string          `json:"type"`
@@ -33,6 +29,7 @@ type Client struct {
 	Nickname     string
 	Role         string
 	Status       string // "available", "away", "busy"
+	ConnectedAt  time.Time
 	Channels     map[string]bool
 	Conn         *websocket.Conn
 	Send         chan []byte
@@ -100,9 +97,17 @@ const (
 	MsgAdminDeleteChannel   = "admin.delete_channel"
 	MsgAdminSettings        = "admin.settings"
 	MsgAdminUnbanned        = "admin.unbanned"
-	MsgChannelDelete        = "channel.delete"
+	MsgAdminMute            = "admin.mute"
+	MsgAdminUnmute          = "admin.unmute"
+	MsgAdminMutelist        = "admin.mutelist"
+	MsgAdminUserList        = "admin.userlist"
+	MsgAdminRenameChannel   = "admin.rename_channel"
+	MsgChannelDelete         = "channel.delete"
 	MsgServerSettingsUpdated = "server.settings_updated"
-	MsgError                = "error"
+	MsgCustomEmojiList       = "custom_emoji.list"
+	MsgCustomEmojiAdd        = "custom_emoji.add"
+	MsgCustomEmojiRemove     = "custom_emoji.remove"
+	MsgError                 = "error"
 )
 
 func (c *Client) consumeToken() bool {
@@ -129,28 +134,53 @@ type Hub struct {
 	auth         *auth.Manager
 	chat         *chat.Manager
 	permissions  *permissions.Manager
-	serverName   string
-	motd         string
-	agreement    string
-	mu           sync.RWMutex
+	serverName      string
+	motd            string
+	agreement       string
+	allowedOrigins  []string
+	upgrader        websocket.Upgrader
+	mu              sync.RWMutex
 }
 
 const maxMessageLength = 4000 // Max chat message content length in bytes
 
-func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Manager, serverName, motd, agreement string) *Hub {
-	return &Hub{
-		clients:     make(map[string]*Client),
-		pubKeyIndex: make(map[string]*Client),
-		channels:    make(map[string]map[string]*Client),
-		register:    make(chan *Client),
-		unregister:  make(chan *Client),
-		auth:        authMgr,
-		chat:        chatMgr,
-		permissions: permMgr,
-		serverName:  serverName,
-		motd:        motd,
-		agreement:   agreement,
+func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Manager, serverName, motd, agreement, origins string) *Hub {
+	var originList []string
+	if origins != "" {
+		for _, o := range strings.Split(origins, ",") {
+			originList = append(originList, strings.TrimSpace(o))
+		}
 	}
+
+	h := &Hub{
+		clients:        make(map[string]*Client),
+		pubKeyIndex:    make(map[string]*Client),
+		channels:       make(map[string]map[string]*Client),
+		register:       make(chan *Client),
+		unregister:     make(chan *Client),
+		auth:           authMgr,
+		chat:           chatMgr,
+		permissions:    permMgr,
+		serverName:     serverName,
+		motd:           motd,
+		agreement:      agreement,
+		allowedOrigins: originList,
+	}
+	h.upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			if len(h.allowedOrigins) == 0 {
+				return true
+			}
+			origin := r.Header.Get("Origin")
+			for _, allowed := range h.allowedOrigins {
+				if origin == allowed {
+					return true
+				}
+			}
+			return false
+		},
+	}
+	return h
 }
 
 // ClientCount returns the number of authenticated clients.
@@ -202,7 +232,7 @@ func (h *Hub) Run() {
 }
 
 func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WebSocket upgrade error: %v", err)
 		return
@@ -368,6 +398,22 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleChatHistory(client, msg)
 	case MsgChatRead:
 		h.handleChatRead(client, msg)
+	case MsgAdminMute:
+		h.handleMute(client, msg)
+	case MsgAdminUnmute:
+		h.handleUnmute(client, msg)
+	case MsgAdminMutelist:
+		h.handleMuteList(client)
+	case MsgAdminUserList:
+		h.handleAdminUserList(client)
+	case MsgAdminRenameChannel:
+		h.handleRenameChannel(client, msg)
+	case MsgCustomEmojiList:
+		h.handleCustomEmojiList(client)
+	case MsgCustomEmojiAdd:
+		h.handleCustomEmojiAdd(client, msg)
+	case MsgCustomEmojiRemove:
+		h.handleCustomEmojiRemove(client, msg)
 	}
 }
 
@@ -413,6 +459,7 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 	client.BoxPublicKey = payload.BoxPublicKey
 	client.Nickname = payload.Nickname
 	client.Role = role
+	client.ConnectedAt = time.Now()
 	h.pubKeyIndex[payload.PublicKey] = client
 	h.mu.Unlock()
 	for _, c := range stale {
@@ -435,6 +482,7 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 	h.joinChannel(client, "lobby")
 	h.sendHistory(client, "lobby")
 	h.broadcastUserJoined(client)
+	h.sendCustomEmojiList(client)
 }
 
 func (h *Hub) handleChatSend(client *Client, msg Message) {
@@ -465,6 +513,12 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 
 	if !h.permissions.CanChat(client.Role, payload.Channel) {
 		h.sendError(client, "permission denied")
+		return
+	}
+
+	// Check mute status
+	if muted, _ := h.chat.IsMuted(client.PublicKey); muted {
+		h.sendError(client, "you are muted")
 		return
 	}
 
@@ -580,17 +634,18 @@ func (h *Hub) handleChannelCreate(client *Client, msg Message) {
 
 func (h *Hub) handleUserList(client *Client) {
 	h.mu.RLock()
-	var users []map[string]string
+	var users []map[string]interface{}
 	for _, c := range h.clients {
 		if c.PublicKey == "" {
 			continue
 		}
-		users = append(users, map[string]string{
+		users = append(users, map[string]interface{}{
 			"userId":       c.PublicKey,
 			"nickname":     c.Nickname,
 			"role":         c.Role,
 			"status":       c.Status,
 			"boxPublicKey": c.BoxPublicKey,
+			"connectedAt":  c.ConnectedAt.UnixMilli(),
 		})
 	}
 	h.mu.RUnlock()
@@ -671,6 +726,7 @@ func (h *Hub) broadcastUserJoined(client *Client) {
 			"nickname":     client.Nickname,
 			"role":         client.Role,
 			"boxPublicKey": client.BoxPublicKey,
+			"connectedAt":  client.ConnectedAt.UnixMilli(),
 		}),
 	}
 	h.broadcastAll(msg)
@@ -1084,6 +1140,9 @@ func (h *Hub) handleAdminSettings(client *Client, msg Message) {
 		h.serverName = payload.ServerName
 	}
 	h.motd = payload.Motd
+
+	h.chat.SetSetting("server_name", h.serverName)
+	h.chat.SetSetting("motd", h.motd)
 
 	// Broadcast updated info to all clients
 	h.broadcastAll(Message{
@@ -1649,6 +1708,260 @@ func (h *Hub) handleChatRead(client *Client, msg Message) {
 			"userId":    client.PublicKey,
 			"nickname":  client.Nickname,
 		}),
+	})
+}
+
+func (h *Hub) handleMute(client *Client, msg Message) {
+	if !permissions.CanMute(client.Role) {
+		h.sendError(client, "permission denied")
+		return
+	}
+	var payload struct {
+		PublicKey string `json:"publicKey"`
+		Reason   string `json:"reason"`
+		Duration int    `json:"duration"` // minutes, 0 = permanent
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	var expiresAt *time.Time
+	if payload.Duration > 0 {
+		t := time.Now().Add(time.Duration(payload.Duration) * time.Minute)
+		expiresAt = &t
+	}
+	if err := h.chat.AddMute(payload.PublicKey, client.PublicKey, payload.Reason, expiresAt); err != nil {
+		h.sendError(client, "failed to mute user")
+		return
+	}
+	// Notify the muted user if online
+	h.mu.RLock()
+	if target := h.pubKeyIndex[payload.PublicKey]; target != nil {
+		reason := "You have been muted"
+		if payload.Reason != "" {
+			reason += ": " + payload.Reason
+		}
+		h.sendError(target, reason)
+	}
+	h.mu.RUnlock()
+	// Send updated mute list back
+	h.handleMuteList(client)
+}
+
+func (h *Hub) handleUnmute(client *Client, msg Message) {
+	if !permissions.CanMute(client.Role) {
+		h.sendError(client, "permission denied")
+		return
+	}
+	var payload struct {
+		PublicKey string `json:"publicKey"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	h.chat.RemoveMute(payload.PublicKey)
+	h.handleMuteList(client)
+}
+
+func (h *Hub) handleMuteList(client *Client) {
+	if !permissions.CanMute(client.Role) {
+		h.sendError(client, "permission denied")
+		return
+	}
+	mutes, err := h.chat.GetMutes()
+	if err != nil {
+		h.sendError(client, "failed to get mute list")
+		return
+	}
+	var list []map[string]interface{}
+	for _, m := range mutes {
+		entry := map[string]interface{}{
+			"publicKey": m.PublicKey,
+			"mutedBy":   m.MutedBy,
+			"reason":    m.Reason,
+			"mutedAt":   m.MutedAt.UnixMilli(),
+		}
+		if m.ExpiresAt != nil {
+			entry["expiresAt"] = m.ExpiresAt.UnixMilli()
+		}
+		list = append(list, entry)
+	}
+	h.sendToClient(client, Message{
+		Type:      MsgAdminMutelist,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"mutes": list}),
+	})
+}
+
+func (h *Hub) handleAdminUserList(client *Client) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+	users, err := h.chat.GetAllUsers()
+	if err != nil {
+		h.sendError(client, "failed to get user list")
+		return
+	}
+	h.mu.RLock()
+	var list []map[string]interface{}
+	for _, u := range users {
+		online := h.pubKeyIndex[u.PublicKey] != nil
+		list = append(list, map[string]interface{}{
+			"publicKey": u.PublicKey,
+			"nickname":  u.Nickname,
+			"role":      u.Role,
+			"online":    online,
+			"lastSeen":  u.LastSeen.UnixMilli(),
+		})
+	}
+	h.mu.RUnlock()
+	h.sendToClient(client, Message{
+		Type:      MsgAdminUserList,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"users": list}),
+	})
+}
+
+func (h *Hub) handleRenameChannel(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+	var payload struct {
+		OldName string `json:"oldName"`
+		NewName string `json:"newName"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	if payload.OldName == "lobby" {
+		h.sendError(client, "cannot rename lobby")
+		return
+	}
+	if payload.NewName == "" || len(payload.NewName) > 30 {
+		h.sendError(client, "invalid channel name")
+		return
+	}
+	if err := h.chat.RenameChannel(payload.OldName, payload.NewName); err != nil {
+		h.sendError(client, "rename failed")
+		return
+	}
+	// Update in-memory channels
+	h.mu.Lock()
+	if members, ok := h.channels[payload.OldName]; ok {
+		h.channels[payload.NewName] = members
+		delete(h.channels, payload.OldName)
+		for _, c := range members {
+			delete(c.Channels, payload.OldName)
+			c.Channels[payload.NewName] = true
+		}
+	}
+	h.mu.Unlock()
+	h.broadcastChannelList()
+}
+
+func (h *Hub) sendCustomEmojiList(client *Client) {
+	emojis, err := h.chat.GetCustomEmojis()
+	if err != nil {
+		return
+	}
+	var list []map[string]string
+	for _, e := range emojis {
+		list = append(list, map[string]string{
+			"name": e.Name,
+			"url":  "/files/emojis/" + e.Filename,
+		})
+	}
+	h.sendToClient(client, Message{
+		Type:      MsgCustomEmojiList,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"emojis": list}),
+	})
+}
+
+func (h *Hub) handleCustomEmojiList(client *Client) {
+	if client.PublicKey == "" {
+		return
+	}
+	h.sendCustomEmojiList(client)
+}
+
+func (h *Hub) handleCustomEmojiAdd(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+	var payload struct {
+		Name     string `json:"name"`
+		Filename string `json:"filename"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	if payload.Name == "" || payload.Filename == "" {
+		h.sendError(client, "name and filename required")
+		return
+	}
+	// Sanitize: only allow alphanumeric, underscore, dash in name
+	for _, r := range payload.Name {
+		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+			h.sendError(client, "invalid emoji name (lowercase alphanumeric, _, - only)")
+			return
+		}
+	}
+	if len(payload.Name) > 32 {
+		h.sendError(client, "emoji name too long (max 32)")
+		return
+	}
+	if err := h.chat.AddCustomEmoji(payload.Name, client.PublicKey, payload.Filename); err != nil {
+		h.sendError(client, "failed to add custom emoji")
+		return
+	}
+	// Broadcast updated list to all clients
+	h.broadcastCustomEmojiList()
+}
+
+func (h *Hub) handleCustomEmojiRemove(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+	var payload struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	if payload.Name == "" {
+		return
+	}
+	if err := h.chat.RemoveCustomEmoji(payload.Name); err != nil {
+		h.sendError(client, "failed to remove custom emoji")
+		return
+	}
+	h.broadcastCustomEmojiList()
+}
+
+func (h *Hub) broadcastCustomEmojiList() {
+	emojis, err := h.chat.GetCustomEmojis()
+	if err != nil {
+		return
+	}
+	var list []map[string]string
+	for _, e := range emojis {
+		list = append(list, map[string]string{
+			"name": e.Name,
+			"url":  "/files/emojis/" + e.Filename,
+		})
+	}
+	h.broadcastAll(Message{
+		Type:      MsgCustomEmojiList,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"emojis": list}),
 	})
 }
 

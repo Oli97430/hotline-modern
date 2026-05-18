@@ -1,5 +1,10 @@
-# start-public.ps1 — Start Hotline server + tracker + Cloudflare tunnels
+# start-public.ps1 — Start Hotline server + Cloudflare tunnel
 # Usage: powershell -ExecutionPolicy Bypass -File start-public.ps1
+#
+# The unified server runs everything on one port (9998):
+#   - WebSocket (/ws)
+#   - File server (/files/)
+#   - Embedded tracker (/register, /servers)
 
 $ErrorActionPreference = "Continue"
 $ROOT = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -20,67 +25,44 @@ if (-not (Test-Path $agreementFile)) {
     Set-Content -Path $agreementFile -Value "Welcome to Hotline Modern! Be respectful and have fun." -Encoding utf8
 }
 
-# --- Start tracker ---
-Write-Host "`n[1/5] Starting tracker..." -ForegroundColor Yellow
-$tracker = Start-Process -FilePath "$ROOT\hotline-tracker.exe" -ArgumentList "-addr :9997" -PassThru
-Start-Sleep -Seconds 1
-Write-Host "  Tracker PID: $($tracker.Id)" -ForegroundColor Green
+# --- Start Cloudflare tunnel (single tunnel for everything) ---
+Write-Host "`n[1/4] Starting Cloudflare tunnel..." -ForegroundColor Yellow
 
-# --- Start tunnels ---
-Write-Host "`n[2/5] Starting Cloudflare tunnels..." -ForegroundColor Yellow
+$tunnelLog = Join-Path $ROOT "tunnel.log"
+"" | Set-Content $tunnelLog
 
-$trackerLog = Join-Path $ROOT "tunnel-tracker.log"
-$wsLog = Join-Path $ROOT "tunnel-ws.log"
-
-# Clear old logs
-"" | Set-Content $trackerLog
-"" | Set-Content $wsLog
-
-$tunnelTracker = Start-Process -FilePath "$ROOT\cloudflared.exe" `
-    -ArgumentList "tunnel","--url","http://localhost:9997" `
-    -PassThru -RedirectStandardError $trackerLog
-Start-Sleep -Seconds 2
-
-$tunnelWs = Start-Process -FilePath "$ROOT\cloudflared.exe" `
+$tunnel = Start-Process -FilePath "$ROOT\cloudflared.exe" `
     -ArgumentList "tunnel","--url","http://localhost:9998" `
-    -PassThru -RedirectStandardError $wsLog
+    -PassThru -RedirectStandardError $tunnelLog
 
-# Wait for tunnel URLs to appear
-Write-Host "  Waiting for tunnel URLs..." -ForegroundColor Gray
-$trackerUrl = ""
-$wsUrl = ""
+# Wait for tunnel URL to appear
+Write-Host "  Waiting for tunnel URL..." -ForegroundColor Gray
+$tunnelUrl = ""
 for ($i = 0; $i -lt 30; $i++) {
     Start-Sleep -Seconds 1
-    if (-not $trackerUrl) {
-        $match = Select-String -Path $trackerLog -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($match) { $trackerUrl = $match.Matches[0].Value }
+    $match = Select-String -Path $tunnelLog -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($match) {
+        $tunnelUrl = $match.Matches[0].Value
+        break
     }
-    if (-not $wsUrl) {
-        $match = Select-String -Path $wsLog -Pattern 'https://[a-z0-9-]+\.trycloudflare\.com' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($match) { $wsUrl = $match.Matches[0].Value }
-    }
-    if ($trackerUrl -and $wsUrl) { break }
 }
 
-if (-not $trackerUrl -or -not $wsUrl) {
-    Write-Host "  ERROR: Could not get tunnel URLs after 30s" -ForegroundColor Red
+if (-not $tunnelUrl) {
+    Write-Host "  ERROR: Could not get tunnel URL after 30s" -ForegroundColor Red
     exit 1
 }
 
-# Extract WSS hostname for server registration
-$wsHost = ($wsUrl -replace 'https://', '')
-$wssUrl = "wss://$wsHost/ws"
+$tunnelHost = ($tunnelUrl -replace 'https://', '')
+$wssUrl = "wss://$tunnelHost/ws"
 
-Write-Host "  Tracker tunnel: $trackerUrl" -ForegroundColor Green
-Write-Host "  Server tunnel:  $wssUrl" -ForegroundColor Green
+Write-Host "  Tunnel: $tunnelUrl" -ForegroundColor Green
 
-# --- Start server with tunnel addresses ---
-Write-Host "`n[3/5] Starting Hotline server..." -ForegroundColor Yellow
-$serverArgs = "-data `"$dataDir`" -name `"Hotline Server`" -agreement `"$agreementFile`" -tracker `"$trackerUrl`" -public-addr `"$wsHost`" -public-port 443"
+# --- Start unified server ---
+Write-Host "`n[2/4] Starting Hotline server (WebSocket + Files + Tracker)..." -ForegroundColor Yellow
+$serverArgs = "-data `"$dataDir`" -name `"Hotline Server`" -agreement `"$agreementFile`" -public-addr `"$tunnelHost`" -public-port 443 -desc `"Hotline Modern public server`""
 $server = Start-Process -FilePath "$ROOT\hotline-server.exe" -ArgumentList $serverArgs -PassThru
 Start-Sleep -Seconds 3
 
-# Verify server is alive
 if ($server.HasExited) {
     Write-Host "  ERROR: Server failed to start (exit code: $($server.ExitCode))" -ForegroundColor Red
     exit 1
@@ -88,9 +70,9 @@ if ($server.HasExited) {
 Write-Host "  Server PID: $($server.Id)" -ForegroundColor Green
 
 # --- Update public-config.json ---
-Write-Host "`n[4/5] Updating public-config.json..." -ForegroundColor Yellow
+Write-Host "`n[3/4] Updating public-config.json..." -ForegroundColor Yellow
 $config = @{
-    tracker = $trackerUrl
+    tracker = $tunnelUrl
     server  = $wssUrl
     updated = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
 } | ConvertTo-Json
@@ -98,7 +80,7 @@ Set-Content -Path "$ROOT\public-config.json" -Value $config -Encoding utf8
 Write-Host "  Config updated" -ForegroundColor Green
 
 # --- Git push config ---
-Write-Host "`n[5/5] Pushing config to GitHub..." -ForegroundColor Yellow
+Write-Host "`n[4/4] Pushing config to GitHub..." -ForegroundColor Yellow
 Push-Location $ROOT
 git add public-config.json 2>$null
 git commit -m "Update public tunnel URLs" 2>$null
@@ -111,10 +93,11 @@ Write-Host "`n==========================================" -ForegroundColor Cyan
 Write-Host " HOTLINE MODERN — PUBLIC SERVER RUNNING" -ForegroundColor Cyan
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host ""
-Write-Host " Tracker : $trackerUrl" -ForegroundColor White
 Write-Host " Server  : $wssUrl" -ForegroundColor White
+Write-Host " Tracker : $tunnelUrl/servers" -ForegroundColor White
+Write-Host " Files   : $tunnelUrl/files/" -ForegroundColor White
 Write-Host ""
-Write-Host " Share this with anyone:" -ForegroundColor Gray
+Write-Host " Everything runs on one port, one tunnel." -ForegroundColor Gray
 Write-Host " The app auto-discovers the server via GitHub." -ForegroundColor Gray
 Write-Host ""
 Write-Host " Press Ctrl+C to stop everything." -ForegroundColor DarkGray
@@ -125,7 +108,7 @@ try {
     while ($true) { Start-Sleep -Seconds 60 }
 } finally {
     Write-Host "`nShutting down..." -ForegroundColor Yellow
-    foreach ($proc in $server, $tracker, $tunnelTracker, $tunnelWs) {
+    foreach ($proc in $server, $tunnel) {
         if ($proc -and -not $proc.HasExited) {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
         }

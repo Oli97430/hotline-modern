@@ -1,37 +1,33 @@
 import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { X, Upload, Plus, Trash2 } from "lucide-react";
-
-interface CustomEmoji {
-  id: string;
-  name: string;
-  url: string;
-}
+import type { ServerCustomEmoji } from "../hooks/useWebSocket";
 
 interface CustomEmojiUploadProps {
-  emojis: CustomEmoji[];
-  onUpload: (name: string, file: File) => void;
-  onDelete: (id: string) => void;
+  emojis: ServerCustomEmoji[];
+  serverBaseUrl: string;
+  onUploadToServer: (name: string, file: File) => void;
+  onDelete: (name: string) => void;
   onClose: () => void;
 }
 
+// Keep these for backward compatibility — they are no-ops now that we use the server
 const STORAGE_KEY = "hotline-custom-emojis";
-
-export function loadCustomEmojis(): CustomEmoji[] {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch { return []; }
+interface LegacyEmoji { id: string; name: string; url: string; }
+export function loadCustomEmojis(): LegacyEmoji[] {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
+  catch { return []; }
 }
-
-export function saveCustomEmojis(emojis: CustomEmoji[]) {
+export function saveCustomEmojis(emojis: LegacyEmoji[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(emojis));
 }
 
-export function CustomEmojiUpload({ emojis, onUpload, onDelete, onClose }: CustomEmojiUploadProps) {
+export function CustomEmojiUpload({ emojis, serverBaseUrl, onUploadToServer, onDelete, onClose }: CustomEmojiUploadProps) {
   const { t } = useTranslation();
   const [emojiName, setEmojiName] = useState("");
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -44,12 +40,18 @@ export function CustomEmojiUpload({ emojis, onUpload, onDelete, onClose }: Custo
     setPreview(url);
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (!selectedFile || !emojiName.trim()) return;
-    onUpload(emojiName.trim().toLowerCase().replace(/\s+/g, "_"), selectedFile);
-    setEmojiName("");
-    setPreview(null);
-    setSelectedFile(null);
+    setUploading(true);
+    try {
+      const cleanName = emojiName.trim().toLowerCase().replace(/\s+/g, "_");
+      await onUploadToServer(cleanName, selectedFile);
+      setEmojiName("");
+      setPreview(null);
+      setSelectedFile(null);
+    } finally {
+      setUploading(false);
+    }
   };
 
   return (
@@ -94,10 +96,10 @@ export function CustomEmojiUpload({ emojis, onUpload, onDelete, onClose }: Custo
               <button
                 className="custom-emoji-upload-btn"
                 onClick={handleUpload}
-                disabled={!selectedFile || !emojiName.trim()}
+                disabled={!selectedFile || !emojiName.trim() || uploading}
               >
                 <Upload size={12} />
-                <span>{t("customEmoji.upload")}</span>
+                <span>{uploading ? "..." : t("customEmoji.upload")}</span>
               </button>
             </div>
             <span className="custom-emoji-hint">{t("customEmoji.hint")}</span>
@@ -108,10 +110,10 @@ export function CustomEmojiUpload({ emojis, onUpload, onDelete, onClose }: Custo
               <span className="custom-emoji-list-label">{t("customEmoji.existing")}</span>
               <div className="custom-emoji-grid">
                 {emojis.map((emoji) => (
-                  <div key={emoji.id} className="custom-emoji-item">
-                    <img src={emoji.url} alt={emoji.name} className="custom-emoji-img" />
+                  <div key={emoji.name} className="custom-emoji-item">
+                    <img src={`${serverBaseUrl}${emoji.url}`} alt={emoji.name} className="custom-emoji-img" />
                     <span className="custom-emoji-item-name">:{emoji.name}:</span>
-                    <button className="custom-emoji-delete" onClick={() => onDelete(emoji.id)}>
+                    <button className="custom-emoji-delete" onClick={() => onDelete(emoji.name)}>
                       <Trash2 size={11} />
                     </button>
                   </div>

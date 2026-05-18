@@ -62,11 +62,11 @@ export function Sidebar({
         <h2>{serverName}</h2>
         <div className="sidebar-header-actions">
           {onAdminPanel && (role === "admin") && (
-            <button className="sidebar-admin" onClick={onAdminPanel} title={t("admin.title")}>
+            <button className="sidebar-admin" onClick={onAdminPanel} title={t("admin.title")} aria-label={t("admin.title")}>
               <Settings size={15} />
             </button>
           )}
-          <button className="sidebar-disconnect" onClick={onDisconnect} title={t("sidebar.disconnect")}>
+          <button className="sidebar-disconnect" onClick={onDisconnect} title={t("sidebar.disconnect")} aria-label={t("sidebar.disconnect")}>
             <LogOut size={16} />
           </button>
         </div>
@@ -89,8 +89,13 @@ export function Sidebar({
           {channels.map((ch, idx) => (
             <li
               key={ch.name}
+              role="option"
+              tabIndex={0}
+              aria-selected={ch.name === activeChannel && !activeDM}
+              aria-label={`${ch.name}${(unreadCounts[ch.name] || 0) > 0 ? `, ${unreadCounts[ch.name]} non lus` : ""}, ${ch.userCount} utilisateurs`}
               className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
               onClick={() => onSelectChannel(ch.name)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectChannel(ch.name); } }}
               draggable={!!onReorderChannels}
               onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(idx)); }}
               onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); }}
@@ -106,7 +111,7 @@ export function Sidebar({
               }}
             >
               {ch.hasPassword ? <Lock size={14} className="channel-icon" /> : <Hash size={14} className="channel-icon" />}
-              <span className="channel-name">{ch.name}</span>
+              <span className="channel-name" title={ch.name}>{ch.name}</span>
               {typingChannels?.includes(ch.name) && (
                 <span className="channel-typing-dot" />
               )}
@@ -114,9 +119,9 @@ export function Sidebar({
                 <span className="channel-unread">{unreadCounts[ch.name]}</span>
               )}
               {mutedChannels?.includes(ch.name) && (
-                <BellOff size={11} className="channel-muted-icon" />
+                <BellOff size={11} className="channel-muted-icon" aria-hidden="true" />
               )}
-              <span className="channel-count">{ch.userCount}</span>
+              <span className="channel-count" aria-hidden="true">{ch.userCount}</span>
               {onToggleMute && (
                 <button
                   className="channel-mute-btn"
@@ -148,8 +153,13 @@ export function Sidebar({
               {dmConversations.map((dm) => (
                 <li
                   key={dm.peerId}
+                  role="option"
+                  tabIndex={0}
+                  aria-selected={activeDM === dm.peerId}
+                  aria-label={`${dm.peerNick}${dm.unread > 0 ? `, ${dm.unread} non lus` : ""}`}
                   className={`channel-item ${activeDM === dm.peerId ? "active" : ""}`}
                   onClick={() => onSelectDM(dm.peerId)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectDM(dm.peerId); } }}
                 >
                   <MessageSquare size={14} className="channel-icon" />
                   <span className="channel-name">{dm.peerNick}</span>
@@ -171,8 +181,8 @@ export function Sidebar({
 
       <style>{`
         .sidebar {
-          width: 240px;
-          min-width: 240px;
+          width: 100%;
+          min-width: 0;
           background: var(--bg-secondary);
           display: flex;
           flex-direction: column;

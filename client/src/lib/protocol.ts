@@ -58,6 +58,7 @@ export interface UserInfo {
   role: string;
   status: string;
   boxPublicKey?: string;
+  connectedAt?: number;
 }
 
 export interface UserListPayload {
@@ -69,6 +70,7 @@ export interface UserJoinedPayload {
   nickname: string;
   role: string;
   boxPublicKey?: string;
+  connectedAt?: number;
 }
 
 export interface UserLeftPayload {

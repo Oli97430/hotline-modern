@@ -46,8 +46,8 @@ export function FileUploadZone({ serverAddress, identity, onFileUploaded, childr
 
     try {
       const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
-      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "").replace(/:9998/, ":9999");
-      const uploadUrl = `${protocol}${base}/files/uploads/`;
+      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+      const uploadUrl = `${protocol}${base}/files/`;
 
       const formData = new FormData();
       formData.append("file", file);

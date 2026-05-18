@@ -1,6 +1,6 @@
 ---
 name: release
-description: Build all Hotline Modern binaries (server, tracker, desktop EXE/MSI, Android APK) and create a GitHub release with all artifacts attached.
+description: Build all Hotline Modern binaries (server, desktop EXE/MSI, Android APK) and create a GitHub release with all artifacts attached.
 disable-model-invocation: true
 ---
 
@@ -37,12 +37,10 @@ Example: `/release v1.3.0`
 
 ```bash
 cd server
-# Windows
+# Windows (unified server: WebSocket + Files + Tracker)
 GOOS=windows GOARCH=amd64 go build -o ../builds/hotline-server.exe ./cmd/hotline-server
-GOOS=windows GOARCH=amd64 go build -o ../builds/hotline-tracker.exe ./cmd/hotline-tracker
 # Linux
 GOOS=linux GOARCH=amd64 go build -o ../builds/hotline-server-linux ./cmd/hotline-server
-GOOS=linux GOARCH=amd64 go build -o ../builds/hotline-tracker-linux ./cmd/hotline-tracker
 ```
 
 ### 4. Build client
@@ -78,11 +76,8 @@ Copy APK from `android/app/build/outputs/apk/release/` to `builds/`.
 git push origin main --tags
 gh release create <version> \
   builds/hotline-server.exe \
-  builds/hotline-tracker.exe \
   builds/hotline-server-linux \
-  builds/hotline-tracker-linux \
   builds/*.msi \
-  builds/*.exe \
   builds/*.apk \
   --title "Hotline Modern <version>" \
   --generate-notes

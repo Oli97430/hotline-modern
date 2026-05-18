@@ -18,14 +18,13 @@ Run the complete multi-user integration test suite for Hotline Modern.
 
 ### 1. Kill existing processes
 
-Stop any running hotline-server, hotline-tracker, or Vite processes on ports 9997, 9998, 9999, 1420.
+Stop any running hotline-server or Vite processes on ports 9998, 1420.
 
-### 2. Rebuild binaries
+### 2. Rebuild binary
 
 ```bash
 cd server
 go build -o hotline-server.exe ./cmd/hotline-server
-go build -o hotline-tracker.exe ./cmd/hotline-tracker
 ```
 
 ### 3. Start infrastructure with fresh data
@@ -33,20 +32,16 @@ go build -o hotline-tracker.exe ./cmd/hotline-tracker
 Create a unique temp data directory to ensure a clean state (no existing users/channels).
 
 ```bash
-# Start tracker
-./server/hotline-tracker.exe -addr :9997 &
-
-# Start server with fresh data dir
+# Start unified server (embedded tracker + files + WebSocket on one port)
 TEMP_DATA=$(mktemp -d)
 ./server/hotline-server.exe \
   -addr :9998 \
   -name "Test Server" \
   -agreement data/agreement.txt \
-  -tracker http://localhost:9997 \
   -data "$TEMP_DATA" &
 ```
 
-Wait 2 seconds for startup, then verify both are listening.
+Wait 2 seconds for startup, then verify it is listening (GET http://localhost:9998/servers should return the self-registered server).
 
 ### 4. Install test dependencies
 
@@ -77,7 +72,7 @@ Report combined results from both test suites.
 
 ## Key test areas covered
 
-- Tracker health & server registration
+- Embedded tracker health & server self-registration
 - Ed25519 authentication with nonce challenge
 - Server agreement delivery
 - User list with boxPublicKey (E2E encryption keys)

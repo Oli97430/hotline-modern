@@ -91,7 +91,15 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
           <div className="sb-loading">{t("tracker.loading")}</div>
         )}
         {servers.map((srv) => (
-          <div key={`${srv.address}:${srv.port}`} className="sb-server" onClick={() => handleConnect(srv)}>
+          <div
+            key={`${srv.address}:${srv.port}`}
+            className="sb-server"
+            role="button"
+            tabIndex={0}
+            aria-label={`${srv.name || srv.address}, ${srv.users} utilisateurs`}
+            onClick={() => handleConnect(srv)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleConnect(srv); } }}
+          >
             <div className="sb-server-info">
               <span className="sb-server-name">{srv.name}</span>
               {srv.description && <span className="sb-server-desc">{srv.description}</span>}

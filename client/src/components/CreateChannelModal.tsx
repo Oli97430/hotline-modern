@@ -22,25 +22,28 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="create-channel-title" onClick={onClose}>
       <form className="modal-content" onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit}>
-        <h3>{t("channel.create")}</h3>
+        <h3 id="create-channel-title">{t("channel.create")}</h3>
 
         <div className="modal-field">
-          <label>{t("channel.name")}</label>
+          <label htmlFor="channel-name">{t("channel.name")}</label>
           <input
+            id="channel-name"
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="general"
             autoFocus
             maxLength={32}
+            aria-required="true"
           />
         </div>
 
         <div className="modal-field">
-          <label>{t("channel.topic")}</label>
+          <label htmlFor="channel-topic">{t("channel.topic")}</label>
           <input
+            id="channel-topic"
             type="text"
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
@@ -50,8 +53,9 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
         </div>
 
         <div className="modal-field">
-          <label>{t("channel.password")}</label>
+          <label htmlFor="channel-password">{t("channel.password")}</label>
           <input
+            id="channel-password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

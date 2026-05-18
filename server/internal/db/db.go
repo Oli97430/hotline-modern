@@ -124,6 +124,29 @@ func migrate(conn *sql.DB) error {
 	// Migration: add msg_type column for existing databases that lack it
 	conn.Exec("ALTER TABLE messages ADD COLUMN msg_type TEXT NOT NULL DEFAULT ''")
 
+	// Migration: server_settings table for persisting admin settings
+	conn.Exec(`CREATE TABLE IF NOT EXISTS server_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT NOT NULL DEFAULT ''
+	)`)
+
+	// Migration: mutes table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS mutes (
+		public_key TEXT PRIMARY KEY,
+		muted_by TEXT NOT NULL DEFAULT '',
+		reason TEXT NOT NULL DEFAULT '',
+		expires_at DATETIME,
+		muted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Migration: custom_emojis table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS custom_emojis (
+		name TEXT PRIMARY KEY,
+		uploaded_by TEXT NOT NULL,
+		filename TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
 	return nil
 }
 
@@ -522,6 +545,137 @@ func (d *DB) IsBanned(publicKey string) (bool, error) {
 	var count int
 	err := d.conn.QueryRow("SELECT COUNT(*) FROM bans WHERE public_key = ?", publicKey).Scan(&count)
 	return count > 0, err
+}
+
+// Settings persistence
+func (d *DB) GetSetting(key string) (string, error) {
+	var value string
+	err := d.conn.QueryRow("SELECT value FROM server_settings WHERE key = ?", key).Scan(&value)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return value, err
+}
+
+func (d *DB) SetSetting(key, value string) error {
+	_, err := d.conn.Exec("INSERT OR REPLACE INTO server_settings (key, value) VALUES (?, ?)", key, value)
+	return err
+}
+
+// Mute management
+type Mute struct {
+	PublicKey string
+	MutedBy  string
+	Reason   string
+	ExpiresAt *time.Time
+	MutedAt  time.Time
+}
+
+func (d *DB) AddMute(publicKey, mutedBy, reason string, expiresAt *time.Time) error {
+	_, err := d.conn.Exec(
+		"INSERT OR REPLACE INTO mutes (public_key, muted_by, reason, expires_at) VALUES (?, ?, ?, ?)",
+		publicKey, mutedBy, reason, expiresAt,
+	)
+	return err
+}
+
+func (d *DB) RemoveMute(publicKey string) error {
+	_, err := d.conn.Exec("DELETE FROM mutes WHERE public_key = ?", publicKey)
+	return err
+}
+
+func (d *DB) IsMuted(publicKey string) (bool, error) {
+	var count int
+	err := d.conn.QueryRow(
+		"SELECT COUNT(*) FROM mutes WHERE public_key = ? AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+		publicKey,
+	).Scan(&count)
+	return count > 0, err
+}
+
+func (d *DB) GetMutes() ([]Mute, error) {
+	rows, err := d.conn.Query("SELECT public_key, muted_by, reason, expires_at, muted_at FROM mutes WHERE expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP ORDER BY muted_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var mutes []Mute
+	for rows.Next() {
+		var m Mute
+		if err := rows.Scan(&m.PublicKey, &m.MutedBy, &m.Reason, &m.ExpiresAt, &m.MutedAt); err != nil {
+			return nil, err
+		}
+		mutes = append(mutes, m)
+	}
+	return mutes, nil
+}
+
+func (d *DB) GetAllUsers() ([]User, error) {
+	rows, err := d.conn.Query("SELECT public_key, nickname, role, created_at, last_seen FROM users ORDER BY role, nickname")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var users []User
+	for rows.Next() {
+		var u User
+		if err := rows.Scan(&u.PublicKey, &u.Nickname, &u.Role, &u.CreatedAt, &u.LastSeen); err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
+
+// Channel rename
+func (d *DB) RenameChannel(oldName, newName string) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	tx.Exec("UPDATE channels SET name = ? WHERE name = ?", newName, oldName)
+	tx.Exec("UPDATE messages SET channel = ? WHERE channel = ?", newName, oldName)
+	tx.Exec("UPDATE pinned_messages SET channel = ? WHERE channel = ?", newName, oldName)
+	return tx.Commit()
+}
+
+// Custom emoji management
+type CustomEmoji struct {
+	Name       string
+	UploadedBy string
+	Filename   string
+	CreatedAt  time.Time
+}
+
+func (d *DB) AddCustomEmoji(name, uploadedBy, filename string) error {
+	_, err := d.conn.Exec(
+		"INSERT OR REPLACE INTO custom_emojis (name, uploaded_by, filename) VALUES (?, ?, ?)",
+		name, uploadedBy, filename,
+	)
+	return err
+}
+
+func (d *DB) RemoveCustomEmoji(name string) error {
+	_, err := d.conn.Exec("DELETE FROM custom_emojis WHERE name = ?", name)
+	return err
+}
+
+func (d *DB) GetCustomEmojis() ([]CustomEmoji, error) {
+	rows, err := d.conn.Query("SELECT name, uploaded_by, filename, created_at FROM custom_emojis ORDER BY created_at ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var emojis []CustomEmoji
+	for rows.Next() {
+		var e CustomEmoji
+		if err := rows.Scan(&e.Name, &e.UploadedBy, &e.Filename, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		emojis = append(emojis, e)
+	}
+	return emojis, nil
 }
 
 func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]Message, error) {

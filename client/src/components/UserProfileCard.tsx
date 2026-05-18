@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Shield, Star, User, Eye, MessageSquare, Copy } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
+import { UserAvatar } from "./UserAvatar";
 
 interface UserProfileCardProps {
   user: { userId: string; nickname: string; role: string; status: string };
@@ -43,8 +44,13 @@ export function UserProfileCard({ user, position, onClose, onDM, onKick, onBan, 
       <div className="profile-backdrop" onClick={onClose} />
       <div className="profile-card" style={{ position: "fixed", left: position.x, top: position.y }}>
         <div className="profile-card-header">
-          <div className="profile-avatar" style={{ borderColor: `var(--role-${user.role})` }}>
-            {user.nickname.charAt(0).toUpperCase()}
+          <div className="profile-avatar-wrap">
+            <UserAvatar
+              userId={user.userId}
+              nickname={user.nickname}
+              size={42}
+              borderColor={`var(--role-${user.role})`}
+            />
           </div>
           <div className="profile-info">
             <span className="profile-nickname" style={{ color: `var(--role-${user.role})` }}>
@@ -119,20 +125,8 @@ export function UserProfileCard({ user, position, onClose, onDM, onKick, onBan, 
           gap: 12px;
           margin-bottom: 12px;
         }
-        .profile-avatar {
-          width: 42px;
-          height: 42px;
-          border-radius: 50%;
-          background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-secondary) 100%);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 17px;
-          font-weight: 700;
-          color: var(--text-primary);
-          border: 2px solid;
+        .profile-avatar-wrap {
           flex-shrink: 0;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
         }
         .profile-info {
           flex: 1;

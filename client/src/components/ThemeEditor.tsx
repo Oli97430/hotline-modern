@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Palette, X, Save, RotateCcw, Check } from "lucide-react";
+import { Palette, X, Save, RotateCcw, Check, Upload, Download, ClipboardPaste } from "lucide-react";
 
 interface CustomTheme {
   id: string;
@@ -55,6 +55,24 @@ function clearCustomTheme() {
   localStorage.removeItem(ACTIVE_THEME_KEY);
 }
 
+const VALID_KEYS = new Set(EDITABLE_COLORS.map((c) => c.key));
+
+function isValidHexColor(v: string): boolean {
+  return /^#[0-9a-fA-F]{6}$/.test(v);
+}
+
+function validateThemeJson(json: unknown): Record<string, string> | null {
+  if (typeof json !== "object" || json === null || Array.isArray(json)) return null;
+  const obj = json as Record<string, unknown>;
+  const colors: Record<string, string> = {};
+  for (const key of VALID_KEYS) {
+    const val = obj[key];
+    if (typeof val !== "string" || !isValidHexColor(val)) return null;
+    colors[key] = val;
+  }
+  return colors;
+}
+
 interface ThemeEditorProps {
   onClose: () => void;
 }
@@ -72,6 +90,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   });
   const [themeName, setThemeName] = useState("");
   const [saved, setSaved] = useState(false);
+  const [exported, setExported] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState(false);
+  const [importSuccess, setImportSuccess] = useState(false);
 
   // Live preview
   useEffect(() => {
@@ -117,6 +140,38 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
       initial[c.key] = c.default;
     }
     setColors(initial);
+  };
+
+  const handleExport = () => {
+    const json = JSON.stringify(colors);
+    navigator.clipboard.writeText(json);
+    setExported(true);
+    setTimeout(() => setExported(false), 2000);
+  };
+
+  const handleImport = () => {
+    setImportError(false);
+    setImportSuccess(false);
+    try {
+      const parsed = JSON.parse(importText);
+      const validated = validateThemeJson(parsed);
+      if (!validated) {
+        setImportError(true);
+        setTimeout(() => setImportError(false), 3000);
+        return;
+      }
+      setColors(validated);
+      applyTheme(validated);
+      setImportSuccess(true);
+      setTimeout(() => {
+        setImportSuccess(false);
+        setShowImport(false);
+        setImportText("");
+      }, 1500);
+    } catch {
+      setImportError(true);
+      setTimeout(() => setImportError(false), 3000);
+    }
   };
 
   return (
@@ -170,6 +225,35 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               <RotateCcw size={14} />
             </button>
           </div>
+
+          <div className="theme-share-row">
+            <button className={`theme-export-btn ${exported ? "exported" : ""}`} onClick={handleExport}>
+              {exported ? <Check size={14} /> : <Download size={14} />}
+              <span>{exported ? t("theme.exported") : t("theme.export")}</span>
+            </button>
+            <button className={`theme-import-btn ${showImport ? "active" : ""}`} onClick={() => { setShowImport(!showImport); setImportError(false); setImportSuccess(false); }}>
+              <Upload size={14} />
+              <span>{t("theme.import")}</span>
+            </button>
+          </div>
+
+          {showImport && (
+            <div className="theme-import-area">
+              <textarea
+                className={`theme-import-input ${importError ? "error" : ""} ${importSuccess ? "success" : ""}`}
+                placeholder={t("theme.importPlaceholder")}
+                value={importText}
+                onChange={(e) => { setImportText(e.target.value); setImportError(false); }}
+                rows={3}
+              />
+              {importError && <span className="theme-import-msg error">{t("theme.importError")}</span>}
+              {importSuccess && <span className="theme-import-msg success">{t("theme.importSuccess")}</span>}
+              <button className="theme-import-apply-btn" onClick={handleImport} disabled={!importText.trim()}>
+                <ClipboardPaste size={14} />
+                <span>{t("theme.importApply")}</span>
+              </button>
+            </div>
+          )}
 
           {themes.length > 0 && (
             <div className="theme-list">
@@ -366,6 +450,100 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
           }
           .theme-list-item:hover .theme-list-delete { opacity: 1; }
           .theme-list-delete:hover { color: var(--danger); }
+          .theme-share-row {
+            display: flex;
+            gap: 8px;
+          }
+          .theme-export-btn, .theme-import-btn {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+          }
+          .theme-export-btn:hover, .theme-import-btn:hover {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+          }
+          .theme-export-btn.exported {
+            background: #10b981;
+            color: #fff;
+            border-color: #10b981;
+          }
+          .theme-import-btn.active {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+          }
+          .theme-import-area {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            animation: fadeInScale 0.15s ease;
+          }
+          .theme-import-input {
+            width: 100%;
+            padding: 8px 12px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            resize: vertical;
+            min-height: 60px;
+            transition: border-color var(--transition-fast);
+          }
+          .theme-import-input:focus {
+            outline: none;
+            border-color: var(--accent);
+          }
+          .theme-import-input.error {
+            border-color: var(--danger);
+          }
+          .theme-import-input.success {
+            border-color: #10b981;
+          }
+          .theme-import-msg {
+            font-size: 11px;
+            font-weight: 500;
+          }
+          .theme-import-msg.error {
+            color: var(--danger);
+          }
+          .theme-import-msg.success {
+            color: #10b981;
+          }
+          .theme-import-apply-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: var(--radius-sm);
+            background: var(--accent);
+            color: #fff;
+            transition: background var(--transition-fast), transform var(--transition-fast);
+          }
+          .theme-import-apply-btn:hover:not(:disabled) {
+            background: var(--accent-hover);
+            transform: translateY(-1px);
+          }
+          .theme-import-apply-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+          }
         `}</style>
       </div>
     </div>

@@ -70,6 +70,10 @@ func (m *Manager) CanSetRole(actorRole, targetRole string) bool {
 	return targetRole == RoleOperator || targetRole == RoleMember || targetRole == RoleGuest
 }
 
+func CanMute(role string) bool {
+	return role == RoleAdmin || role == RoleOperator
+}
+
 func RoleLevel(role string) int {
 	switch role {
 	case RoleAdmin:

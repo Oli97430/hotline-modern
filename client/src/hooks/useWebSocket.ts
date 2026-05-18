@@ -92,6 +92,35 @@ export interface ChannelMember {
   status: string;
 }
 
+export interface AdminBan {
+  publicKey: string;
+  nickname: string;
+  bannedBy: string;
+  reason: string;
+  bannedAt: number;
+}
+
+export interface AdminMute {
+  publicKey: string;
+  mutedBy: string;
+  reason: string;
+  mutedAt: number;
+  expiresAt?: number;
+}
+
+export interface AdminUser {
+  publicKey: string;
+  nickname: string;
+  role: string;
+  online: boolean;
+  lastSeen: number;
+}
+
+export interface ServerCustomEmoji {
+  name: string;
+  url: string;
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
@@ -99,7 +128,7 @@ export interface UseWebSocketReturn {
   dmMessages: DMMessage[];
   typingUsers: TypingUser[];
   channels: { name: string; topic: string; userCount: number; hasPassword: boolean }[];
-  users: { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string }[];
+  users: { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number }[];
   searchResults: SearchResult[];
   pinnedMessages: PinnedMessage[];
   channelMembers: ChannelMember[];
@@ -107,6 +136,10 @@ export interface UseWebSocketReturn {
   reconnectIn: number;
   historyLoading: boolean;
   hasMoreHistory: boolean;
+  adminBans: AdminBan[];
+  adminMutes: AdminMute[];
+  adminUsers: AdminUser[];
+  customEmojis: ServerCustomEmoji[];
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
   sendChat: (channel: string, content: string, msgType?: string) => void;
@@ -140,6 +173,14 @@ export interface UseWebSocketReturn {
   requestChannelMembers: (channel: string) => void;
   loadHistory: (channel: string, beforeTimestamp: number) => void;
   sendReadReceipt: (channel: string, messageId: string) => void;
+  muteUser: (publicKey: string, reason: string, duration: number) => void;
+  unmuteUser: (publicKey: string) => void;
+  requestMuteList: () => void;
+  requestAdminUserList: () => void;
+  renameChannel: (oldName: string, newName: string) => void;
+  requestCustomEmojis: () => void;
+  addCustomEmoji: (name: string, filename: string) => void;
+  removeCustomEmoji: (name: string) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -169,7 +210,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
   const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number; hasPassword: boolean }[]>([]);
-  const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string; boxPublicKey?: string }[]>([]);
+  const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number }[]>([]);
   const usersRef = useRef(users);
   usersRef.current = users;
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -179,6 +220,10 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [reconnectIn, setReconnectIn] = useState(0);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [hasMoreHistory, setHasMoreHistory] = useState(true);
+  const [adminBans, setAdminBans] = useState<AdminBan[]>([]);
+  const [adminMutes, setAdminMutes] = useState<AdminMute[]>([]);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [customEmojis, setCustomEmojis] = useState<ServerCustomEmoji[]>([]);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -249,7 +294,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           const payload = msg.payload as UserJoinedPayload;
           setUsers((prev) => {
             const filtered = prev.filter((u) => u.userId !== payload.userId);
-            return [...filtered, { ...payload, status: "online", boxPublicKey: payload.boxPublicKey }];
+            return [...filtered, { ...payload, status: "online", boxPublicKey: payload.boxPublicKey, connectedAt: payload.connectedAt }];
           });
           setMessages((prev) => insertAndCap(prev, {
             id: msg.id,
@@ -445,6 +490,31 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           }
           break;
         }
+        case "admin.banlist": {
+          const payload = msg.payload as { bans: AdminBan[] };
+          setAdminBans(payload.bans || []);
+          break;
+        }
+        case "admin.unbanned": {
+          const payload = msg.payload as { publicKey: string };
+          setAdminBans((prev) => prev.filter((b) => b.publicKey !== payload.publicKey));
+          break;
+        }
+        case "admin.mutelist": {
+          const payload = msg.payload as { mutes: AdminMute[] };
+          setAdminMutes(payload.mutes || []);
+          break;
+        }
+        case "admin.userlist": {
+          const payload = msg.payload as { users: AdminUser[] };
+          setAdminUsers(payload.users || []);
+          break;
+        }
+        case "custom_emoji.list": {
+          const payload = msg.payload as { emojis: ServerCustomEmoji[] };
+          setCustomEmojis(payload.emojis || []);
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -543,6 +613,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setChannels([]);
     setUsers([]);
     setReadReceipts({});
+    setCustomEmojis([]);
   }, []);
 
   const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
@@ -700,6 +771,38 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     wsSend("chat.read", { channel, messageId });
   }, [wsSend]);
 
+  const muteUser = useCallback((publicKey: string, reason: string, duration: number) => {
+    wsSend("admin.mute", { publicKey, reason, duration });
+  }, [wsSend]);
+
+  const unmuteUser = useCallback((publicKey: string) => {
+    wsSend("admin.unmute", { publicKey });
+  }, [wsSend]);
+
+  const requestMuteList = useCallback(() => {
+    wsSend("admin.mutelist", {});
+  }, [wsSend]);
+
+  const requestAdminUserList = useCallback(() => {
+    wsSend("admin.userlist", {});
+  }, [wsSend]);
+
+  const renameChannel = useCallback((oldName: string, newName: string) => {
+    wsSend("admin.rename_channel", { oldName, newName });
+  }, [wsSend]);
+
+  const requestCustomEmojis = useCallback(() => {
+    wsSend("custom_emoji.list", {});
+  }, [wsSend]);
+
+  const addCustomEmoji = useCallback((name: string, filename: string) => {
+    wsSend("custom_emoji.add", { name, filename });
+  }, [wsSend]);
+
+  const removeCustomEmoji = useCallback((name: string) => {
+    wsSend("custom_emoji.remove", { name });
+  }, [wsSend]);
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
@@ -766,5 +869,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     loadHistory,
     readReceipts,
     sendReadReceipt,
+    adminBans,
+    adminMutes,
+    adminUsers,
+    customEmojis,
+    muteUser,
+    unmuteUser,
+    requestMuteList,
+    requestAdminUserList,
+    renameChannel,
+    requestCustomEmojis,
+    addCustomEmoji,
+    removeCustomEmoji,
   };
 }

@@ -10,7 +10,7 @@ const { encodeBase64, decodeBase64 } = tweetnaclUtil;
 import http from "http";
 
 const SERVER = "ws://localhost:9998/ws";
-const TRACKER = "http://localhost:9997";
+const TRACKER = "http://localhost:9998";
 let passed = 0;
 let failed = 0;
 const results = [];
@@ -177,11 +177,9 @@ async function runTests() {
   // ---- TRACKER TEST ----
   console.log("📡 Tracker");
   try {
-    const trackerHealth = await httpGet(`${TRACKER}/`);
-    assert(trackerHealth.status === "ok", "Tracker health check returns ok");
-
     const serverList = await httpGet(`${TRACKER}/servers`);
     assert(typeof serverList.count === "number", "Tracker /servers returns count");
+    assert(serverList.count > 0, "Tracker has self-registered server");
   } catch (e) {
     assert(false, `Tracker: ${e.message}`);
   }

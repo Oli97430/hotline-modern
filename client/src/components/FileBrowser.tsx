@@ -17,8 +17,11 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const httpBase = serverAddress.replace(/:\d+$/, ":9999");
-  const baseUrl = `http://${httpBase}`;
+  // File server runs on the same port as WebSocket
+  const isWSS = serverAddress.startsWith("wss://");
+  const cleanAddr = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+  const protocol = isWSS ? "https" : "http";
+  const baseUrl = `${protocol}://${cleanAddr}`;
 
   const fetchFiles = async (dirPath: string) => {
     setLoading(true);
