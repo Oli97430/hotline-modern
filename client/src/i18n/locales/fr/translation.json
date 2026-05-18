@@ -202,6 +202,7 @@
   "tracker.addTracker": "Ajouter un tracker",
   "tracker.trackerPlaceholder": "http://tracker:9997",
   "tracker.removeTracker": "Supprimer",
+  "tracker.addTrackerHint": "☝️ Ajoutez un tracker (ex: http://192.168.1.x:9997)",
   "notif.newMessage": "Nouveau message de {{name}}",
   "agreement.title": "Accord du serveur",
   "agreement.accept": "Accepter",

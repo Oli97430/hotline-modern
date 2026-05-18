@@ -19,8 +19,10 @@ client/package-lock.json
 client/src-tauri/target/
 client/src-tauri/Cargo.lock
 
-# Android (Capacitor)
+# Android (Capacitor) — ignore generated build output, keep config
 client/android/
+!client/android/app/src/main/AndroidManifest.xml
+!client/android/app/src/main/res/xml/network_security_config.xml
 
 # Build output
 client/dist/

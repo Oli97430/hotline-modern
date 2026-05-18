@@ -74,6 +74,9 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
 
       <div className="sb-list">
         {error && <div className="sb-error">{t(error)}</div>}
+        {error && trackerUrls.length === 0 && (
+          <div className="sb-hint">{t("tracker.addTrackerHint")}</div>
+        )}
         {!error && servers.length === 0 && !loading && (
           <div className="sb-empty">{t("tracker.noServers")}</div>
         )}

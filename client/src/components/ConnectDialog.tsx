@@ -1,8 +1,19 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Capacitor } from "@capacitor/core";
 import { Loader, Star, X, Zap } from "lucide-react";
 import { useServerFavorites, ServerFavorite } from "../hooks/useServerFavorites";
 import { ServerBrowser } from "./ServerBrowser";
+
+function getDefaultAddress(): string {
+  if (Capacitor.isNativePlatform()) {
+    // On native app, use last known IP or show placeholder
+    const lastIp = localStorage.getItem("hotline-last-server-ip");
+    return lastIp ? `${lastIp}:9998` : "";
+  }
+  const host = window.location.hostname || "localhost";
+  return `${host}:9998`;
+}
 
 interface ConnectDialogProps {
   onConnect: (address: string, nickname: string) => void;
@@ -11,7 +22,7 @@ interface ConnectDialogProps {
 
 export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
   const { t } = useTranslation();
-  const [address, setAddress] = useState("localhost:9998");
+  const [address, setAddress] = useState(getDefaultAddress);
   const [nickname, setNickname] = useState("");
   const { favorites, addFavorite, removeFavorite } = useServerFavorites();
 

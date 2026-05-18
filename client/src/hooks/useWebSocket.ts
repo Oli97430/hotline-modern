@@ -465,6 +465,15 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
       setStatus("connecting");
       setMessages([]);
 
+      // Remember server IP for native app tracker auto-discovery
+      try {
+        const host = address.replace(/^wss?:\/\//, "").split(":")[0];
+        if (host && host !== "localhost" && host !== "127.0.0.1") {
+          localStorage.setItem("hotline-last-server-ip", host);
+        }
+      } catch {}
+
+
       const protocol = address.startsWith("wss://") ? "" : "ws://";
       const url = address.includes("://") ? address : `${protocol}${address}/ws`;
 

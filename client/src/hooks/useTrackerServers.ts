@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
 
 export interface TrackerServer {
   name: string;
@@ -11,17 +12,64 @@ export interface TrackerServer {
 }
 
 const TRACKER_URLS_KEY = "hotline-tracker-urls";
-const DEFAULT_TRACKER = "http://localhost:9997";
+const LAST_SERVER_IP_KEY = "hotline-last-server-ip";
+
+/** Check if running inside a native Capacitor app (Android/iOS) */
+function isNativeApp(): boolean {
+  return Capacitor.isNativePlatform();
+}
+
+/**
+ * Derive tracker URL from context:
+ * - Browser: use window.location.hostname (works from LAN and localhost)
+ * - Capacitor native: use last known server IP, or empty (user must configure)
+ */
+function getDefaultTracker(): string {
+  if (isNativeApp()) {
+    // In a native app, localhost is the phone itself — useless
+    const lastIp = localStorage.getItem(LAST_SERVER_IP_KEY);
+    if (lastIp) return `http://${lastIp}:9997`;
+    return ""; // No default — user must add tracker via settings
+  }
+  const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+  return `http://${host}:9997`;
+}
 
 function loadTrackerUrls(): string[] {
+  const currentHost = typeof window !== "undefined" ? window.location.hostname : "localhost";
+  const isRemote = currentHost !== "localhost" && currentHost !== "127.0.0.1";
+
   try {
     const saved = localStorage.getItem(TRACKER_URLS_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        // Auto-fix: replace localhost URLs when NOT on localhost (LAN browser or native app)
+        if (isRemote || isNativeApp()) {
+          const target = isRemote ? currentHost : localStorage.getItem(LAST_SERVER_IP_KEY) || "";
+          if (target) {
+            const fixed = parsed.map((url: string) =>
+              url.replace(/\/\/(localhost|127\.0\.0\.1)/, `//${target}`),
+            );
+            if (JSON.stringify(fixed) !== saved) {
+              localStorage.setItem(TRACKER_URLS_KEY, JSON.stringify(fixed));
+            }
+            return fixed;
+          }
+        }
+        // Filter out localhost URLs in native apps
+        if (isNativeApp()) {
+          const valid = parsed.filter(
+            (url: string) => !url.includes("//localhost") && !url.includes("//127.0.0.1"),
+          );
+          if (valid.length > 0) return valid;
+        }
+        return parsed;
+      }
     }
   } catch {}
-  return [DEFAULT_TRACKER];
+  const def = getDefaultTracker();
+  return def ? [def] : [];
 }
 
 function saveTrackerUrls(urls: string[]) {
