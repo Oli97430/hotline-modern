@@ -195,3 +195,34 @@ func (m *Manager) GetAuditLog(limit, offset int) ([]db.AuditEntry, error) {
 func (m *Manager) GetAuditLogCount() (int, error) {
 	return m.db.GetAuditLogCount()
 }
+
+// Retention / export pass-through
+func (m *Manager) DeleteMessagesBefore(channel string, beforeTimestamp int64) (int64, error) {
+	return m.db.DeleteMessagesBefore(channel, beforeTimestamp)
+}
+func (m *Manager) DeleteAllChannelMessages(channel string) (int64, error) {
+	return m.db.DeleteAllChannelMessages(channel)
+}
+func (m *Manager) GetMessageCount() (int, error) {
+	return m.db.GetMessageCount()
+}
+func (m *Manager) GetMessageCountByChannel() ([]db.ChannelMessageCount, error) {
+	return m.db.GetMessageCountByChannel()
+}
+func (m *Manager) ExportMessages(channel string, limit int) ([]db.ExportedMessage, error) {
+	return m.db.ExportMessages(channel, limit)
+}
+
+// Channel permission pass-through
+func (m *Manager) SetChannelPermission(channel, role, permission string, allowed bool) error {
+	return m.db.SetChannelPermission(channel, role, permission, allowed)
+}
+func (m *Manager) GetChannelPermissions(channel string) ([]db.ChannelPermission, error) {
+	return m.db.GetChannelPermissions(channel)
+}
+func (m *Manager) DeleteChannelPermission(channel, role, permission string) error {
+	return m.db.DeleteChannelPermission(channel, role, permission)
+}
+func (m *Manager) CheckChannelPermission(channel, role, permission string) *bool {
+	return m.db.CheckChannelPermission(channel, role, permission)
+}

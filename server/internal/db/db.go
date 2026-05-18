@@ -168,6 +168,15 @@ func migrate(conn *sql.DB) error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
 
+	// Migration: channel_permissions table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS channel_permissions (
+		channel TEXT NOT NULL,
+		role TEXT NOT NULL,
+		permission TEXT NOT NULL,
+		allowed INTEGER NOT NULL DEFAULT 1,
+		PRIMARY KEY (channel, role, permission)
+	)`)
+
 	// Migration: audit_log table
 	conn.Exec(`CREATE TABLE IF NOT EXISTS audit_log (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -902,4 +911,166 @@ func (d *DB) GetAuditLogCount() (int, error) {
 	var count int
 	err := d.conn.QueryRow("SELECT COUNT(*) FROM audit_log").Scan(&count)
 	return count, err
+}
+
+// Retention / export helpers
+
+type ChannelMessageCount struct {
+	Channel string
+	Count   int
+}
+
+type ExportedMessage struct {
+	ID        string
+	Channel   string
+	UserID    string
+	Nickname  string
+	Content   string
+	Timestamp string
+}
+
+// DeleteMessagesBefore deletes messages older than beforeTimestamp (Unix ms).
+// If channel is empty, it deletes across all channels.
+func (d *DB) DeleteMessagesBefore(channel string, beforeTimestamp int64) (int64, error) {
+	before := time.UnixMilli(beforeTimestamp)
+	var res sql.Result
+	var err error
+	if channel == "" {
+		res, err = d.conn.Exec("DELETE FROM messages WHERE timestamp < ?", before)
+	} else {
+		res, err = d.conn.Exec("DELETE FROM messages WHERE channel = ? AND timestamp < ?", channel, before)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// DeleteAllChannelMessages deletes every message in the given channel.
+func (d *DB) DeleteAllChannelMessages(channel string) (int64, error) {
+	res, err := d.conn.Exec("DELETE FROM messages WHERE channel = ?", channel)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// GetMessageCount returns the total number of messages.
+func (d *DB) GetMessageCount() (int, error) {
+	var count int
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM messages").Scan(&count)
+	return count, err
+}
+
+// GetMessageCountByChannel returns per-channel message counts ordered by count DESC.
+func (d *DB) GetMessageCountByChannel() ([]ChannelMessageCount, error) {
+	rows, err := d.conn.Query("SELECT channel, COUNT(*) as cnt FROM messages GROUP BY channel ORDER BY cnt DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var counts []ChannelMessageCount
+	for rows.Next() {
+		var c ChannelMessageCount
+		if err := rows.Scan(&c.Channel, &c.Count); err != nil {
+			return nil, err
+		}
+		counts = append(counts, c)
+	}
+	return counts, nil
+}
+
+// ExportMessages returns messages for export. If channel is empty, exports across all channels.
+func (d *DB) ExportMessages(channel string, limit int) ([]ExportedMessage, error) {
+	var rows *sql.Rows
+	var err error
+	if channel == "" {
+		rows, err = d.conn.Query(
+			"SELECT id, channel, user_key, nickname, content, timestamp FROM messages ORDER BY timestamp ASC LIMIT ?",
+			limit,
+		)
+	} else {
+		rows, err = d.conn.Query(
+			"SELECT id, channel, user_key, nickname, content, timestamp FROM messages WHERE channel = ? ORDER BY timestamp ASC LIMIT ?",
+			channel, limit,
+		)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var msgs []ExportedMessage
+	for rows.Next() {
+		var m ExportedMessage
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserID, &m.Nickname, &m.Content, &m.Timestamp); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, nil
+}
+
+// Channel permission management
+
+type ChannelPermission struct {
+	Channel    string
+	Role       string
+	Permission string
+	Allowed    bool
+}
+
+func (d *DB) SetChannelPermission(channel, role, permission string, allowed bool) error {
+	val := 0
+	if allowed {
+		val = 1
+	}
+	_, err := d.conn.Exec(
+		"INSERT OR REPLACE INTO channel_permissions (channel, role, permission, allowed) VALUES (?, ?, ?, ?)",
+		channel, role, permission, val,
+	)
+	return err
+}
+
+func (d *DB) GetChannelPermissions(channel string) ([]ChannelPermission, error) {
+	rows, err := d.conn.Query(
+		"SELECT channel, role, permission, allowed FROM channel_permissions WHERE channel = ? ORDER BY role, permission",
+		channel,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var perms []ChannelPermission
+	for rows.Next() {
+		var p ChannelPermission
+		var allowed int
+		if err := rows.Scan(&p.Channel, &p.Role, &p.Permission, &allowed); err != nil {
+			return nil, err
+		}
+		p.Allowed = allowed == 1
+		perms = append(perms, p)
+	}
+	return perms, nil
+}
+
+func (d *DB) DeleteChannelPermission(channel, role, permission string) error {
+	_, err := d.conn.Exec(
+		"DELETE FROM channel_permissions WHERE channel = ? AND role = ? AND permission = ?",
+		channel, role, permission,
+	)
+	return err
+}
+
+func (d *DB) CheckChannelPermission(channel, role, permission string) *bool {
+	var allowed int
+	err := d.conn.QueryRow(
+		"SELECT allowed FROM channel_permissions WHERE channel = ? AND role = ? AND permission = ?",
+		channel, role, permission,
+	).Scan(&allowed)
+	if err != nil {
+		return nil // no override
+	}
+	result := allowed == 1
+	return &result
 }

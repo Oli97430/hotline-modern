@@ -1026,6 +1026,10 @@ export default function App() {
           onSetTopic={ws.setTopic}
           onClose={() => setShowChannelSettings(false)}
           canEdit={canCreateChannel}
+          channelPermissions={ws.channelPermissions[activeCh.name]}
+          onRequestChannelPermissions={ws.requestChannelPermissions}
+          onSetChannelPermission={ws.setChannelPermission}
+          isAdmin={ws.serverInfo?.role === "admin"}
         />
       )}
 
@@ -1055,6 +1059,10 @@ export default function App() {
           onSetUserRole={ws.setUserRole}
           auditLog={ws.auditLog}
           onRequestAuditLog={ws.requestAuditLog}
+          retentionStats={ws.retentionStats}
+          onRequestRetentionStats={ws.requestRetentionStats}
+          onPurgeMessages={ws.purgeMessages}
+          onExportMessages={ws.exportMessages}
         />
       )}
 

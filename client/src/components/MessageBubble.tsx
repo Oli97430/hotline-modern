@@ -1,5 +1,5 @@
 import { Bookmark, Pencil, Pin, Reply, Smile, Trash2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MessageReaction } from "../hooks/useWebSocket";
 import { CodeBlock } from "./CodeBlock";
@@ -139,6 +139,18 @@ interface MessageBubbleProps {
   onForward?: (messageId: string) => void;
 }
 
+function formatRelativeTime(ts: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
+  const diff = Math.max(0, Date.now() - ts);
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return t("chat.justNow");
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return t("chat.minutesAgo", { count: minutes });
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return t("chat.hoursAgo", { count: hours });
+  // Beyond 24h, fall back to the locale date
+  return new Date(ts).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
 export function MessageBubble({
@@ -189,12 +201,18 @@ export function MessageBubble({
   const [editContent, setEditContent] = useState(content);
   const [showReactPicker, setShowReactPicker] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [, setTick] = useState(0);
+
+  // Re-render every 30s so relative timestamps stay fresh
+  useEffect(() => {
+    const age = Date.now() - timestamp;
+    if (age > 86400000) return; // older than 1 day, no need to tick
+    const id = window.setInterval(() => setTick((n) => n + 1), 30000);
+    return () => window.clearInterval(id);
+  }, [timestamp]);
 
   const msgDate = new Date(timestamp);
-  const time = new Intl.DateTimeFormat(i18n.language, {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(msgDate);
+  const relTime = formatRelativeTime(timestamp, t);
 
   const fullTime = new Intl.DateTimeFormat(i18n.language, {
     weekday: "long",
@@ -264,7 +282,7 @@ export function MessageBubble({
             {nickname}
           </span>
           <span className="message-time" title={fullTime}>
-            {time}
+            {relTime}
           </span>
           {edited && <span className="message-edited">{t("chat.edited")}</span>}
           {isPinned && <Pin size={11} className="message-pin-badge" />}
@@ -273,7 +291,7 @@ export function MessageBubble({
 
       {isGrouped && showActions && (
         <span className="message-time-inline" title={fullTime}>
-          {time}
+          {relTime}
         </span>
       )}
 

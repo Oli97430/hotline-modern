@@ -1,6 +1,8 @@
 import {
   Check,
   ClipboardList,
+  Database,
+  Download,
   Hash,
   Pencil,
   Save,
@@ -14,9 +16,9 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AdminBan, AdminMute, AdminUser, AuditEntry } from "../hooks/useWebSocket";
+import type { AdminBan, AdminMute, AdminUser, AuditEntry, RetentionStats } from "../hooks/useWebSocket";
 
-type Tab = "settings" | "users" | "channels" | "bans" | "audit";
+type Tab = "settings" | "users" | "channels" | "bans" | "audit" | "retention";
 
 interface AdminPanelProps {
   serverName: string;
@@ -42,6 +44,10 @@ interface AdminPanelProps {
   onSetUserRole: (userId: string, role: string) => void;
   auditLog: { entries: AuditEntry[]; total: number };
   onRequestAuditLog: (limit?: number, offset?: number) => void;
+  retentionStats: RetentionStats | null;
+  onRequestRetentionStats: () => void;
+  onPurgeMessages: (channel: string, olderThanDays: number) => void;
+  onExportMessages: (channel: string, limit: number) => void;
 }
 
 function auditActionIcon(action: string) {
@@ -90,6 +96,10 @@ export function AdminPanel({
   onSetUserRole,
   auditLog,
   onRequestAuditLog,
+  retentionStats,
+  onRequestRetentionStats,
+  onPurgeMessages,
+  onExportMessages,
 }: AdminPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("settings");
@@ -106,6 +116,12 @@ export function AdminPanel({
   const [newChannelName, setNewChannelName] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+
+  // Retention form
+  const [purgeChannel, setPurgeChannel] = useState("");
+  const [purgeOlderThan, setPurgeOlderThan] = useState(30);
+  const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
+  const [exportChannel, setExportChannel] = useState("");
 
   useEffect(() => {
     onRequestBanList();
@@ -196,6 +212,16 @@ export function AdminPanel({
           >
             <ClipboardList size={14} />
             {t("admin.auditLog")}
+          </button>
+          <button
+            className={`admin-tab ${tab === "retention" ? "active" : ""}`}
+            onClick={() => {
+              setTab("retention");
+              onRequestRetentionStats();
+            }}
+          >
+            <Database size={14} />
+            {t("retention.title")}
           </button>
         </div>
 
@@ -487,6 +513,137 @@ export function AdminPanel({
               )}
             </>
           )}
+
+          {/* === RETENTION TAB === */}
+          {tab === "retention" && (
+            <>
+              {/* Stats section */}
+              <div className="admin-section-label">
+                <Database size={13} /> {t("retention.stats")}
+              </div>
+              {retentionStats ? (
+                <>
+                  <div className="retention-total">
+                    {t("retention.totalMessages")}: <strong>{retentionStats.totalMessages.toLocaleString()}</strong>
+                  </div>
+                  {retentionStats.byChannel && retentionStats.byChannel.length > 0 ? (
+                    <div className="retention-chart">
+                      {retentionStats.byChannel.map((ch) => {
+                        const maxCount = retentionStats.byChannel[0]?.count || 1;
+                        const pct = Math.max(2, (ch.count / maxCount) * 100);
+                        return (
+                          <div key={ch.channel} className="retention-bar-row">
+                            <span className="retention-bar-label">#{ch.channel}</span>
+                            <div className="retention-bar-track">
+                              <div className="retention-bar-fill" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="retention-bar-count">{ch.count.toLocaleString()}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="admin-empty">{t("retention.noMessages")}</div>
+                  )}
+                </>
+              ) : (
+                <div className="admin-empty">{t("retention.noMessages")}</div>
+              )}
+
+              {/* Purge section */}
+              <div className="admin-section-label" style={{ marginTop: 16 }}>
+                <Trash2 size={13} /> {t("retention.purge")}
+              </div>
+              <div className="retention-purge-form">
+                <div className="admin-field">
+                  <label>{t("retention.purgeChannel")}</label>
+                  <select
+                    value={purgeChannel}
+                    onChange={(e) => setPurgeChannel(e.target.value)}
+                    className="admin-mute-select"
+                  >
+                    <option value="">{t("retention.allChannels")}</option>
+                    {channels.map((ch) => (
+                      <option key={ch.name} value={ch.name}>#{ch.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="admin-field">
+                  <label>{t("retention.olderThan")}</label>
+                  <select
+                    value={purgeOlderThan}
+                    onChange={(e) => setPurgeOlderThan(Number(e.target.value))}
+                    className="admin-mute-select"
+                  >
+                    <option value={7}>{t("retention.days7")}</option>
+                    <option value={30}>{t("retention.days30")}</option>
+                    <option value={90}>{t("retention.days90")}</option>
+                    <option value={365}>{t("retention.year1")}</option>
+                  </select>
+                </div>
+                {!showPurgeConfirm ? (
+                  <button
+                    className="admin-btn-sm danger retention-purge-btn"
+                    onClick={() => setShowPurgeConfirm(true)}
+                  >
+                    <Trash2 size={12} />
+                    {t("retention.purgeBtn")}
+                  </button>
+                ) : (
+                  <div className="retention-confirm">
+                    <p className="retention-confirm-text">
+                      {t("retention.purgeConfirm", {
+                        channel: purgeChannel || t("retention.allChannels"),
+                        days: purgeOlderThan,
+                      })}
+                    </p>
+                    <div className="retention-confirm-actions">
+                      <button
+                        className="admin-btn-sm danger"
+                        onClick={() => {
+                          onPurgeMessages(purgeChannel, purgeOlderThan);
+                          setShowPurgeConfirm(false);
+                        }}
+                      >
+                        <Trash2 size={12} />
+                        {t("retention.purgeBtn")}
+                      </button>
+                      <button className="admin-btn-sm" onClick={() => setShowPurgeConfirm(false)}>
+                        {t("channel.cancel")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Export section */}
+              <div className="admin-section-label" style={{ marginTop: 16 }}>
+                <Download size={13} /> {t("retention.export")}
+              </div>
+              <div className="retention-export-form">
+                <div className="admin-field">
+                  <label>{t("retention.purgeChannel")}</label>
+                  <select
+                    value={exportChannel}
+                    onChange={(e) => setExportChannel(e.target.value)}
+                    className="admin-mute-select"
+                  >
+                    <option value="">{t("retention.allChannels")}</option>
+                    {channels.map((ch) => (
+                      <option key={ch.name} value={ch.name}>#{ch.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  className="admin-btn-sm accent"
+                  onClick={() => onExportMessages(exportChannel, 10000)}
+                >
+                  <Download size={12} />
+                  {t("retention.exportBtn")}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -746,6 +903,83 @@ export function AdminPanel({
           font-size: 10px;
           color: var(--text-muted);
           margin-top: 2px;
+        }
+
+        /* Retention tab styles */
+        .retention-total {
+          font-size: 14px;
+          color: var(--text-secondary);
+          padding: 8px 0;
+        }
+        .retention-total strong {
+          color: var(--text-primary);
+          font-size: 18px;
+        }
+        .retention-chart {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .retention-bar-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+        }
+        .retention-bar-label {
+          width: 90px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          flex-shrink: 0;
+        }
+        .retention-bar-track {
+          flex: 1;
+          height: 16px;
+          background: var(--bg-tertiary);
+          border-radius: var(--radius-sm);
+          overflow: hidden;
+        }
+        .retention-bar-fill {
+          height: 100%;
+          background: var(--accent);
+          border-radius: var(--radius-sm);
+          transition: width 0.3s ease;
+          min-width: 2px;
+        }
+        .retention-bar-count {
+          font-size: 11px;
+          color: var(--text-muted);
+          width: 50px;
+          text-align: right;
+          flex-shrink: 0;
+        }
+        .retention-purge-form,
+        .retention-export-form {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .retention-purge-btn {
+          align-self: flex-start;
+        }
+        .retention-confirm {
+          background: var(--danger-dim, rgba(239,68,68,0.08));
+          border: 1px solid var(--danger, #ef4444);
+          border-radius: var(--radius-sm);
+          padding: 12px;
+        }
+        .retention-confirm-text {
+          font-size: 13px;
+          color: var(--danger, #ef4444);
+          margin: 0 0 10px;
+          line-height: 1.5;
+        }
+        .retention-confirm-actions {
+          display: flex;
+          gap: 8px;
         }
       `}</style>
     </div>

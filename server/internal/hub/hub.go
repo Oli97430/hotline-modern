@@ -124,6 +124,11 @@ const (
 	MsgProfileData           = "profile.data"
 	MsgProfileUpdated        = "profile.updated"
 	MsgAuditLog              = "audit.log"
+	MsgRetentionPurge        = "retention.purge"
+	MsgRetentionStats        = "retention.stats"
+	MsgRetentionExport       = "retention.export"
+	MsgChannelPerms          = "channel.permissions"
+	MsgChannelPermsSet       = "channel.permissions.set"
 	MsgError                 = "error"
 )
 
@@ -476,6 +481,16 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleInviteList(client)
 	case MsgInviteDelete:
 		h.handleInviteDelete(client, msg)
+	case MsgRetentionPurge:
+		h.handleRetentionPurge(client, msg)
+	case MsgRetentionStats:
+		h.handleRetentionStats(client)
+	case MsgRetentionExport:
+		h.handleRetentionExport(client, msg)
+	case MsgChannelPerms:
+		h.handleChannelPerms(client, msg)
+	case MsgChannelPermsSet:
+		h.handleChannelPermsSet(client, msg)
 	}
 }
 
@@ -2307,6 +2322,244 @@ func (h *Hub) sendInviteList(client *Client) {
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"invites": list}),
+	})
+}
+
+// ── Retention handlers ─────────────────────────────────────────────────
+
+func (h *Hub) handleRetentionPurge(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel      string `json:"channel"`
+		OlderThanDays int   `json:"olderThanDays"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		h.sendError(client, "invalid payload")
+		return
+	}
+
+	if payload.OlderThanDays <= 0 {
+		h.sendError(client, "olderThanDays must be positive")
+		return
+	}
+
+	beforeTs := time.Now().UnixMilli() - int64(payload.OlderThanDays)*86400*1000
+	count, err := h.chat.DeleteMessagesBefore(payload.Channel, beforeTs)
+	if err != nil {
+		h.sendError(client, "purge failed")
+		return
+	}
+
+	// Audit log
+	channelLabel := payload.Channel
+	if channelLabel == "" {
+		channelLabel = "all channels"
+	}
+	details := fmt.Sprintf("Purged %d messages from #%s older than %d days", count, channelLabel, payload.OlderThanDays)
+	h.chat.AddAuditLog("message_purge", client.PublicKey, client.Nickname, "", "", details)
+
+	// Return updated stats
+	h.sendRetentionStats(client)
+}
+
+func (h *Hub) handleRetentionStats(client *Client) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+	h.sendRetentionStats(client)
+}
+
+func (h *Hub) sendRetentionStats(client *Client) {
+	total, _ := h.chat.GetMessageCount()
+	byChannel, _ := h.chat.GetMessageCountByChannel()
+
+	var chList []map[string]interface{}
+	for _, c := range byChannel {
+		chList = append(chList, map[string]interface{}{
+			"channel": c.Channel,
+			"count":   c.Count,
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgRetentionStats,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"totalMessages": total,
+			"byChannel":     chList,
+		}),
+	})
+}
+
+func (h *Hub) handleRetentionExport(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel string `json:"channel"`
+		Limit   int    `json:"limit"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		h.sendError(client, "invalid payload")
+		return
+	}
+
+	if payload.Limit <= 0 || payload.Limit > 10000 {
+		payload.Limit = 10000
+	}
+
+	msgs, err := h.chat.ExportMessages(payload.Channel, payload.Limit)
+	if err != nil {
+		h.sendError(client, "export failed")
+		return
+	}
+
+	var list []map[string]string
+	for _, m := range msgs {
+		list = append(list, map[string]string{
+			"id":        m.ID,
+			"channel":   m.Channel,
+			"userId":    m.UserID,
+			"nickname":  m.Nickname,
+			"content":   m.Content,
+			"timestamp": m.Timestamp,
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgRetentionExport,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"messages": list}),
+	})
+}
+
+// ── Channel permission handlers ─────────────────────────────────────
+
+var validChannelPermissions = map[string]bool{
+	"chat": true, "upload": true, "react": true, "pin": true,
+}
+
+func (h *Hub) handleChannelPerms(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel string `json:"channel"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+	if payload.Channel == "" {
+		h.sendError(client, "channel required")
+		return
+	}
+
+	perms, err := h.chat.GetChannelPermissions(payload.Channel)
+	if err != nil {
+		h.sendError(client, "failed to get channel permissions")
+		return
+	}
+
+	var list []map[string]interface{}
+	for _, p := range perms {
+		list = append(list, map[string]interface{}{
+			"channel":    p.Channel,
+			"role":       p.Role,
+			"permission": p.Permission,
+			"allowed":    p.Allowed,
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgChannelPerms,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "permissions": list}),
+	})
+}
+
+func (h *Hub) handleChannelPermsSet(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel    string `json:"channel"`
+		Role       string `json:"role"`
+		Permission string `json:"permission"`
+		Allowed    *bool  `json:"allowed"` // nil means delete (reset to default)
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.Channel == "" || payload.Role == "" || payload.Permission == "" {
+		h.sendError(client, "channel, role, and permission required")
+		return
+	}
+
+	// Validate permission name
+	if !validChannelPermissions[payload.Permission] {
+		h.sendError(client, "invalid permission: "+payload.Permission)
+		return
+	}
+
+	// Validate role name
+	switch payload.Role {
+	case permissions.RoleAdmin, permissions.RoleOperator, permissions.RoleMember, permissions.RoleGuest:
+	default:
+		h.sendError(client, "invalid role: "+payload.Role)
+		return
+	}
+
+	if payload.Allowed == nil {
+		// Delete the override (reset to default)
+		if err := h.chat.DeleteChannelPermission(payload.Channel, payload.Role, payload.Permission); err != nil {
+			h.sendError(client, "failed to delete channel permission")
+			return
+		}
+	} else {
+		if err := h.chat.SetChannelPermission(payload.Channel, payload.Role, payload.Permission, *payload.Allowed); err != nil {
+			h.sendError(client, "failed to set channel permission")
+			return
+		}
+	}
+
+	// Return updated permissions to the admin
+	perms, err := h.chat.GetChannelPermissions(payload.Channel)
+	if err != nil {
+		h.sendError(client, "failed to get channel permissions")
+		return
+	}
+
+	var list []map[string]interface{}
+	for _, p := range perms {
+		list = append(list, map[string]interface{}{
+			"channel":    p.Channel,
+			"role":       p.Role,
+			"permission": p.Permission,
+			"allowed":    p.Allowed,
+		})
+	}
+
+	// Broadcast to all authenticated clients so permissions take effect immediately
+	h.broadcastAll(Message{
+		Type:      MsgChannelPerms,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "permissions": list}),
 	})
 }
 

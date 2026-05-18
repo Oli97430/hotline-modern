@@ -29,7 +29,16 @@ func (m *Manager) SetRole(publicKey, role string) error {
 	return m.db.SetUserRole(publicKey, role)
 }
 
+func (m *Manager) CheckChannelOverride(channel, role, permission string) *bool {
+	return m.db.CheckChannelPermission(channel, role, permission)
+}
+
 func (m *Manager) CanChat(role, channel string) bool {
+	// Check channel-specific override first
+	if override := m.CheckChannelOverride(channel, role, "chat"); override != nil {
+		return *override
+	}
+	// Fall back to default logic
 	if role == RoleGuest {
 		return channel == "lobby"
 	}

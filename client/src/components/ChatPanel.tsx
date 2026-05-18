@@ -128,6 +128,28 @@ export function ChatPanel({
   const prevMsgCountRef = useRef(0);
   const lastSentReceiptRef = useRef<string>("");
 
+  // --- localStorage last-read tracking ---
+  const lastReadStorageKey = `hotline-last-read-${activeChannel}`;
+  const [localLastReadId, setLocalLastReadId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(lastReadStorageKey);
+    } catch {
+      return null;
+    }
+  });
+
+  // Update local last-read when channel changes
+  useEffect(() => {
+    try {
+      setLocalLastReadId(localStorage.getItem(lastReadStorageKey));
+    } catch {
+      setLocalLastReadId(null);
+    }
+  }, [lastReadStorageKey]);
+
+  // Use prop-provided lastReadMessageId if available, otherwise fall back to localStorage
+  const effectiveLastReadId = lastReadMessageId || localLastReadId;
+
   // Send read receipt when at bottom and new messages arrive or user scrolls down
   useEffect(() => {
     if (!onSendReadReceipt || dmMode || isScrolledUp) return;
@@ -149,6 +171,38 @@ export function ChatPanel({
   }, [quotedText, onQuoteClear]);
 
   const channelMessages = messages.filter((m) => m.channel === activeChannel || m.system);
+
+  // Mark messages as read when panel is visible and scrolled to bottom
+  useEffect(() => {
+    if (isScrolledUp) return;
+    const chMsgs = channelMessages.filter((m) => !m.system);
+    if (chMsgs.length === 0) return;
+    const lastMsg = chMsgs[chMsgs.length - 1];
+    if (lastMsg && lastMsg.id !== localLastReadId) {
+      setLocalLastReadId(lastMsg.id);
+      try {
+        localStorage.setItem(lastReadStorageKey, lastMsg.id);
+      } catch { /* quota exceeded, ignore */ }
+    }
+  }, [channelMessages, isScrolledUp, lastReadStorageKey, localLastReadId]);
+
+  // Also update last-read on window focus
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isScrolledUp) return;
+      const chMsgs = channelMessages.filter((m) => !m.system);
+      if (chMsgs.length === 0) return;
+      const lastMsg = chMsgs[chMsgs.length - 1];
+      if (lastMsg) {
+        setLocalLastReadId(lastMsg.id);
+        try {
+          localStorage.setItem(lastReadStorageKey, lastMsg.id);
+        } catch { /* quota exceeded, ignore */ }
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [channelMessages, isScrolledUp, lastReadStorageKey]);
 
   // Scroll to top = load more history; track scroll position + sticky date
   const handleScroll = useCallback(() => {
@@ -431,7 +485,7 @@ export function ChatPanel({
             !prev.system;
 
           // Unread marker: show before first unread message
-          const showUnreadMarker = lastReadMessageId && prev?.id === lastReadMessageId && msg.userId !== currentUserId;
+          const showUnreadMarker = effectiveLastReadId && prev?.id === effectiveLastReadId && msg.userId !== currentUserId;
           // Thread: check if message has replies
           const hasThread = msg.replyTo && onThreadOpen;
 
@@ -439,7 +493,7 @@ export function ChatPanel({
             <div key={msg.id}>
               {showUnreadMarker && (
                 <div className="chat-unread-marker">
-                  <span>{t("chat.newMessages")}</span>
+                  <span>{t("chat.newMessagesLabel")}</span>
                 </div>
               )}
               <MessageBubble
@@ -505,6 +559,8 @@ export function ChatPanel({
             setIsScrolledUp(false);
             setNewMsgCount(0);
           }}
+          title={t("chat.scrollToBottom")}
+          aria-label={t("chat.scrollToBottom")}
         >
           <ArrowDown size={14} />
           {newMsgCount > 0 && <span className="scroll-badge">{newMsgCount}</span>}

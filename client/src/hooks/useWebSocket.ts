@@ -158,6 +158,32 @@ export interface VoiceStatePayload {
   participants: { userId: string; nickname: string; muted: boolean; deafened: boolean }[];
 }
 
+export interface ChannelPermissionData {
+  channel: string;
+  role: string;
+  permission: string;
+  allowed: boolean;
+}
+
+export interface RetentionStats {
+  totalMessages: number;
+  byChannel: ChannelMessageCount[];
+}
+
+export interface ChannelMessageCount {
+  channel: string;
+  count: number;
+}
+
+export interface ExportedMessage {
+  id: string;
+  channel: string;
+  userId: string;
+  nickname: string;
+  content: string;
+  timestamp: string;
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
@@ -188,7 +214,9 @@ export interface UseWebSocketReturn {
   invites: InviteData[];
   auditLog: { entries: AuditEntry[]; total: number };
   profileCache: Record<string, UserProfile>;
+  retentionStats: RetentionStats | null;
   voiceState: VoiceStatePayload | null;
+  channelPermissions: Record<string, ChannelPermissionData[]>;
   wsRef: React.RefObject<WebSocket | null>;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
@@ -237,6 +265,11 @@ export interface UseWebSocketReturn {
   requestProfile: (userId: string) => void;
   updateProfile: (bio: string, customStatus: string, pronouns: string, timezone: string) => void;
   requestAuditLog: (limit?: number, offset?: number) => void;
+  purgeMessages: (channel: string, olderThanDays: number) => void;
+  requestRetentionStats: () => void;
+  exportMessages: (channel: string, limit: number) => void;
+  requestChannelPermissions: (channel: string) => void;
+  setChannelPermission: (channel: string, role: string, permission: string, allowed: boolean | null) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -283,7 +316,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [customEmojis, setCustomEmojis] = useState<ServerCustomEmoji[]>([]);
   const [invites, setInvites] = useState<InviteData[]>([]);
   const [auditLog, setAuditLog] = useState<{ entries: AuditEntry[]; total: number }>({ entries: [], total: 0 });
+  const [retentionStats, setRetentionStats] = useState<RetentionStats | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceStatePayload | null>(null);
+  const [channelPermissions, setChannelPermissions] = useState<Record<string, ChannelPermissionData[]>>({});
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -641,6 +676,45 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           }));
           break;
         }
+        case "retention.stats": {
+          const payload = msg.payload as RetentionStats;
+          setRetentionStats(payload);
+          break;
+        }
+        case "retention.export": {
+          const payload = msg.payload as { messages: ExportedMessage[] };
+          if (payload.messages && payload.messages.length > 0) {
+            const lines = payload.messages.map((m) => {
+              let ts = m.timestamp;
+              try {
+                const d = new Date(ts);
+                if (!Number.isNaN(d.getTime())) {
+                  ts = d.toISOString().replace("T", " ").slice(0, 16);
+                }
+              } catch {}
+              return `[${ts}] <${m.nickname}> ${m.content}`;
+            });
+            const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            const channel = payload.messages[0]?.channel || "export";
+            a.download = `${channel}-export.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
+          break;
+        }
+        case "channel.permissions": {
+          const payload = msg.payload as { channel: string; permissions: ChannelPermissionData[] };
+          setChannelPermissions((prev) => ({
+            ...prev,
+            [payload.channel]: payload.permissions || [],
+          }));
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -746,6 +820,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setInvites([]);
     setProfileCache({});
     setVoiceState(null);
+    setChannelPermissions({});
   }, []);
 
   const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
@@ -1060,6 +1135,42 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     [wsSend],
   );
 
+  const purgeMessages = useCallback(
+    (channel: string, olderThanDays: number) => {
+      wsSend("retention.purge", { channel, olderThanDays });
+    },
+    [wsSend],
+  );
+
+  const requestRetentionStats = useCallback(() => {
+    wsSend("retention.stats", {});
+  }, [wsSend]);
+
+  const exportMessages = useCallback(
+    (channel: string, limit: number) => {
+      wsSend("retention.export", { channel, limit });
+    },
+    [wsSend],
+  );
+
+  const requestChannelPermissions = useCallback(
+    (channel: string) => {
+      wsSend("channel.permissions", { channel });
+    },
+    [wsSend],
+  );
+
+  const setChannelPermission = useCallback(
+    (channel: string, role: string, permission: string, allowed: boolean | null) => {
+      if (allowed === null) {
+        wsSend("channel.permissions.set", { channel, role, permission });
+      } else {
+        wsSend("channel.permissions.set", { channel, role, permission, allowed });
+      }
+    },
+    [wsSend],
+  );
+
   const requestProfile = useCallback(
     (userId: string) => {
       wsSend("profile.get", { userId });
@@ -1158,10 +1269,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     requestInviteList,
     auditLog,
     requestAuditLog,
+    retentionStats,
+    purgeMessages,
+    requestRetentionStats,
+    exportMessages,
     profileCache,
     requestProfile,
     updateProfile,
     voiceState,
+    channelPermissions,
+    requestChannelPermissions,
+    setChannelPermission,
     wsRef,
   };
 }

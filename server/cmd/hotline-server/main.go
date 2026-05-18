@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -128,6 +129,56 @@ func main() {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{"valid": true, "serverName": *serverName})
+	})
+
+	// Export endpoint: GET /export/{channel}?key=publicKey
+	mux.HandleFunc("/export/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			http.Error(w, "missing key parameter", http.StatusUnauthorized)
+			return
+		}
+		role := permManager.GetRole(key)
+		if role != "admin" {
+			http.Error(w, "admin access required", http.StatusForbidden)
+			return
+		}
+		channel := strings.TrimPrefix(r.URL.Path, "/export/")
+		msgs, err := chatManager.ExportMessages(channel, 10000)
+		if err != nil {
+			http.Error(w, "export failed", http.StatusInternalServerError)
+			return
+		}
+		filename := "channel-export.txt"
+		if channel != "" {
+			filename = channel + "-export.txt"
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+		for _, m := range msgs {
+			// Parse timestamp and format it
+			ts := m.Timestamp
+			if t, parseErr := time.Parse("2006-01-02 15:04:05-07:00", ts); parseErr == nil {
+				ts = t.Format("2006-01-02 15:04")
+			} else if t, parseErr := time.Parse("2006-01-02T15:04:05Z", ts); parseErr == nil {
+				ts = t.Format("2006-01-02 15:04")
+			} else if t, parseErr := time.Parse(time.RFC3339, ts); parseErr == nil {
+				ts = t.Format("2006-01-02 15:04")
+			}
+			line := fmt.Sprintf("[%s] <%s> %s\n", ts, m.Nickname, m.Content)
+			w.Write([]byte(line))
+		}
 	})
 
 	// Tracker: POST /register
