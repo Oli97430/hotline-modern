@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { Loader, Mic, Send, Square, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Mic, Square, Send, X, Loader } from "lucide-react";
 
 interface VoiceRecorderProps {
   onSend: (audioBlob: Blob, duration: number) => void;
@@ -90,9 +90,7 @@ export function VoiceRecorder({ onSend, onCancel }: VoiceRecorderProps) {
         </div>
       )}
 
-      {audioUrl && !recording && (
-        <audio className="voice-recorder-preview" src={audioUrl} controls />
-      )}
+      {audioUrl && !recording && <audio className="voice-recorder-preview" src={audioUrl} controls />}
 
       <div className="voice-recorder-actions">
         {recording ? (
@@ -249,8 +247,13 @@ export function AudioMessage({ src, duration }: AudioMessageProps) {
       setProgress(audio.currentTime / (audio.duration || 1));
       if (!audio.paused) animRef.current = requestAnimationFrame(update);
     };
-    audio.addEventListener("play", () => { animRef.current = requestAnimationFrame(update); });
-    audio.addEventListener("ended", () => { setPlaying(false); setProgress(0); });
+    audio.addEventListener("play", () => {
+      animRef.current = requestAnimationFrame(update);
+    });
+    audio.addEventListener("ended", () => {
+      setPlaying(false);
+      setProgress(0);
+    });
     return () => cancelAnimationFrame(animRef.current);
   }, []);
 
@@ -263,9 +266,7 @@ export function AudioMessage({ src, duration }: AudioMessageProps) {
   return (
     <div className="audio-message" onClick={toggle}>
       <audio ref={audioRef} src={src} preload="metadata" />
-      <button className="audio-play-btn">
-        {playing ? <Square size={10} /> : <Mic size={12} />}
-      </button>
+      <button className="audio-play-btn">{playing ? <Square size={10} /> : <Mic size={12} />}</button>
       <div className="audio-progress-bar">
         <div className="audio-progress-fill" style={{ width: `${progress * 100}%` }} />
       </div>

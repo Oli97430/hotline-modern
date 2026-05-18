@@ -1,6 +1,6 @@
+import { Forward, Hash, Send, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Forward, Hash, Send } from "lucide-react";
 
 interface MessageForwardDialogProps {
   messageContent: string;
@@ -73,18 +73,18 @@ export function MessageForwardDialog({
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               className="forward-comment-input"
-              onKeyDown={(e) => { if (e.key === "Enter") handleForward(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleForward();
+              }}
             />
           </div>
         </div>
 
         <div className="forward-footer">
-          <button className="forward-cancel" onClick={onClose}>{t("forward.cancel")}</button>
-          <button
-            className="forward-submit"
-            onClick={handleForward}
-            disabled={!selectedChannel}
-          >
+          <button className="forward-cancel" onClick={onClose}>
+            {t("forward.cancel")}
+          </button>
+          <button className="forward-submit" onClick={handleForward} disabled={!selectedChannel}>
             <Send size={13} />
             <span>{t("forward.send")}</span>
           </button>

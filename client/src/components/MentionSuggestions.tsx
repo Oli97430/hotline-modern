@@ -10,9 +10,7 @@ interface MentionSuggestionsProps {
 export function MentionSuggestions({ users, filter, onSelect, selectedIndex }: MentionSuggestionsProps) {
   const listRef = useRef<HTMLUListElement>(null);
 
-  const filtered = users.filter((u) =>
-    u.nickname.toLowerCase().startsWith(filter.toLowerCase())
-  ).slice(0, 6);
+  const filtered = users.filter((u) => u.nickname.toLowerCase().startsWith(filter.toLowerCase())).slice(0, 6);
 
   useEffect(() => {
     const active = listRef.current?.children[selectedIndex] as HTMLElement;
@@ -28,7 +26,10 @@ export function MentionSuggestions({ users, filter, onSelect, selectedIndex }: M
           <li
             key={user.userId}
             className={`mention-item ${i === selectedIndex ? "active" : ""}`}
-            onMouseDown={(e) => { e.preventDefault(); onSelect(user.nickname); }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              onSelect(user.nickname);
+            }}
           >
             <span className="mention-nick" style={{ color: `var(--role-${user.role})` }}>
               @{user.nickname}

@@ -1,8 +1,8 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
-import i18n from "../i18n";
+import { describe, expect, it, vi } from "vitest";
 import { E2EIndicator } from "../components/E2EIndicator";
+import i18n from "../i18n";
 
 function renderWithI18n(ui: React.ReactElement) {
   return render(<I18nextProvider i18n={i18n}>{ui}</I18nextProvider>);
@@ -26,7 +26,7 @@ describe("E2EIndicator", () => {
         enabled={true}
         peerFingerprint="abcdef1234567890abcdef1234567890"
         ownFingerprint="1234567890abcdef1234567890abcdef"
-      />
+      />,
     );
 
     const btn = screen.getByText("E2E");
@@ -41,7 +41,7 @@ describe("E2EIndicator", () => {
         enabled={true}
         peerFingerprint="abcdef1234567890abcdef1234567890"
         ownFingerprint="1234567890abcdef1234567890abcdef"
-      />
+      />,
     );
 
     fireEvent.click(screen.getByText("E2E"));
@@ -51,12 +51,7 @@ describe("E2EIndicator", () => {
   });
 
   it("copies peer fingerprint to clipboard", () => {
-    renderWithI18n(
-      <E2EIndicator
-        enabled={true}
-        peerFingerprint="abcdef1234567890abcdef1234567890"
-      />
-    );
+    renderWithI18n(<E2EIndicator enabled={true} peerFingerprint="abcdef1234567890abcdef1234567890" />);
 
     fireEvent.click(screen.getByText("E2E"));
 
@@ -67,12 +62,7 @@ describe("E2EIndicator", () => {
   });
 
   it("toggles details panel on repeated clicks", () => {
-    renderWithI18n(
-      <E2EIndicator
-        enabled={true}
-        peerFingerprint="abc123"
-      />
-    );
+    renderWithI18n(<E2EIndicator enabled={true} peerFingerprint="abc123" />);
 
     const btn = screen.getByText("E2E");
     fireEvent.click(btn);

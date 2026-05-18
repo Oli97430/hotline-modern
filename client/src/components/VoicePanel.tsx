@@ -1,7 +1,7 @@
+import { Headphones, Mic, MicOff, Phone, PhoneOff, Volume2, VolumeX } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Mic, MicOff, Volume2, VolumeX, PhoneOff, Phone, Headphones } from "lucide-react";
-import { UserAvatar } from "./UserAvatar";
 import type { VoiceParticipant } from "../hooks/useVoiceChat";
+import { UserAvatar } from "./UserAvatar";
 
 interface VoicePanelProps {
   voiceChannel: string | null;
@@ -31,11 +31,7 @@ export function VoicePanel({
   if (!voiceChannel) {
     return (
       <div className="voice-panel">
-        <button
-          className="voice-join-btn"
-          onClick={() => onJoin(activeChannel)}
-          title={t("voice.joinChannel")}
-        >
+        <button className="voice-join-btn" onClick={() => onJoin(activeChannel)} title={t("voice.joinChannel")}>
           <Phone size={14} />
           <span>{t("voice.joinChannel")}</span>
         </button>

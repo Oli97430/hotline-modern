@@ -13,7 +13,7 @@ interface UserAvatarProps {
 function hashCode(str: string): number {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash = (hash << 5) - hash + str.charCodeAt(i);
     hash |= 0;
   }
   return Math.abs(hash);
@@ -32,13 +32,13 @@ function hashCode2(str: string): number {
 // Curated palette of hue ranges that look good as backgrounds with white text.
 // Avoids yellows/light-greens that have poor contrast.
 const HUE_RANGES: [number, number][] = [
-  [0, 30],     // reds / warm oranges
-  [170, 200],  // teals
-  [200, 260],  // blues
-  [260, 310],  // purples / magentas
-  [310, 345],  // pinks / roses
-  [130, 165],  // greens (deeper)
-  [35, 55],    // amber / burnt orange
+  [0, 30], // reds / warm oranges
+  [170, 200], // teals
+  [200, 260], // blues
+  [260, 310], // purples / magentas
+  [310, 345], // pinks / roses
+  [130, 165], // greens (deeper)
+  [35, 55], // amber / burnt orange
 ];
 
 function getAvatarColors(userId: string): { bg1: string; bg2: string; angle: number } {
@@ -48,20 +48,20 @@ function getAvatarColors(userId: string): { bg1: string; bg2: string; angle: num
   // Pick a hue range, then a hue within it
   const rangeIdx = h1 % HUE_RANGES.length;
   const [lo, hi] = HUE_RANGES[rangeIdx];
-  const hue1 = lo + (h1 >> 3) % (hi - lo);
+  const hue1 = lo + ((h1 >> 3) % (hi - lo));
 
   // Second hue: offset by 20-50 degrees for a subtle gradient shift
   const offset = 20 + (h2 % 30);
   const hue2 = (hue1 + offset) % 360;
 
   // Vary saturation and lightness slightly per user
-  const sat1 = 58 + (h2 >> 5) % 14;   // 58-71
-  const lit1 = 46 + (h1 >> 6) % 10;   // 46-55
-  const sat2 = 50 + (h1 >> 8) % 16;   // 50-65
-  const lit2 = 38 + (h2 >> 8) % 10;   // 38-47
+  const sat1 = 58 + ((h2 >> 5) % 14); // 58-71
+  const lit1 = 46 + ((h1 >> 6) % 10); // 46-55
+  const sat2 = 50 + ((h1 >> 8) % 16); // 50-65
+  const lit2 = 38 + ((h2 >> 8) % 10); // 38-47
 
   // Gradient angle varies per user
-  const angle = 120 + (h1 >> 10) % 60; // 120-179 degrees
+  const angle = 120 + ((h1 >> 10) % 60); // 120-179 degrees
 
   return {
     bg1: `hsl(${hue1}, ${sat1}%, ${lit1}%)`,
@@ -148,16 +148,7 @@ export function UserAvatar({ userId, nickname, size = 32, borderColor }: UserAva
           aria-hidden="true"
         >
           {pattern.map((on, i) =>
-            on ? (
-              <rect
-                key={i}
-                x={i % 5}
-                y={Math.floor(i / 5)}
-                width={1}
-                height={1}
-                fill="#fff"
-              />
-            ) : null
+            on ? <rect key={i} x={i % 5} y={Math.floor(i / 5)} width={1} height={1} fill="#fff" /> : null,
           )}
         </svg>
       )}

@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { ArrowDown, Bookmark, Loader, Mic, Pin, Search, Send, Smile, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Send, Smile, Search, Upload, Loader, Pin, Bookmark, ArrowDown, Mic } from "lucide-react";
-import { MessageBubble } from "./MessageBubble";
-import { EmojiPicker } from "./EmojiPicker";
-import { MentionSuggestions } from "./MentionSuggestions";
-import { FormatToolbar } from "./FormatToolbar";
-import { VoiceRecorder } from "./VoiceRecorder";
+import type { ChatMessage, ServerCustomEmoji, TypingUser } from "../hooks/useWebSocket";
 import { E2EIndicator } from "./E2EIndicator";
-import { ChatMessage, TypingUser, ServerCustomEmoji } from "../hooks/useWebSocket";
+import { EmojiPicker } from "./EmojiPicker";
+import { FormatToolbar } from "./FormatToolbar";
+import { MentionSuggestions } from "./MentionSuggestions";
+import { MessageBubble } from "./MessageBubble";
+import { VoiceRecorder } from "./VoiceRecorder";
 
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
   const date = new Date(ts);
@@ -66,7 +66,50 @@ interface ChatPanelProps {
   serverBaseUrl?: string;
 }
 
-export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId, currentRole, typingUsers, dmMode, onSendMessage, onSlashCommand, onTyping, onSearchOpen, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, replyTo, onCancelReply, onLoadHistory, historyLoading, hasMoreHistory, onFileUpload, canUpload, users, onPinsOpen, onBookmarksOpen, onBookmark, isBookmarked, onChannelSettings, onImageClick, lastReadMessageId, pinnedMessageIds, onQuote, quotedText, onQuoteClear, onThreadOpen, onForward, readReceipts, onSendReadReceipt, customEmojis, serverBaseUrl }: ChatPanelProps) {
+export function ChatPanel({
+  messages,
+  activeChannel,
+  channelTopic,
+  currentUserId,
+  currentRole,
+  typingUsers,
+  dmMode,
+  onSendMessage,
+  onSlashCommand,
+  onTyping,
+  onSearchOpen,
+  onReact,
+  onRemoveReact,
+  onEdit,
+  onDelete,
+  onPin,
+  onReply,
+  replyTo,
+  onCancelReply,
+  onLoadHistory,
+  historyLoading,
+  hasMoreHistory,
+  onFileUpload,
+  canUpload,
+  users,
+  onPinsOpen,
+  onBookmarksOpen,
+  onBookmark,
+  isBookmarked,
+  onChannelSettings,
+  onImageClick,
+  lastReadMessageId,
+  pinnedMessageIds,
+  onQuote,
+  quotedText,
+  onQuoteClear,
+  onThreadOpen,
+  onForward,
+  readReceipts,
+  onSendReadReceipt,
+  customEmojis,
+  serverBaseUrl,
+}: ChatPanelProps) {
   const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
@@ -154,13 +197,16 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && onFileUpload) {
-      onFileUpload(file);
-    }
-    e.target.value = "";
-  }, [onFileUpload]);
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file && onFileUpload) {
+        onFileUpload(file);
+      }
+      e.target.value = "";
+    },
+    [onFileUpload],
+  );
 
   const messagesWithDates = useMemo(() => {
     const result: (ChatMessage | { type: "separator"; date: string; key: string })[] = [];
@@ -231,16 +277,29 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Handle mention navigation
     if (mentionFilter !== null) {
-      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex((i) => i + 1); return; }
-      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex((i) => Math.max(0, i - 1)); return; }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => i + 1);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.max(0, i - 1));
+        return;
+      }
       if (e.key === "Tab" || e.key === "Enter") {
         e.preventDefault();
-        const filtered = (users || []).filter((u) => u.nickname.toLowerCase().startsWith((mentionFilter || "").toLowerCase())).slice(0, 6);
+        const filtered = (users || [])
+          .filter((u) => u.nickname.toLowerCase().startsWith((mentionFilter || "").toLowerCase()))
+          .slice(0, 6);
         const idx = mentionIndex % Math.max(filtered.length, 1);
         if (filtered[idx]) handleMentionSelect(filtered[idx].nickname);
         return;
       }
-      if (e.key === "Escape") { setMentionFilter(null); return; }
+      if (e.key === "Escape") {
+        setMentionFilter(null);
+        return;
+      }
     }
 
     if (e.key === "Enter" && !e.shiftKey) {
@@ -264,19 +323,28 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
     return t.channel === activeChannel && t.userId !== currentUserId;
   });
 
-  const typingText = activeTyping.length > 0
-    ? activeTyping.length === 1
-      ? t("chat.typing", { name: activeTyping[0].nickname })
-      : t("chat.typingMultiple", { count: activeTyping.length })
-    : null;
+  const typingText =
+    activeTyping.length > 0
+      ? activeTyping.length === 1
+        ? t("chat.typing", { name: activeTyping[0].nickname })
+        : t("chat.typingMultiple", { count: activeTyping.length })
+      : null;
 
   return (
     <div className="chat-panel">
       <div className="chat-header">
-        <span className="chat-channel-name" onClick={!dmMode ? onChannelSettings : undefined} style={!dmMode ? { cursor: "pointer" } : undefined}>
+        <span
+          className="chat-channel-name"
+          onClick={!dmMode ? onChannelSettings : undefined}
+          style={!dmMode ? { cursor: "pointer" } : undefined}
+        >
           {dmMode ? `@ ${dmMode.peerNick}` : `# ${activeChannel}`}
         </span>
-        {!dmMode && channelTopic && <span className="chat-topic" onClick={onChannelSettings} style={{ cursor: "pointer" }}>{channelTopic}</span>}
+        {!dmMode && channelTopic && (
+          <span className="chat-topic" onClick={onChannelSettings} style={{ cursor: "pointer" }}>
+            {channelTopic}
+          </span>
+        )}
         {dmMode && (
           <div style={{ position: "relative", marginLeft: 8 }}>
             <E2EIndicator
@@ -288,17 +356,32 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
         )}
         <div className="chat-header-actions">
           {onPinsOpen && (
-            <button className="chat-header-btn" onClick={onPinsOpen} title={t("pins.title")} aria-label={t("pins.title")}>
+            <button
+              className="chat-header-btn"
+              onClick={onPinsOpen}
+              title={t("pins.title")}
+              aria-label={t("pins.title")}
+            >
               <Pin size={15} />
             </button>
           )}
           {onBookmarksOpen && (
-            <button className="chat-header-btn" onClick={onBookmarksOpen} title={t("bookmarks.title")} aria-label={t("bookmarks.title")}>
+            <button
+              className="chat-header-btn"
+              onClick={onBookmarksOpen}
+              title={t("bookmarks.title")}
+              aria-label={t("bookmarks.title")}
+            >
               <Bookmark size={15} />
             </button>
           )}
           {onSearchOpen && (
-            <button className="chat-header-btn" onClick={onSearchOpen} title={t("search.title")} aria-label={t("search.title")}>
+            <button
+              className="chat-header-btn"
+              onClick={onSearchOpen}
+              title={t("search.title")}
+              aria-label={t("search.title")}
+            >
               <Search size={15} />
             </button>
           )}
@@ -339,12 +422,13 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
           const replyMsg = msg.replyTo ? channelMessages.find((m) => m.id === msg.replyTo) : undefined;
           const msgIdx = channelMessages.indexOf(msg);
           const prev = msgIdx > 0 ? channelMessages[msgIdx - 1] : undefined;
-          const isGrouped = prev !== undefined
-            && prev.userId === msg.userId
-            && (msg.timestamp - prev.timestamp) < 120000
-            && !msg.replyTo
-            && !msg.system
-            && !prev.system;
+          const isGrouped =
+            prev !== undefined &&
+            prev.userId === msg.userId &&
+            msg.timestamp - prev.timestamp < 120000 &&
+            !msg.replyTo &&
+            !msg.system &&
+            !prev.system;
 
           // Unread marker: show before first unread message
           const showUnreadMarker = lastReadMessageId && prev?.id === lastReadMessageId && msg.userId !== currentUserId;
@@ -388,21 +472,25 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
                 onThreadOpen={hasThread ? () => onThreadOpen!(msg.replyTo!) : undefined}
                 onForward={onForward}
               />
-              {msg.userId === currentUserId && !msg.system && readReceipts && (() => {
-                const readers = (readReceipts[msg.id] || []).filter((uid) => uid !== currentUserId);
-                if (readers.length === 0) return null;
-                const names = readers
-                  .map((uid) => users?.find((u) => u.userId === uid)?.nickname || uid.slice(0, 6))
-                  .slice(0, 5);
-                const label = readers.length <= 5
-                  ? t("chat.seenBy", { names: names.join(", ") })
-                  : t("chat.seenBy", { names: names.join(", ") + ` +${readers.length - 5}` });
-                return (
-                  <div className="chat-read-receipt">
-                    <span>{label}</span>
-                  </div>
-                );
-              })()}
+              {msg.userId === currentUserId &&
+                !msg.system &&
+                readReceipts &&
+                (() => {
+                  const readers = (readReceipts[msg.id] || []).filter((uid) => uid !== currentUserId);
+                  if (readers.length === 0) return null;
+                  const names = readers
+                    .map((uid) => users?.find((u) => u.userId === uid)?.nickname || uid.slice(0, 6))
+                    .slice(0, 5);
+                  const label =
+                    readers.length <= 5
+                      ? t("chat.seenBy", { names: names.join(", ") })
+                      : t("chat.seenBy", { names: names.join(", ") + ` +${readers.length - 5}` });
+                  return (
+                    <div className="chat-read-receipt">
+                      <span>{label}</span>
+                    </div>
+                  );
+                })()}
             </div>
           );
         })}
@@ -425,14 +513,20 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
 
       {typingText && (
         <div className="chat-typing">
-          <span className="typing-dots"><span /><span /><span /></span>
+          <span className="typing-dots">
+            <span />
+            <span />
+            <span />
+          </span>
           {typingText}
         </div>
       )}
 
       {replyTo && (
         <div className="chat-reply-preview">
-          <span className="reply-label">{t("chat.replyingTo")} <strong>{replyTo.nickname}</strong></span>
+          <span className="reply-label">
+            {t("chat.replyingTo")} <strong>{replyTo.nickname}</strong>
+          </span>
           <span className="reply-content">{replyTo.content.slice(0, 80)}</span>
           <button className="reply-cancel" onClick={onCancelReply} title="Cancel">
             <span>×</span>
@@ -485,11 +579,21 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
             <Smile size={18} />
           </button>
           {showEmoji && (
-            <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} customEmojis={customEmojis} serverBaseUrl={serverBaseUrl} />
+            <EmojiPicker
+              onSelect={handleEmojiSelect}
+              onClose={() => setShowEmoji(false)}
+              customEmojis={customEmojis}
+              serverBaseUrl={serverBaseUrl}
+            />
           )}
         </div>
         {!input.trim() && canUpload ? (
-          <button className="chat-mic-btn" onClick={() => setShowVoiceRecorder(true)} title={t("voice.record")} aria-label={t("voice.record")}>
+          <button
+            className="chat-mic-btn"
+            onClick={() => setShowVoiceRecorder(true)}
+            title={t("voice.record")}
+            aria-label={t("voice.record")}
+          >
             <Mic size={18} />
           </button>
         ) : (

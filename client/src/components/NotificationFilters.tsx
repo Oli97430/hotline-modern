@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { AtSign, Bell, BellOff, Filter, Hash, MessageSquare, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Bell, BellOff, Filter, Hash, AtSign, MessageSquare } from "lucide-react";
 
 export interface NotifFilter {
   mutedChannels: string[];
@@ -8,7 +8,7 @@ export interface NotifFilter {
   onlyMentions: boolean;
   quietHoursEnabled: boolean;
   quietStart: string; // "22:00"
-  quietEnd: string;   // "08:00"
+  quietEnd: string; // "08:00"
   keywords: string[];
 }
 
@@ -34,7 +34,13 @@ export function saveNotifFilters(filters: NotifFilter) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
 }
 
-export function shouldNotify(filter: NotifFilter, channel: string, userId: string, content: string, myNickname: string): boolean {
+export function shouldNotify(
+  filter: NotifFilter,
+  channel: string,
+  userId: string,
+  content: string,
+  myNickname: string,
+): boolean {
   // Quiet hours check
   if (filter.quietHoursEnabled) {
     const now = new Date();
@@ -93,9 +99,7 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
   const toggleMutedUser = (uid: string) => {
     setLocal((prev) => ({
       ...prev,
-      mutedUsers: prev.mutedUsers.includes(uid)
-        ? prev.mutedUsers.filter((u) => u !== uid)
-        : [...prev.mutedUsers, uid],
+      mutedUsers: prev.mutedUsers.includes(uid) ? prev.mutedUsers.filter((u) => u !== uid) : [...prev.mutedUsers, uid],
     }));
   };
 
@@ -187,11 +191,15 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
                 type="text"
                 value={keywordInput}
                 onChange={(e) => setKeywordInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") addKeyword(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addKeyword();
+                }}
                 placeholder={t("notifFilters.keywordPlaceholder")}
                 className="nf-keyword-input"
               />
-              <button className="nf-keyword-add" onClick={addKeyword}>+</button>
+              <button className="nf-keyword-add" onClick={addKeyword}>
+                +
+              </button>
             </div>
             {local.keywords.length > 0 && (
               <div className="nf-keyword-list">

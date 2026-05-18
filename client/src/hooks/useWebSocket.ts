@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { decryptDM, encryptDM, getBoxPublicKeyHex, getPublicKeyHex, type Identity, signMessage } from "../lib/crypto";
 import {
-  WsMessage,
-  AuthNoncePayload,
-  AuthOkPayload,
-  ChatMessagePayload,
-  ChannelListPayload,
-  UserListPayload,
-  UserJoinedPayload,
-  UserLeftPayload,
-  ErrorPayload,
+  type AuthNoncePayload,
+  type AuthOkPayload,
+  type ChannelListPayload,
+  type ChatMessagePayload,
   createMessage,
+  type ErrorPayload,
+  type UserJoinedPayload,
+  type UserLeftPayload,
+  type UserListPayload,
+  type WsMessage,
 } from "../lib/protocol";
-import { Identity, getPublicKeyHex, getBoxPublicKeyHex, signMessage, encryptDM, decryptDM } from "../lib/crypto";
 import { LAST_SERVER_IP_KEY } from "./useTrackerServers";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "authenticating" | "connected" | "reconnecting";
@@ -133,7 +133,14 @@ export interface UseWebSocketReturn {
   dmMessages: DMMessage[];
   typingUsers: TypingUser[];
   channels: { name: string; topic: string; userCount: number; hasPassword: boolean }[];
-  users: { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number }[];
+  users: {
+    userId: string;
+    nickname: string;
+    role: string;
+    status: string;
+    boxPublicKey?: string;
+    connectedAt?: number;
+  }[];
   searchResults: SearchResult[];
   pinnedMessages: PinnedMessage[];
   channelMembers: ChannelMember[];
@@ -191,13 +198,9 @@ export interface UseWebSocketReturn {
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
-function insertAndCap<T extends { id: string; timestamp: number }>(
-  prev: T[], newMsg: T, cap: number
-): T[] {
+function insertAndCap<T extends { id: string; timestamp: number }>(prev: T[], newMsg: T, cap: number): T[] {
   if (prev.some((m) => m.id === newMsg.id)) return prev;
-  const result = prev.length >= cap
-    ? [...prev.slice(1), newMsg]
-    : [...prev, newMsg];
+  const result = prev.length >= cap ? [...prev.slice(1), newMsg] : [...prev, newMsg];
   if (prev.length > 0 && prev[prev.length - 1].timestamp > newMsg.timestamp) {
     result.sort((a, b) => a.timestamp - b.timestamp);
   }
@@ -216,8 +219,12 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
-  const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number; hasPassword: boolean }[]>([]);
-  const [users, setUsers] = useState<{ userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number }[]>([]);
+  const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number; hasPassword: boolean }[]>(
+    [],
+  );
+  const [users, setUsers] = useState<
+    { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number }[]
+  >([]);
   const usersRef = useRef(users);
   usersRef.current = users;
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -275,17 +282,23 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
         case "chat.message": {
           const payload = msg.payload as ChatMessagePayload & { replyTo?: string; msgType?: string };
-          setMessages((prev) => insertAndCap(prev, {
-            id: msg.id,
-            channel: payload.channel,
-            userId: payload.userId,
-            nickname: payload.nickname,
-            content: payload.content,
-            role: payload.role,
-            timestamp: msg.timestamp,
-            replyTo: payload.replyTo,
-            msgType: payload.msgType,
-          }, 2000));
+          setMessages((prev) =>
+            insertAndCap(
+              prev,
+              {
+                id: msg.id,
+                channel: payload.channel,
+                userId: payload.userId,
+                nickname: payload.nickname,
+                content: payload.content,
+                role: payload.role,
+                timestamp: msg.timestamp,
+                replyTo: payload.replyTo,
+                msgType: payload.msgType,
+              },
+              2000,
+            ),
+          );
           break;
         }
         case "channel.list": {
@@ -302,47 +315,65 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           const payload = msg.payload as UserJoinedPayload;
           setUsers((prev) => {
             const filtered = prev.filter((u) => u.userId !== payload.userId);
-            return [...filtered, { ...payload, status: "online", boxPublicKey: payload.boxPublicKey, connectedAt: payload.connectedAt }];
+            return [
+              ...filtered,
+              { ...payload, status: "online", boxPublicKey: payload.boxPublicKey, connectedAt: payload.connectedAt },
+            ];
           });
-          setMessages((prev) => insertAndCap(prev, {
-            id: msg.id,
-            channel: "__system__",
-            userId: payload.userId,
-            nickname: payload.nickname,
-            content: "joined",
-            role: payload.role,
-            timestamp: msg.timestamp,
-            system: true,
-          }, 2000));
+          setMessages((prev) =>
+            insertAndCap(
+              prev,
+              {
+                id: msg.id,
+                channel: "__system__",
+                userId: payload.userId,
+                nickname: payload.nickname,
+                content: "joined",
+                role: payload.role,
+                timestamp: msg.timestamp,
+                system: true,
+              },
+              2000,
+            ),
+          );
           break;
         }
         case "user.left": {
           const payload = msg.payload as UserLeftPayload;
           setUsers((prev) => prev.filter((u) => u.userId !== payload.userId));
-          setMessages((prev) => insertAndCap(prev, {
-            id: msg.id,
-            channel: "__system__",
-            userId: payload.userId,
-            nickname: payload.nickname,
-            content: "left",
-            role: "",
-            timestamp: msg.timestamp,
-            system: true,
-          }, 2000));
+          setMessages((prev) =>
+            insertAndCap(
+              prev,
+              {
+                id: msg.id,
+                channel: "__system__",
+                userId: payload.userId,
+                nickname: payload.nickname,
+                content: "left",
+                role: "",
+                timestamp: msg.timestamp,
+                system: true,
+              },
+              2000,
+            ),
+          );
           break;
         }
         case "user.role_changed": {
           const { userId, role } = msg.payload as { userId: string; role: string };
-          setUsers((prev) =>
-            prev.map((u) => (u.userId === userId ? { ...u, role } : u))
-          );
+          setUsers((prev) => prev.map((u) => (u.userId === userId ? { ...u, role } : u)));
           break;
         }
         case "dm.message": {
           const payload = msg.payload as {
-            from: string; to: string; nickname: string;
-            content: string; role: string;
-            encrypted?: boolean; ciphertext?: string; nonce?: string;
+            from: string;
+            to: string;
+            nickname: string;
+            content: string;
+            role: string;
+            encrypted?: boolean;
+            ciphertext?: string;
+            nonce?: string;
             senderBoxPublicKey?: string;
           };
           let content = payload.content;
@@ -350,8 +381,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             // Determine peer's box public key for decryption
             const peerId = payload.from === getPublicKeyHex(identity) ? payload.to : payload.from;
             // Use senderBoxPublicKey from payload if available, otherwise look up from users list
-            const peerBoxPK = payload.senderBoxPublicKey
-              || usersRef.current.find((u) => u.userId === peerId)?.boxPublicKey;
+            const peerBoxPK =
+              payload.senderBoxPublicKey || usersRef.current.find((u) => u.userId === peerId)?.boxPublicKey;
             if (peerBoxPK) {
               const decrypted = decryptDM(payload.ciphertext, payload.nonce, peerBoxPK, identity);
               content = decrypted ?? "[Decryption failed]";
@@ -360,15 +391,19 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             }
           }
           setDmMessages((prev) =>
-            insertAndCap(prev, {
-              id: msg.id,
-              from: payload.from,
-              to: payload.to,
-              nickname: payload.nickname,
-              content,
-              role: payload.role,
-              timestamp: msg.timestamp,
-            }, 1000)
+            insertAndCap(
+              prev,
+              {
+                id: msg.id,
+                from: payload.from,
+                to: payload.to,
+                nickname: payload.nickname,
+                content,
+                role: payload.role,
+                timestamp: msg.timestamp,
+              },
+              1000,
+            ),
           );
           break;
         }
@@ -388,7 +423,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         case "chat.edited": {
           const payload = msg.payload as { messageId: string; channel: string; content: string; userId: string };
           setMessages((prev) =>
-            prev.map((m) => m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m)
+            prev.map((m) => (m.id === payload.messageId ? { ...m, content: payload.content, edited: true } : m)),
           );
           break;
         }
@@ -423,7 +458,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
                 }
               }
               return { ...m, reactions };
-            })
+            }),
           );
           break;
         }
@@ -442,21 +477,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
         case "user.nick_changed": {
           const payload = msg.payload as { userId: string; oldNick: string; newNick: string };
-          setUsers((prev) =>
-            prev.map((u) => u.userId === payload.userId ? { ...u, nickname: payload.newNick } : u)
-          );
+          setUsers((prev) => prev.map((u) => (u.userId === payload.userId ? { ...u, nickname: payload.newNick } : u)));
           break;
         }
         case "server.settings_updated": {
           const payload = msg.payload as { serverName: string; motd: string };
-          setServerInfo((prev) => prev ? { ...prev, name: payload.serverName, motd: payload.motd } : prev);
+          setServerInfo((prev) => (prev ? { ...prev, name: payload.serverName, motd: payload.motd } : prev));
           break;
         }
         case "user.status_changed": {
           const payload = msg.payload as { userId: string; status: string };
-          setUsers((prev) =>
-            prev.map((u) => u.userId === payload.userId ? { ...u, status: payload.status } : u)
-          );
+          setUsers((prev) => prev.map((u) => (u.userId === payload.userId ? { ...u, status: payload.status } : u)));
           break;
         }
         case "channel.members": {
@@ -474,7 +505,15 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           break;
         }
         case "chat.history": {
-          const payload = msg.payload as { channel: string; messages: { id: string; timestamp: number; payload: ChatMessagePayload & { replyTo?: string; msgType?: string } }[]; hasMore: boolean };
+          const payload = msg.payload as {
+            channel: string;
+            messages: {
+              id: string;
+              timestamp: number;
+              payload: ChatMessagePayload & { replyTo?: string; msgType?: string };
+            }[];
+            hasMore: boolean;
+          };
           setHistoryLoading(false);
           setHasMoreHistory(payload.hasMore);
           if (payload.messages && payload.messages.length > 0) {
@@ -535,7 +574,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
       }
     },
-    [identity, onError]
+    [identity, onError],
   );
 
   const connect = useCallback(
@@ -578,14 +617,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
       ws.onclose = () => {
         if (addressRef.current) {
           const attempt = reconnectCountRef.current;
-          const delay = Math.min(1000 * Math.pow(2, attempt), 30000);
+          const delay = Math.min(1000 * 2 ** attempt, 30000);
           reconnectCountRef.current = attempt + 1;
           setStatus("reconnecting");
           setReconnectIn(Math.round(delay / 1000));
 
           const countdownInterval = window.setInterval(() => {
             setReconnectIn((v) => {
-              if (v <= 1) { clearInterval(countdownInterval); return 0; }
+              if (v <= 1) {
+                clearInterval(countdownInterval);
+                return 0;
+              }
               return v - 1;
             });
           }, 1000);
@@ -605,7 +647,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         onError?.("Connection error");
       };
     },
-    [handleMessage, onError]
+    [handleMessage, onError],
   );
 
   const disconnect = useCallback(() => {
@@ -637,25 +679,37 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     }
   }, []);
 
-  const sendChat = useCallback((channel: string, content: string, msgType?: string) => {
-    const payload: Record<string, string> = { channel, content };
-    if (msgType) payload.msgType = msgType;
-    wsSend("chat.send", payload);
-  }, [wsSend]);
+  const sendChat = useCallback(
+    (channel: string, content: string, msgType?: string) => {
+      const payload: Record<string, string> = { channel, content };
+      if (msgType) payload.msgType = msgType;
+      wsSend("chat.send", payload);
+    },
+    [wsSend],
+  );
 
-  const joinChannel = useCallback((channel: string, password?: string) => {
-    const payload: Record<string, string> = { channel };
-    if (password) payload.password = password;
-    wsSend("channel.join", payload);
-  }, [wsSend]);
+  const joinChannel = useCallback(
+    (channel: string, password?: string) => {
+      const payload: Record<string, string> = { channel };
+      if (password) payload.password = password;
+      wsSend("channel.join", payload);
+    },
+    [wsSend],
+  );
 
-  const leaveChannel = useCallback((channel: string) => {
-    wsSend("channel.leave", { channel });
-  }, [wsSend]);
+  const leaveChannel = useCallback(
+    (channel: string) => {
+      wsSend("channel.leave", { channel });
+    },
+    [wsSend],
+  );
 
-  const createChannel = useCallback((name: string, topic: string, password?: string) => {
-    wsSend("channel.create", { name, topic, password: password || "" });
-  }, [wsSend]);
+  const createChannel = useCallback(
+    (name: string, topic: string, password?: string) => {
+      wsSend("channel.create", { name, topic, password: password || "" });
+    },
+    [wsSend],
+  );
 
   const requestUserList = useCallback(() => {
     wsSend("user.list", {});
@@ -665,133 +719,208 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     wsSend("channel.list", {});
   }, [wsSend]);
 
-  const kickUser = useCallback((userId: string) => {
-    wsSend("admin.kick", { userId });
-  }, [wsSend]);
+  const kickUser = useCallback(
+    (userId: string) => {
+      wsSend("admin.kick", { userId });
+    },
+    [wsSend],
+  );
 
-  const banUser = useCallback((userId: string) => {
-    wsSend("admin.ban", { userId });
-  }, [wsSend]);
+  const banUser = useCallback(
+    (userId: string) => {
+      wsSend("admin.ban", { userId });
+    },
+    [wsSend],
+  );
 
-  const setUserRole = useCallback((userId: string, role: string) => {
-    wsSend("admin.op", { userId, role });
-  }, [wsSend]);
+  const setUserRole = useCallback(
+    (userId: string, role: string) => {
+      wsSend("admin.op", { userId, role });
+    },
+    [wsSend],
+  );
 
-  const setTopic = useCallback((channel: string, topic: string) => {
-    wsSend("admin.topic", { channel, topic });
-  }, [wsSend]);
+  const setTopic = useCallback(
+    (channel: string, topic: string) => {
+      wsSend("admin.topic", { channel, topic });
+    },
+    [wsSend],
+  );
 
-  const sendDM = useCallback((targetId: string, content: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-    const peerBoxPK = usersRef.current.find((u) => u.userId === targetId)?.boxPublicKey;
-    if (peerBoxPK) {
-      // Encrypt the message with the peer's box public key
-      const { ciphertext, nonce } = encryptDM(content, peerBoxPK, identity);
-      wsSend("dm.send", {
-        targetId,
-        content: "",
-        encrypted: true,
-        ciphertext,
-        nonce,
-        senderBoxPublicKey: getBoxPublicKeyHex(identity),
-      });
-    } else {
-      // Fallback: peer doesn't have box key (old client), send plaintext
-      wsSend("dm.send", { targetId, content });
-    }
-  }, [identity, wsSend]);
+  const sendDM = useCallback(
+    (targetId: string, content: string) => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+      const peerBoxPK = usersRef.current.find((u) => u.userId === targetId)?.boxPublicKey;
+      if (peerBoxPK) {
+        // Encrypt the message with the peer's box public key
+        const { ciphertext, nonce } = encryptDM(content, peerBoxPK, identity);
+        wsSend("dm.send", {
+          targetId,
+          content: "",
+          encrypted: true,
+          ciphertext,
+          nonce,
+          senderBoxPublicKey: getBoxPublicKeyHex(identity),
+        });
+      } else {
+        // Fallback: peer doesn't have box key (old client), send plaintext
+        wsSend("dm.send", { targetId, content });
+      }
+    },
+    [identity, wsSend],
+  );
 
-  const sendTyping = useCallback((channel: string, targetId?: string) => {
-    wsSend("typing", { channel, targetId: targetId || "" });
-  }, [wsSend]);
+  const sendTyping = useCallback(
+    (channel: string, targetId?: string) => {
+      wsSend("typing", { channel, targetId: targetId || "" });
+    },
+    [wsSend],
+  );
 
-  const deleteChannel = useCallback((name: string) => {
-    wsSend("channel.delete", { name });
-  }, [wsSend]);
+  const deleteChannel = useCallback(
+    (name: string) => {
+      wsSend("channel.delete", { name });
+    },
+    [wsSend],
+  );
 
-  const search = useCallback((query: string, channel?: string) => {
-    wsSend("chat.search", { query, channel: channel || "" });
-  }, [wsSend]);
+  const search = useCallback(
+    (query: string, channel?: string) => {
+      wsSend("chat.search", { query, channel: channel || "" });
+    },
+    [wsSend],
+  );
 
   const clearSearch = useCallback(() => {
     setSearchResults([]);
   }, []);
 
-  const editMessage = useCallback((messageId: string, content: string) => {
-    wsSend("chat.edit", { messageId, content });
-  }, [wsSend]);
+  const editMessage = useCallback(
+    (messageId: string, content: string) => {
+      wsSend("chat.edit", { messageId, content });
+    },
+    [wsSend],
+  );
 
-  const deleteMessage = useCallback((messageId: string) => {
-    wsSend("chat.delete", { messageId });
-  }, [wsSend]);
+  const deleteMessage = useCallback(
+    (messageId: string) => {
+      wsSend("chat.delete", { messageId });
+    },
+    [wsSend],
+  );
 
-  const addReaction = useCallback((messageId: string, emoji: string) => {
-    wsSend("reaction.add", { messageId, emoji });
-  }, [wsSend]);
+  const addReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      wsSend("reaction.add", { messageId, emoji });
+    },
+    [wsSend],
+  );
 
-  const removeReaction = useCallback((messageId: string, emoji: string) => {
-    wsSend("reaction.remove", { messageId, emoji });
-  }, [wsSend]);
+  const removeReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      wsSend("reaction.remove", { messageId, emoji });
+    },
+    [wsSend],
+  );
 
-  const pinMessage = useCallback((messageId: string, channel: string) => {
-    wsSend("pin.add", { messageId, channel });
-  }, [wsSend]);
+  const pinMessage = useCallback(
+    (messageId: string, channel: string) => {
+      wsSend("pin.add", { messageId, channel });
+    },
+    [wsSend],
+  );
 
-  const unpinMessage = useCallback((messageId: string, channel: string) => {
-    wsSend("pin.remove", { messageId, channel });
-  }, [wsSend]);
+  const unpinMessage = useCallback(
+    (messageId: string, channel: string) => {
+      wsSend("pin.remove", { messageId, channel });
+    },
+    [wsSend],
+  );
 
-  const requestPins = useCallback((channel: string) => {
-    wsSend("pin.list", { channel });
-  }, [wsSend]);
+  const requestPins = useCallback(
+    (channel: string) => {
+      wsSend("pin.list", { channel });
+    },
+    [wsSend],
+  );
 
-  const changeNickname = useCallback((nickname: string) => {
-    wsSend("user.nick", { nickname });
-  }, [wsSend]);
+  const changeNickname = useCallback(
+    (nickname: string) => {
+      wsSend("user.nick", { nickname });
+    },
+    [wsSend],
+  );
 
-  const sendChatWithReply = useCallback((channel: string, content: string, replyTo: string, msgType?: string) => {
-    const payload: Record<string, string> = { channel, content, replyTo };
-    if (msgType) payload.msgType = msgType;
-    wsSend("chat.send", payload);
-  }, [wsSend]);
+  const sendChatWithReply = useCallback(
+    (channel: string, content: string, replyTo: string, msgType?: string) => {
+      const payload: Record<string, string> = { channel, content, replyTo };
+      if (msgType) payload.msgType = msgType;
+      wsSend("chat.send", payload);
+    },
+    [wsSend],
+  );
 
-  const updateServerSettings = useCallback((serverName: string, motd: string) => {
-    wsSend("admin.settings", { serverName, motd });
-  }, [wsSend]);
+  const updateServerSettings = useCallback(
+    (serverName: string, motd: string) => {
+      wsSend("admin.settings", { serverName, motd });
+    },
+    [wsSend],
+  );
 
   const requestBanList = useCallback(() => {
     wsSend("admin.banlist", {});
   }, [wsSend]);
 
-  const unbanUser = useCallback((publicKey: string) => {
-    wsSend("admin.unban", { publicKey });
-  }, [wsSend]);
+  const unbanUser = useCallback(
+    (publicKey: string) => {
+      wsSend("admin.unban", { publicKey });
+    },
+    [wsSend],
+  );
 
-  const setUserStatus = useCallback((status: string) => {
-    wsSend("user.status", { status });
-  }, [wsSend]);
+  const setUserStatus = useCallback(
+    (status: string) => {
+      wsSend("user.status", { status });
+    },
+    [wsSend],
+  );
 
-  const requestChannelMembers = useCallback((channel: string) => {
-    wsSend("channel.members", { channel });
-  }, [wsSend]);
+  const requestChannelMembers = useCallback(
+    (channel: string) => {
+      wsSend("channel.members", { channel });
+    },
+    [wsSend],
+  );
 
-  const loadHistory = useCallback((channel: string, beforeTimestamp: number) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
-    setHistoryLoading(true);
-    wsSend("chat.history", { channel, before: beforeTimestamp, limit: 50 });
-  }, [wsSend]);
+  const loadHistory = useCallback(
+    (channel: string, beforeTimestamp: number) => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+      setHistoryLoading(true);
+      wsSend("chat.history", { channel, before: beforeTimestamp, limit: 50 });
+    },
+    [wsSend],
+  );
 
-  const sendReadReceipt = useCallback((channel: string, messageId: string) => {
-    wsSend("chat.read", { channel, messageId });
-  }, [wsSend]);
+  const sendReadReceipt = useCallback(
+    (channel: string, messageId: string) => {
+      wsSend("chat.read", { channel, messageId });
+    },
+    [wsSend],
+  );
 
-  const muteUser = useCallback((publicKey: string, reason: string, duration: number) => {
-    wsSend("admin.mute", { publicKey, reason, duration });
-  }, [wsSend]);
+  const muteUser = useCallback(
+    (publicKey: string, reason: string, duration: number) => {
+      wsSend("admin.mute", { publicKey, reason, duration });
+    },
+    [wsSend],
+  );
 
-  const unmuteUser = useCallback((publicKey: string) => {
-    wsSend("admin.unmute", { publicKey });
-  }, [wsSend]);
+  const unmuteUser = useCallback(
+    (publicKey: string) => {
+      wsSend("admin.unmute", { publicKey });
+    },
+    [wsSend],
+  );
 
   const requestMuteList = useCallback(() => {
     wsSend("admin.mutelist", {});
@@ -801,21 +930,30 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     wsSend("admin.userlist", {});
   }, [wsSend]);
 
-  const renameChannel = useCallback((oldName: string, newName: string) => {
-    wsSend("admin.rename_channel", { oldName, newName });
-  }, [wsSend]);
+  const renameChannel = useCallback(
+    (oldName: string, newName: string) => {
+      wsSend("admin.rename_channel", { oldName, newName });
+    },
+    [wsSend],
+  );
 
   const requestCustomEmojis = useCallback(() => {
     wsSend("custom_emoji.list", {});
   }, [wsSend]);
 
-  const addCustomEmoji = useCallback((name: string, filename: string) => {
-    wsSend("custom_emoji.add", { name, filename });
-  }, [wsSend]);
+  const addCustomEmoji = useCallback(
+    (name: string, filename: string) => {
+      wsSend("custom_emoji.add", { name, filename });
+    },
+    [wsSend],
+  );
 
-  const removeCustomEmoji = useCallback((name: string) => {
-    wsSend("custom_emoji.remove", { name });
-  }, [wsSend]);
+  const removeCustomEmoji = useCallback(
+    (name: string) => {
+      wsSend("custom_emoji.remove", { name });
+    },
+    [wsSend],
+  );
 
   useEffect(() => {
     const interval = setInterval(() => {

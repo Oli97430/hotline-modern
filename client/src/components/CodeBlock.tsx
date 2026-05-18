@@ -1,5 +1,5 @@
+import { Check, Copy } from "lucide-react";
 import { useState } from "react";
-import { Copy, Check } from "lucide-react";
 
 interface CodeBlockProps {
   code: string;
@@ -8,9 +8,135 @@ interface CodeBlockProps {
 
 // Simple keyword-based syntax highlighting
 const KEYWORDS: Record<string, string[]> = {
-  keyword: ["const", "let", "var", "function", "return", "if", "else", "for", "while", "do", "switch", "case", "break", "continue", "new", "delete", "typeof", "instanceof", "class", "extends", "import", "export", "from", "default", "async", "await", "try", "catch", "finally", "throw", "yield", "of", "in", "this", "super", "static", "public", "private", "protected", "interface", "type", "enum", "struct", "impl", "fn", "pub", "mod", "use", "crate", "trait", "where", "mut", "ref", "self", "match", "loop", "def", "elif", "pass", "lambda", "with", "as", "raise", "except", "True", "False", "None", "func", "go", "defer", "chan", "select", "package", "range", "map"],
-  builtin: ["console", "window", "document", "Math", "JSON", "Array", "Object", "String", "Number", "Boolean", "Promise", "Map", "Set", "Error", "null", "undefined", "true", "false", "nil", "fmt", "println", "print", "len", "append", "make"],
-  type: ["string", "number", "boolean", "void", "any", "never", "unknown", "int", "float", "double", "char", "bool", "i32", "u32", "i64", "u64", "f32", "f64", "usize", "isize", "Vec", "Option", "Result"],
+  keyword: [
+    "const",
+    "let",
+    "var",
+    "function",
+    "return",
+    "if",
+    "else",
+    "for",
+    "while",
+    "do",
+    "switch",
+    "case",
+    "break",
+    "continue",
+    "new",
+    "delete",
+    "typeof",
+    "instanceof",
+    "class",
+    "extends",
+    "import",
+    "export",
+    "from",
+    "default",
+    "async",
+    "await",
+    "try",
+    "catch",
+    "finally",
+    "throw",
+    "yield",
+    "of",
+    "in",
+    "this",
+    "super",
+    "static",
+    "public",
+    "private",
+    "protected",
+    "interface",
+    "type",
+    "enum",
+    "struct",
+    "impl",
+    "fn",
+    "pub",
+    "mod",
+    "use",
+    "crate",
+    "trait",
+    "where",
+    "mut",
+    "ref",
+    "self",
+    "match",
+    "loop",
+    "def",
+    "elif",
+    "pass",
+    "lambda",
+    "with",
+    "as",
+    "raise",
+    "except",
+    "True",
+    "False",
+    "None",
+    "func",
+    "go",
+    "defer",
+    "chan",
+    "select",
+    "package",
+    "range",
+    "map",
+  ],
+  builtin: [
+    "console",
+    "window",
+    "document",
+    "Math",
+    "JSON",
+    "Array",
+    "Object",
+    "String",
+    "Number",
+    "Boolean",
+    "Promise",
+    "Map",
+    "Set",
+    "Error",
+    "null",
+    "undefined",
+    "true",
+    "false",
+    "nil",
+    "fmt",
+    "println",
+    "print",
+    "len",
+    "append",
+    "make",
+  ],
+  type: [
+    "string",
+    "number",
+    "boolean",
+    "void",
+    "any",
+    "never",
+    "unknown",
+    "int",
+    "float",
+    "double",
+    "char",
+    "bool",
+    "i32",
+    "u32",
+    "i64",
+    "u64",
+    "f32",
+    "f64",
+    "usize",
+    "isize",
+    "Vec",
+    "Option",
+    "Result",
+  ],
 };
 
 function highlightCode(code: string): JSX.Element[] {
@@ -27,7 +153,11 @@ function highlightCode(code: string): JSX.Element[] {
       // String literals
       const strMatch = remaining.match(/^(["'`])(?:\\.|[^\\])*?\1/);
       if (strMatch) {
-        tokens.push(<span key={tokenKey++} className="code-string">{strMatch[0]}</span>);
+        tokens.push(
+          <span key={tokenKey++} className="code-string">
+            {strMatch[0]}
+          </span>,
+        );
         remaining = remaining.slice(strMatch[0].length);
         continue;
       }
@@ -35,15 +165,26 @@ function highlightCode(code: string): JSX.Element[] {
       // Comments
       const commentMatch = remaining.match(/^(\/\/.*|#.*)/);
       if (commentMatch) {
-        tokens.push(<span key={tokenKey++} className="code-comment">{commentMatch[0]}</span>);
+        tokens.push(
+          <span key={tokenKey++} className="code-comment">
+            {commentMatch[0]}
+          </span>,
+        );
         remaining = remaining.slice(commentMatch[0].length);
         continue;
       }
 
       // Numbers
       const numMatch = remaining.match(/^(0x[0-9a-fA-F]+|\d+\.?\d*)/);
-      if (numMatch && (tokens.length === 0 || !/\w$/.test(tokens[tokens.length - 1]?.props?.children?.toString() || ""))) {
-        tokens.push(<span key={tokenKey++} className="code-number">{numMatch[0]}</span>);
+      if (
+        numMatch &&
+        (tokens.length === 0 || !/\w$/.test(tokens[tokens.length - 1]?.props?.children?.toString() || ""))
+      ) {
+        tokens.push(
+          <span key={tokenKey++} className="code-number">
+            {numMatch[0]}
+          </span>,
+        );
         remaining = remaining.slice(numMatch[0].length);
         continue;
       }
@@ -58,7 +199,11 @@ function highlightCode(code: string): JSX.Element[] {
         else if (KEYWORDS.type.includes(word)) cls = "code-type";
 
         if (cls) {
-          tokens.push(<span key={tokenKey++} className={cls}>{word}</span>);
+          tokens.push(
+            <span key={tokenKey++} className={cls}>
+              {word}
+            </span>,
+          );
         } else {
           tokens.push(<span key={tokenKey++}>{word}</span>);
         }
@@ -69,7 +214,11 @@ function highlightCode(code: string): JSX.Element[] {
       // Operators and punctuation
       const opMatch = remaining.match(/^[^\w\s]+/);
       if (opMatch) {
-        tokens.push(<span key={tokenKey++} className="code-punct">{opMatch[0]}</span>);
+        tokens.push(
+          <span key={tokenKey++} className="code-punct">
+            {opMatch[0]}
+          </span>,
+        );
         remaining = remaining.slice(opMatch[0].length);
         continue;
       }
@@ -91,7 +240,7 @@ function highlightCode(code: string): JSX.Element[] {
       <div key={i} className="code-line">
         <span className="code-line-number">{i + 1}</span>
         <span className="code-line-content">{tokens}</span>
-      </div>
+      </div>,
     );
   }
 

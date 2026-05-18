@@ -1,5 +1,5 @@
+import { Keyboard, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { X, Keyboard } from "lucide-react";
 
 interface KeyboardShortcutsProps {
   onClose: () => void;

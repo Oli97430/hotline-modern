@@ -1,5 +1,5 @@
+import { Bookmark, Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Bookmark, X, Trash2 } from "lucide-react";
 
 export interface BookmarkedMessage {
   id: string;
@@ -83,11 +83,7 @@ export function BookmarksPanel({ bookmarks, onRemove, onClose }: BookmarksPanelP
               <span className="bookmark-nick">{bm.nickname}</span>
               <span className="bookmark-channel">#{bm.channel}</span>
               <span className="bookmark-time">{formatTime(bm.timestamp)}</span>
-              <button
-                className="bookmark-remove"
-                onClick={() => onRemove(bm.id)}
-                title={t("bookmarks.remove")}
-              >
+              <button className="bookmark-remove" onClick={() => onRemove(bm.id)} title={t("bookmarks.remove")}>
                 <Trash2 size={12} />
               </button>
             </div>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getCapacitor = () => (window as any).Capacitor;
@@ -117,7 +117,7 @@ export function useNotifications(options: UseNotificationsOptions): UseNotificat
                 sound: soundEnabled ? undefined : "",
               },
             ],
-          })
+          }),
         )
         .catch(() => {});
     } else {

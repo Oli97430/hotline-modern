@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { loadCustomEmojis, saveCustomEmojis } from "../components/CustomEmojiUpload";
-import { loadScheduledMessages, saveScheduledMessages, ScheduledMessage } from "../components/MessageScheduler";
+import { beforeEach, describe, expect, it } from "vitest";
 import { applyChannelOrder, loadChannelOrder, saveChannelOrder } from "../components/ChannelDragReorder";
-import { loadNotifFilters, saveNotifFilters, shouldNotify, NotifFilter } from "../components/NotificationFilters";
+import { loadCustomEmojis, saveCustomEmojis } from "../components/CustomEmojiUpload";
+import { loadScheduledMessages, type ScheduledMessage, saveScheduledMessages } from "../components/MessageScheduler";
+import { loadNotifFilters, type NotifFilter, saveNotifFilters, shouldNotify } from "../components/NotificationFilters";
 
 describe("CustomEmoji storage", () => {
   beforeEach(() => {
@@ -98,9 +98,7 @@ describe("ChannelDragReorder", () => {
   });
 
   it("applyChannelOrder handles removed channels gracefully", () => {
-    const channels = [
-      { name: "lobby", topic: "", userCount: 5 },
-    ];
+    const channels = [{ name: "lobby", topic: "", userCount: 5 }];
     const savedOrder = ["deleted-channel", "lobby", "also-deleted"];
     const result = applyChannelOrder(channels, savedOrder);
     expect(result.map((c) => c.name)).toEqual(["lobby"]);

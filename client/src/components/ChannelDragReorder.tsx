@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 
 interface DragItem {
   index: number;
@@ -15,7 +15,9 @@ const STORAGE_KEY = "hotline-channel-order";
 export function loadChannelOrder(): string[] {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export function saveChannelOrder(order: string[]) {
@@ -75,7 +77,10 @@ export function useChannelDragReorder(channels: string[], onReorder: (channels: 
 }
 
 export function ChannelDragReorder({ channels, onReorder }: ChannelDragReorderProps) {
-  const { draggedIdx, overIdx, handleDragStart, handleDragOver, handleDragEnd } = useChannelDragReorder(channels, onReorder);
+  const { draggedIdx, overIdx, handleDragStart, handleDragOver, handleDragEnd } = useChannelDragReorder(
+    channels,
+    onReorder,
+  );
 
   return (
     <div className="channel-drag-list">
@@ -85,7 +90,10 @@ export function ChannelDragReorder({ channels, onReorder }: ChannelDragReorderPr
           className={`channel-drag-item ${draggedIdx === i ? "dragging" : ""} ${overIdx === i ? "over" : ""}`}
           draggable
           onDragStart={() => handleDragStart(i, ch)}
-          onDragOver={(e) => { e.preventDefault(); handleDragOver(i); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            handleDragOver(i);
+          }}
           onDragEnd={handleDragEnd}
         >
           <span className="channel-drag-grip">⠿</span>

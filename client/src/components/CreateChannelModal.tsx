@@ -22,7 +22,13 @@ export function CreateChannelModal({ onSubmit, onClose }: CreateChannelModalProp
   };
 
   return (
-    <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="create-channel-title" onClick={onClose}>
+    <div
+      className="modal-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="create-channel-title"
+      onClick={onClose}
+    >
       <form className="modal-content" onClick={(e) => e.stopPropagation()} onSubmit={handleSubmit}>
         <h3 id="create-channel-title">{t("channel.create")}</h3>
 

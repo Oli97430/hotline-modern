@@ -1,47 +1,76 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import {
+  Clock,
+  Filter,
+  Menu,
+  Palette,
+  PanelRightClose,
+  PanelRightOpen,
+  Rows3,
+  Smile as SmileIcon,
+  StretchHorizontal,
+  TrendingUp,
+  Users as UsersIcon,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ConnectDialog } from "./components/ConnectDialog";
-import { Sidebar } from "./components/Sidebar";
-import { ChatPanel } from "./components/ChatPanel";
-import { UserList } from "./components/UserList";
-import { FileBrowser } from "./components/FileBrowser";
-import { ServerBanner } from "./components/ServerBanner";
-import { LanguageSelector } from "./components/LanguageSelector";
-import { CreateChannelModal } from "./components/CreateChannelModal";
-import { SearchPanel } from "./components/SearchPanel";
-import { ConnectionStatus } from "./components/ConnectionStatus";
-import { NotificationSettings, NotifPrefs, loadNotifPrefs } from "./components/NotificationSettings";
-import { StatusSelector } from "./components/StatusSelector";
-import { PinnedMessagesPanel } from "./components/PinnedMessagesPanel";
-import { BookmarksPanel, BookmarkedMessage, loadBookmarks, addBookmark, removeBookmark, isBookmarked } from "./components/BookmarksPanel";
-import { ChannelSettingsModal } from "./components/ChannelSettingsModal";
-import { DragDropOverlay } from "./components/DragDropOverlay";
-import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
 import { AdminPanel } from "./components/AdminPanel";
-import { ChannelPasswordPrompt } from "./components/ChannelPasswordPrompt";
-import { ImageLightbox } from "./components/ImageLightbox";
-import { ThreadPanel } from "./components/ThreadPanel";
-import { ThemeEditor, loadSavedTheme } from "./components/ThemeEditor";
-import { ServerStats } from "./components/ServerStats";
-import { MessageForwardDialog } from "./components/MessageForwardDialog";
-import { CustomEmojiUpload } from "./components/CustomEmojiUpload";
-import { NotificationFilters as NotifFiltersPanel, loadNotifFilters as loadNotifFiltersFull, saveNotifFilters as _saveNF } from "./components/NotificationFilters";
-import { MessageScheduler, ScheduledMessage, loadScheduledMessages, saveScheduledMessages } from "./components/MessageScheduler";
+import {
+  addBookmark,
+  type BookmarkedMessage,
+  BookmarksPanel,
+  isBookmarked,
+  loadBookmarks,
+  removeBookmark,
+} from "./components/BookmarksPanel";
 import { applyChannelOrder, loadChannelOrder, saveChannelOrder } from "./components/ChannelDragReorder";
-import { ToastContainer, useToasts } from "./components/ToastContainer";
-import { ServerAgreement, hasAcceptedAgreement } from "./components/ServerAgreement";
-import { useIdentity } from "./hooks/useIdentity";
-import { useWebSocket } from "./hooks/useWebSocket";
-import { useChannelMute } from "./hooks/useChannelMute";
-import { useIdleDetection } from "./hooks/useIdleDetection";
-import { useTabNotification } from "./hooks/useTabNotification";
-import { useCompactMode } from "./hooks/useCompactMode";
-import { useVoiceChat } from "./hooks/useVoiceChat";
-import { useNotifications } from "./hooks/useNotifications";
-import { shouldNotify as checkNotifFilter, loadNotifFilters as loadNotifFilterCfg } from "./components/NotificationFilters";
-import { getFileAuthHeaders, getBoxPublicKeyHex } from "./lib/crypto";
-import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal, Palette, TrendingUp, Menu, Users as UsersIcon, Clock, Smile as SmileIcon, Filter } from "lucide-react";
+import { ChannelPasswordPrompt } from "./components/ChannelPasswordPrompt";
+import { ChannelSettingsModal } from "./components/ChannelSettingsModal";
+import { ChatPanel } from "./components/ChatPanel";
+import { ConnectDialog } from "./components/ConnectDialog";
+import { ConnectionStatus } from "./components/ConnectionStatus";
+import { CreateChannelModal } from "./components/CreateChannelModal";
+import { CustomEmojiUpload } from "./components/CustomEmojiUpload";
+import { DragDropOverlay } from "./components/DragDropOverlay";
+import { FileBrowser } from "./components/FileBrowser";
+import { ImageLightbox } from "./components/ImageLightbox";
+import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
+import { LanguageSelector } from "./components/LanguageSelector";
+import { MessageForwardDialog } from "./components/MessageForwardDialog";
+import {
+  loadScheduledMessages,
+  MessageScheduler,
+  type ScheduledMessage,
+  saveScheduledMessages,
+} from "./components/MessageScheduler";
+import {
+  saveNotifFilters as _saveNF,
+  shouldNotify as checkNotifFilter,
+  loadNotifFilters as loadNotifFilterCfg,
+  loadNotifFilters as loadNotifFiltersFull,
+  NotificationFilters as NotifFiltersPanel,
+} from "./components/NotificationFilters";
+import { loadNotifPrefs, NotificationSettings, type NotifPrefs } from "./components/NotificationSettings";
+import { PinnedMessagesPanel } from "./components/PinnedMessagesPanel";
 import { ResizeDivider } from "./components/ResizeDivider";
+import { SearchPanel } from "./components/SearchPanel";
+import { hasAcceptedAgreement, ServerAgreement } from "./components/ServerAgreement";
+import { ServerBanner } from "./components/ServerBanner";
+import { ServerStats } from "./components/ServerStats";
+import { Sidebar } from "./components/Sidebar";
+import { StatusSelector } from "./components/StatusSelector";
+import { loadSavedTheme, ThemeEditor } from "./components/ThemeEditor";
+import { ThreadPanel } from "./components/ThreadPanel";
+import { ToastContainer, useToasts } from "./components/ToastContainer";
+import { UserList } from "./components/UserList";
+import { useChannelMute } from "./hooks/useChannelMute";
+import { useCompactMode } from "./hooks/useCompactMode";
+import { useIdentity } from "./hooks/useIdentity";
+import { useIdleDetection } from "./hooks/useIdleDetection";
+import { useNotifications } from "./hooks/useNotifications";
+import { useTabNotification } from "./hooks/useTabNotification";
+import { useVoiceChat } from "./hooks/useVoiceChat";
+import { useWebSocket } from "./hooks/useWebSocket";
+import { getBoxPublicKeyHex, getFileAuthHeaders } from "./lib/crypto";
 
 export default function App() {
   const { t } = useTranslation();
@@ -74,10 +103,18 @@ export default function App() {
 
   // Resizable panel widths (persisted in localStorage)
   const [sidebarWidth, setSidebarWidth] = useState(() => {
-    try { return Number(localStorage.getItem("hotline-sidebar-w")) || 240; } catch { return 240; }
+    try {
+      return Number(localStorage.getItem("hotline-sidebar-w")) || 240;
+    } catch {
+      return 240;
+    }
   });
   const [rightPanelWidth, setRightPanelWidth] = useState(() => {
-    try { return Number(localStorage.getItem("hotline-right-w")) || 200; } catch { return 200; }
+    try {
+      return Number(localStorage.getItem("hotline-right-w")) || 200;
+    } catch {
+      return 200;
+    }
   });
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
@@ -92,7 +129,9 @@ export default function App() {
   const activeDMRef = useRef(activeDM);
 
   // Load saved custom theme on mount
-  useEffect(() => { loadSavedTheme(); }, []);
+  useEffect(() => {
+    loadSavedTheme();
+  }, []);
 
   const handleError = useCallback((msg: string) => {
     setError(msg);
@@ -112,15 +151,21 @@ export default function App() {
     wsRef: ws.wsRef,
     currentUserId: ws.serverInfo?.userId || "",
   });
-  const { notify, permissionGranted: _notifPermOk, requestPermission: _reqNotifPerm } = useNotifications({
+  const {
+    notify,
+    permissionGranted: _notifPermOk,
+    requestPermission: _reqNotifPerm,
+  } = useNotifications({
     enabled: notifPrefs.desktopEnabled,
     soundEnabled: notifPrefs.soundEnabled,
   });
 
   // Tab title notifications
   const totalUnread = useMemo(() => {
-    return Object.values(unreadCounts).reduce((sum, v) => sum + v, 0) +
-      Object.values(dmUnreadCounts).reduce((sum, v) => sum + v, 0);
+    return (
+      Object.values(unreadCounts).reduce((sum, v) => sum + v, 0) +
+      Object.values(dmUnreadCounts).reduce((sum, v) => sum + v, 0)
+    );
   }, [unreadCounts, dmUnreadCounts]);
   useTabNotification(totalUnread);
 
@@ -128,9 +173,9 @@ export default function App() {
   const prevUsersRef = useRef<{ id: string; nick: string }[]>([]);
   useEffect(() => {
     if (ws.status !== "connected") return;
-    const currentIds = ws.users.map(u => u.userId);
+    const currentIds = ws.users.map((u) => u.userId);
     const prevEntries = prevUsersRef.current;
-    const prevIds = prevEntries.map(e => e.id);
+    const prevIds = prevEntries.map((e) => e.id);
     if (prevIds.length > 0) {
       // New joins
       for (const u of ws.users) {
@@ -145,14 +190,14 @@ export default function App() {
         }
       }
     }
-    prevUsersRef.current = ws.users.map(u => ({ id: u.userId, nick: u.nickname }));
+    prevUsersRef.current = ws.users.map((u) => ({ id: u.userId, nick: u.nickname }));
   }, [ws.users, ws.status, addToast]);
 
   // Idle detection: auto-away after 5 min inactivity
   useIdleDetection({
     timeout: 5 * 60 * 1000,
     onIdle: useCallback(() => {
-      const current = ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status;
+      const current = ws.users.find((u) => u.userId === ws.serverInfo?.userId)?.status;
       if (current && current !== "away") {
         setStatusBeforeIdle(current);
         ws.setStatus("away");
@@ -225,8 +270,7 @@ export default function App() {
 
   const handleSlashCommand = useCallback(
     (command: string, args: string[]) => {
-      const findUserByNick = (nick: string) =>
-        ws.users.find((u) => u.nickname.toLowerCase() === nick.toLowerCase());
+      const findUserByNick = (nick: string) => ws.users.find((u) => u.nickname.toLowerCase() === nick.toLowerCase());
 
       switch (command) {
         case "kick": {
@@ -256,14 +300,18 @@ export default function App() {
         }
       }
     },
-    [ws, activeChannel]
+    [ws, activeChannel],
   );
 
   const notifPrefsRef = useRef(notifPrefs);
-  useEffect(() => { notifPrefsRef.current = notifPrefs; }, [notifPrefs]);
+  useEffect(() => {
+    notifPrefsRef.current = notifPrefs;
+  }, [notifPrefs]);
 
   const notifyRef = useRef(notify);
-  useEffect(() => { notifyRef.current = notify; }, [notify]);
+  useEffect(() => {
+    notifyRef.current = notify;
+  }, [notify]);
 
   useEffect(() => {
     activeChannelRef.current = activeChannel;
@@ -278,7 +326,7 @@ export default function App() {
       const newMsgs = ws.messages.slice(prevMessagesLenRef.current);
       const currentChannel = activeChannelRef.current;
       const currentUserId = ws.serverInfo?.userId;
-      const myNickname = ws.users.find(u => u.userId === currentUserId)?.nickname || "";
+      const myNickname = ws.users.find((u) => u.userId === currentUserId)?.nickname || "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cap1 = (window as any).Capacitor;
       const isNativePlatform = !!cap1 && typeof cap1.isNativePlatform === "function" && cap1.isNativePlatform();
@@ -314,7 +362,7 @@ export default function App() {
       const newDms = ws.dmMessages.slice(prevDmLenRef.current);
       const currentUserId = ws.serverInfo?.userId;
       const currentDM = activeDMRef.current;
-      const myNickname = ws.users.find(u => u.userId === currentUserId)?.nickname || "";
+      const myNickname = ws.users.find((u) => u.userId === currentUserId)?.nickname || "";
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const cap2 = (window as any).Capacitor;
       const isNativePlatform = !!cap2 && typeof cap2.isNativePlatform === "function" && cap2.isNativePlatform();
@@ -341,12 +389,16 @@ export default function App() {
   const dmConversations = useMemo(() => {
     const currentUserId = ws.serverInfo?.userId;
     if (!currentUserId) return [];
-    const convos = new Map<string, { peerId: string; peerNick: string; lastMessage: string; unread: number; ts: number }>();
+    const convos = new Map<
+      string,
+      { peerId: string; peerNick: string; lastMessage: string; unread: number; ts: number }
+    >();
     for (const dm of ws.dmMessages) {
       const peerId = dm.from === currentUserId ? dm.to : dm.from;
-      const peerNick = dm.from === currentUserId
-        ? (ws.users.find((u) => u.userId === peerId)?.nickname || peerId.slice(0, 8))
-        : dm.nickname;
+      const peerNick =
+        dm.from === currentUserId
+          ? ws.users.find((u) => u.userId === peerId)?.nickname || peerId.slice(0, 8)
+          : dm.nickname;
       const existing = convos.get(peerId);
       if (!existing || dm.timestamp > existing.ts) {
         convos.set(peerId, {
@@ -384,7 +436,10 @@ export default function App() {
 
   const [quoteText, setQuoteText] = useState("");
 
-  const handleSearchClose = useCallback(() => { setShowSearch(false); ws.clearSearch(); }, [ws]);
+  const handleSearchClose = useCallback(() => {
+    setShowSearch(false);
+    ws.clearSearch();
+  }, [ws]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -401,11 +456,26 @@ export default function App() {
         setShowShortcuts((v) => !v);
       }
       if (e.key === "Escape") {
-        if (showShortcuts) { setShowShortcuts(false); return; }
-        if (showSearch) { handleSearchClose(); return; }
-        if (showPins) { setShowPins(false); return; }
-        if (showBookmarks) { setShowBookmarks(false); return; }
-        if (replyTo) { setReplyTo(null); return; }
+        if (showShortcuts) {
+          setShowShortcuts(false);
+          return;
+        }
+        if (showSearch) {
+          handleSearchClose();
+          return;
+        }
+        if (showPins) {
+          setShowPins(false);
+          return;
+        }
+        if (showBookmarks) {
+          setShowBookmarks(false);
+          return;
+        }
+        if (replyTo) {
+          setReplyTo(null);
+          return;
+        }
       }
     };
     window.addEventListener("keydown", handler);
@@ -413,24 +483,33 @@ export default function App() {
   }, [showSearch, replyTo, showShortcuts, showPins, showBookmarks, handleSearchClose]);
 
   const handleQuote = useCallback((text: string, nickname: string) => {
-    const quoted = text.split("\n").map((l) => `> ${l}`).join("\n");
+    const quoted = text
+      .split("\n")
+      .map((l) => `> ${l}`)
+      .join("\n");
     setQuoteText(`${quoted}\n@${nickname} `);
   }, []);
 
-  const handleForward = useCallback((targetChannel: string, comment?: string) => {
-    if (!forwardMsg) return;
-    const fwdContent = comment
-      ? `${comment}\n\n> **Forwarded from ${forwardMsg.author}:**\n> ${forwardMsg.content}`
-      : `> **Forwarded from ${forwardMsg.author}:**\n> ${forwardMsg.content}`;
-    ws.sendChat(targetChannel, fwdContent);
-    setForwardMsg(null);
-    addToast("info", t("forward.sent"));
-  }, [forwardMsg, ws, addToast, t]);
+  const handleForward = useCallback(
+    (targetChannel: string, comment?: string) => {
+      if (!forwardMsg) return;
+      const fwdContent = comment
+        ? `${comment}\n\n> **Forwarded from ${forwardMsg.author}:**\n> ${forwardMsg.content}`
+        : `> **Forwarded from ${forwardMsg.author}:**\n> ${forwardMsg.content}`;
+      ws.sendChat(targetChannel, fwdContent);
+      setForwardMsg(null);
+      addToast("info", t("forward.sent"));
+    },
+    [forwardMsg, ws, addToast, t],
+  );
 
-  const handleForwardMessage = useCallback((messageId: string) => {
-    const msg = ws.messages.find((m) => m.id === messageId);
-    if (msg) setForwardMsg({ content: msg.content, author: msg.nickname });
-  }, [ws.messages]);
+  const handleForwardMessage = useCallback(
+    (messageId: string) => {
+      const msg = ws.messages.find((m) => m.id === messageId);
+      if (msg) setForwardMsg({ content: msg.content, author: msg.nickname });
+    },
+    [ws.messages],
+  );
 
   const serverBaseUrl = useMemo(() => {
     if (!serverAddress) return "";
@@ -439,49 +518,61 @@ export default function App() {
     return `${protocol}${base}`;
   }, [serverAddress]);
 
-  const handleEmojiUpload = useCallback(async (name: string, file: File) => {
-    try {
-      const authHeaders = getFileAuthHeaders(identity);
-      const ext = file.name.split(".").pop() || "png";
-      const filename = `${name}.${ext}`;
-      const uploadUrl = `${serverBaseUrl}/files/emojis/${filename}`;
+  const handleEmojiUpload = useCallback(
+    async (name: string, file: File) => {
+      try {
+        const authHeaders = getFileAuthHeaders(identity);
+        const ext = file.name.split(".").pop() || "png";
+        const filename = `${name}.${ext}`;
+        const uploadUrl = `${serverBaseUrl}/files/emojis/${filename}`;
 
-      const formData = new FormData();
-      formData.append("file", file);
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const resp = await fetch(uploadUrl, {
-        method: "POST",
-        headers: authHeaders,
-        body: formData,
-      });
+        const resp = await fetch(uploadUrl, {
+          method: "POST",
+          headers: authHeaders,
+          body: formData,
+        });
 
-      if (!resp.ok) {
-        handleError("Emoji upload failed");
-        return;
+        if (!resp.ok) {
+          handleError("Emoji upload failed");
+          return;
+        }
+
+        // Tell the server to register the emoji
+        ws.addCustomEmoji(name, filename);
+      } catch {
+        handleError("Emoji upload error");
       }
+    },
+    [serverBaseUrl, identity, ws, handleError],
+  );
 
-      // Tell the server to register the emoji
-      ws.addCustomEmoji(name, filename);
-    } catch {
-      handleError("Emoji upload error");
-    }
-  }, [serverBaseUrl, identity, ws, handleError]);
+  const handleEmojiDelete = useCallback(
+    (name: string) => {
+      ws.removeCustomEmoji(name);
+    },
+    [ws],
+  );
 
-  const handleEmojiDelete = useCallback((name: string) => {
-    ws.removeCustomEmoji(name);
-  }, [ws]);
+  const handleScheduleMessage = useCallback(
+    (msg: ScheduledMessage) => {
+      const updated = [...scheduledMessages, msg];
+      setScheduledMessages(updated);
+      saveScheduledMessages(updated);
+    },
+    [scheduledMessages],
+  );
 
-  const handleScheduleMessage = useCallback((msg: ScheduledMessage) => {
-    const updated = [...scheduledMessages, msg];
-    setScheduledMessages(updated);
-    saveScheduledMessages(updated);
-  }, [scheduledMessages]);
-
-  const handleDeleteScheduled = useCallback((id: string) => {
-    const updated = scheduledMessages.filter((m) => m.id !== id);
-    setScheduledMessages(updated);
-    saveScheduledMessages(updated);
-  }, [scheduledMessages]);
+  const handleDeleteScheduled = useCallback(
+    (id: string) => {
+      const updated = scheduledMessages.filter((m) => m.id !== id);
+      setScheduledMessages(updated);
+      saveScheduledMessages(updated);
+    },
+    [scheduledMessages],
+  );
 
   // Process scheduled messages every 30s
   useEffect(() => {
@@ -509,51 +600,59 @@ export default function App() {
     return applyChannelOrder(ws.channels, channelOrder);
   }, [ws.channels, channelOrder]);
 
-  const handleFileUpload = useCallback(async (file: File, msgType?: string) => {
-    try {
-      const authHeaders = getFileAuthHeaders(identity);
-      const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
-      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
-      const uploadUrl = `${protocol}${base}/files/`;
+  const handleFileUpload = useCallback(
+    async (file: File, msgType?: string) => {
+      try {
+        const authHeaders = getFileAuthHeaders(identity);
+        const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
+        const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+        const uploadUrl = `${protocol}${base}/files/`;
 
-      const formData = new FormData();
-      formData.append("file", file);
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const resp = await fetch(uploadUrl, {
-        method: "POST",
-        headers: authHeaders,
-        body: formData,
-      });
+        const resp = await fetch(uploadUrl, {
+          method: "POST",
+          headers: authHeaders,
+          body: formData,
+        });
 
-      if (!resp.ok) {
-        handleError("File upload failed");
-        return;
+        if (!resp.ok) {
+          handleError("File upload failed");
+          return;
+        }
+
+        const result = await resp.json();
+        const fileUrl = `${protocol}${base}/files/${result.path}`;
+        ws.sendChat(activeChannel, `[${result.filename}](${fileUrl})`, msgType);
+      } catch {
+        handleError("File upload error");
       }
+    },
+    [serverAddress, activeChannel, ws, handleError, identity],
+  );
 
-      const result = await resp.json();
-      const fileUrl = `${protocol}${base}/files/${result.path}`;
-      ws.sendChat(activeChannel, `[${result.filename}](${fileUrl})`, msgType);
-    } catch {
-      handleError("File upload error");
-    }
-  }, [serverAddress, activeChannel, ws, handleError, identity]);
-
-  const handleBookmark = useCallback((messageId: string) => {
-    if (isBookmarked(messageId)) {
-      setBookmarks(removeBookmark(messageId));
-    } else {
-      const msg = ws.messages.find((m) => m.id === messageId);
-      if (msg) {
-        setBookmarks(addBookmark({
-          id: msg.id,
-          channel: msg.channel,
-          nickname: msg.nickname,
-          content: msg.content,
-          timestamp: msg.timestamp,
-        }));
+  const handleBookmark = useCallback(
+    (messageId: string) => {
+      if (isBookmarked(messageId)) {
+        setBookmarks(removeBookmark(messageId));
+      } else {
+        const msg = ws.messages.find((m) => m.id === messageId);
+        if (msg) {
+          setBookmarks(
+            addBookmark({
+              id: msg.id,
+              channel: msg.channel,
+              nickname: msg.nickname,
+              content: msg.content,
+              timestamp: msg.timestamp,
+            }),
+          );
+        }
       }
-    }
-  }, [ws.messages]);
+    },
+    [ws.messages],
+  );
 
   const handleRemoveBookmark = useCallback((messageId: string) => {
     setBookmarks(removeBookmark(messageId));
@@ -572,7 +671,10 @@ export default function App() {
         agreement={agreementText}
         serverAddress={serverAddress}
         onAccept={() => setAgreementAccepted(true)}
-        onDecline={() => { ws.disconnect(); setAgreementAccepted(false); }}
+        onDecline={() => {
+          ws.disconnect();
+          setAgreementAccepted(false);
+        }}
       />
     );
   }
@@ -597,19 +699,24 @@ export default function App() {
     ws.setStatus(status);
   };
 
-
   // Resize handlers
   const handleSidebarResize = useCallback((delta: number) => {
     setSidebarWidth((w) => Math.max(160, Math.min(400, w + delta)));
   }, []);
   const handleSidebarResizeEnd = useCallback(() => {
-    setSidebarWidth((w) => { localStorage.setItem("hotline-sidebar-w", String(w)); return w; });
+    setSidebarWidth((w) => {
+      localStorage.setItem("hotline-sidebar-w", String(w));
+      return w;
+    });
   }, []);
   const handleRightPanelResize = useCallback((delta: number) => {
     setRightPanelWidth((w) => Math.max(140, Math.min(400, w - delta)));
   }, []);
   const handleRightPanelResizeEnd = useCallback(() => {
-    setRightPanelWidth((w) => { localStorage.setItem("hotline-right-w", String(w)); return w; });
+    setRightPanelWidth((w) => {
+      localStorage.setItem("hotline-right-w", String(w));
+      return w;
+    });
   }, []);
 
   const canCreateChannel = ws.serverInfo?.role === "admin" || ws.serverInfo?.role === "operator";
@@ -620,7 +727,11 @@ export default function App() {
   return (
     <div className="app-layout">
       {mobileSidebarOpen && <div className="mobile-sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />}
-      <nav className={`app-sidebar-col ${mobileSidebarOpen ? "mobile-open" : ""}`} style={{ width: sidebarWidth, minWidth: sidebarWidth }} aria-label={t("sidebar.channels")}>
+      <nav
+        className={`app-sidebar-col ${mobileSidebarOpen ? "mobile-open" : ""}`}
+        style={{ width: sidebarWidth, minWidth: sidebarWidth }}
+        aria-label={t("sidebar.channels")}
+      >
         <Sidebar
           serverName={ws.serverInfo?.name || t("app.name")}
           channels={orderedChannels}
@@ -634,13 +745,18 @@ export default function App() {
           onDisconnect={ws.disconnect}
           canCreateChannel={canCreateChannel}
           unreadCounts={unreadCounts}
-          nickname={ws.serverInfo?.userId ? (ws.users.find(u => u.userId === ws.serverInfo?.userId)?.nickname || "") : ""}
+          nickname={
+            ws.serverInfo?.userId ? ws.users.find((u) => u.userId === ws.serverInfo?.userId)?.nickname || "" : ""
+          }
           role={ws.serverInfo?.role || ""}
-          userStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status}
+          userStatus={ws.users.find((u) => u.userId === ws.serverInfo?.userId)?.status}
           mutedChannels={mutedChannels}
           onToggleMute={toggleMute}
           onAdminPanel={() => setShowAdmin(true)}
-          typingChannels={ws.typingUsers.filter(t => t.userId !== ws.serverInfo?.userId).map(t => t.channel).filter(Boolean)}
+          typingChannels={ws.typingUsers
+            .filter((t) => t.userId !== ws.serverInfo?.userId)
+            .map((t) => t.channel)
+            .filter(Boolean)}
           onReorderChannels={handleChannelReorder}
           voiceChannel={voice.voiceChannel}
           voiceParticipants={voice.participants}
@@ -652,24 +768,57 @@ export default function App() {
           onToggleVoiceDeafen={voice.toggleDeafen}
         />
         <div className="app-sidebar-bottom">
-          <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />
+          <StatusSelector
+            currentStatus={ws.users.find((u) => u.userId === ws.serverInfo?.userId)?.status || "available"}
+            onStatusChange={handleStatusChange}
+          />
           <NotificationSettings prefs={notifPrefs} onChange={setNotifPrefs} />
-          <button className="compact-toggle" onClick={toggleCompact} title={compact ? "Comfortable view" : "Compact view"} aria-label={compact ? "Comfortable view" : "Compact view"}>
+          <button
+            className="compact-toggle"
+            onClick={toggleCompact}
+            title={compact ? "Comfortable view" : "Compact view"}
+            aria-label={compact ? "Comfortable view" : "Compact view"}
+          >
             {compact ? <StretchHorizontal size={14} /> : <Rows3 size={14} />}
           </button>
-          <button className="compact-toggle" onClick={() => setShowThemeEditor(true)} title={t("theme.title")} aria-label={t("theme.title")}>
+          <button
+            className="compact-toggle"
+            onClick={() => setShowThemeEditor(true)}
+            title={t("theme.title")}
+            aria-label={t("theme.title")}
+          >
             <Palette size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowStats(true)} title={t("stats.title")} aria-label={t("stats.title")}>
+          <button
+            className="compact-toggle"
+            onClick={() => setShowStats(true)}
+            title={t("stats.title")}
+            aria-label={t("stats.title")}
+          >
             <TrendingUp size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowScheduler(true)} title={t("scheduler.title")} aria-label={t("scheduler.title")}>
+          <button
+            className="compact-toggle"
+            onClick={() => setShowScheduler(true)}
+            title={t("scheduler.title")}
+            aria-label={t("scheduler.title")}
+          >
             <Clock size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowCustomEmoji(true)} title={t("customEmoji.title")} aria-label={t("customEmoji.title")}>
+          <button
+            className="compact-toggle"
+            onClick={() => setShowCustomEmoji(true)}
+            title={t("customEmoji.title")}
+            aria-label={t("customEmoji.title")}
+          >
             <SmileIcon size={14} />
           </button>
-          <button className="compact-toggle" onClick={() => setShowNotifFilters(true)} title={t("notifFilters.title")} aria-label={t("notifFilters.title")}>
+          <button
+            className="compact-toggle"
+            onClick={() => setShowNotifFilters(true)}
+            title={t("notifFilters.title")}
+            aria-label={t("notifFilters.title")}
+          >
             <Filter size={14} />
           </button>
           <LanguageSelector />
@@ -680,22 +829,28 @@ export default function App() {
 
       <main className="app-main">
         <div className="mobile-header">
-          <button className="mobile-header-btn" onClick={() => setMobileSidebarOpen(true)} aria-label={t("sidebar.openMenu")}>
+          <button
+            className="mobile-header-btn"
+            onClick={() => setMobileSidebarOpen(true)}
+            aria-label={t("sidebar.openMenu")}
+          >
             <Menu size={18} />
           </button>
           <span className="mobile-header-channel">
-            {activeDM ? dmConversations.find(d => d.peerId === activeDM)?.peerNick || "DM" : `#${activeChannel}`}
+            {activeDM ? dmConversations.find((d) => d.peerId === activeDM)?.peerNick || "DM" : `#${activeChannel}`}
           </span>
-          <button className="mobile-header-btn" onClick={() => setRightPanelOpen(v => !v)} aria-label={t("users.togglePanel")}>
+          <button
+            className="mobile-header-btn"
+            onClick={() => setRightPanelOpen((v) => !v)}
+            aria-label={t("users.togglePanel")}
+          >
             <UsersIcon size={18} />
           </button>
         </div>
         <ConnectionStatus status={ws.status} reconnectIn={ws.reconnectIn} />
         {ws.serverInfo?.motd && <ServerBanner motd={ws.serverInfo.motd} />}
 
-        {error && (
-          <div className="app-error">{error}</div>
-        )}
+        {error && <div className="app-error">{error}</div>}
 
         <div className="app-chat-row">
           {showSearch && (
@@ -730,20 +885,24 @@ export default function App() {
             currentUserId={ws.serverInfo?.userId || ""}
             currentRole={ws.serverInfo?.role}
             typingUsers={ws.typingUsers}
-            dmMode={activeDM ? (() => {
-              const peerUser = ws.users.find((u) => u.userId === activeDM);
-              const peerBoxPK = peerUser?.boxPublicKey;
-              return {
-                peerId: activeDM,
-                peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8),
-                e2eEnabled: !!peerBoxPK,
-                ownFingerprint: getBoxPublicKeyHex(identity),
-                peerFingerprint: peerBoxPK,
-              };
-            })() : undefined}
+            dmMode={
+              activeDM
+                ? (() => {
+                    const peerUser = ws.users.find((u) => u.userId === activeDM);
+                    const peerBoxPK = peerUser?.boxPublicKey;
+                    return {
+                      peerId: activeDM,
+                      peerNick: dmConversations.find((d) => d.peerId === activeDM)?.peerNick || activeDM.slice(0, 8),
+                      e2eEnabled: !!peerBoxPK,
+                      ownFingerprint: getBoxPublicKeyHex(identity),
+                      peerFingerprint: peerBoxPK,
+                    };
+                  })()
+                : undefined
+            }
             onSendMessage={activeDM ? (_ch, content) => ws.sendDM(activeDM, content) : handleSendWithReply}
             onSlashCommand={activeDM ? undefined : handleSlashCommand}
-            onTyping={() => activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel)}
+            onTyping={() => (activeDM ? ws.sendTyping("", activeDM) : ws.sendTyping(activeChannel))}
             onSearchOpen={handleSearchOpen}
             onReact={ws.addReaction}
             onRemoveReact={ws.removeReaction}
@@ -778,27 +937,28 @@ export default function App() {
             serverBaseUrl={serverBaseUrl}
           />
 
-          {threadRootId && (() => {
-            const rootMsg = ws.messages.find((m) => m.id === threadRootId);
-            if (!rootMsg) return null;
-            const threadReplies = ws.messages.filter((m) => m.replyTo === threadRootId);
-            return (
-              <ThreadPanel
-                rootMessage={rootMsg}
-                replies={threadReplies}
-                currentUserId={ws.serverInfo?.userId || ""}
-                currentRole={ws.serverInfo?.role}
-                onClose={() => setThreadRootId(null)}
-                onReact={ws.addReaction}
-                onRemoveReact={ws.removeReaction}
-                onEdit={ws.editMessage}
-                onDelete={ws.deleteMessage}
-                onBookmark={handleBookmark}
-                isBookmarked={isBookmarked}
-                onImageClick={setLightboxSrc}
-              />
-            );
-          })()}
+          {threadRootId &&
+            (() => {
+              const rootMsg = ws.messages.find((m) => m.id === threadRootId);
+              if (!rootMsg) return null;
+              const threadReplies = ws.messages.filter((m) => m.replyTo === threadRootId);
+              return (
+                <ThreadPanel
+                  rootMessage={rootMsg}
+                  replies={threadReplies}
+                  currentUserId={ws.serverInfo?.userId || ""}
+                  currentRole={ws.serverInfo?.role}
+                  onClose={() => setThreadRootId(null)}
+                  onReact={ws.addReaction}
+                  onRemoveReact={ws.removeReaction}
+                  onEdit={ws.editMessage}
+                  onDelete={ws.deleteMessage}
+                  onBookmark={handleBookmark}
+                  isBookmarked={isBookmarked}
+                  onImageClick={setLightboxSrc}
+                />
+              );
+            })()}
 
           <button
             className="panel-toggle"
@@ -811,8 +971,17 @@ export default function App() {
         </div>
       </main>
 
-      {rightPanelOpen && <ResizeDivider direction="horizontal" onResize={handleRightPanelResize} onResizeEnd={handleRightPanelResizeEnd} />}
-      <div className={`app-right-panel ${rightPanelOpen ? "open" : "closed"}`} style={rightPanelOpen ? { width: rightPanelWidth, minWidth: rightPanelWidth } : undefined}>
+      {rightPanelOpen && (
+        <ResizeDivider
+          direction="horizontal"
+          onResize={handleRightPanelResize}
+          onResizeEnd={handleRightPanelResizeEnd}
+        />
+      )}
+      <div
+        className={`app-right-panel ${rightPanelOpen ? "open" : "closed"}`}
+        style={rightPanelOpen ? { width: rightPanelWidth, minWidth: rightPanelWidth } : undefined}
+      >
         <UserList
           users={ws.users}
           currentUserId={ws.serverInfo?.userId}
@@ -832,10 +1001,7 @@ export default function App() {
       </div>
 
       {showCreateModal && (
-        <CreateChannelModal
-          onSubmit={handleCreateChannelSubmit}
-          onClose={() => setShowCreateModal(false)}
-        />
+        <CreateChannelModal onSubmit={handleCreateChannelSubmit} onClose={() => setShowCreateModal(false)} />
       )}
 
       {showChannelSettings && activeCh && (
@@ -847,9 +1013,7 @@ export default function App() {
         />
       )}
 
-      {showShortcuts && (
-        <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />
-      )}
+      {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
 
       {showAdmin && ws.serverInfo && (
         <AdminPanel
@@ -884,13 +1048,9 @@ export default function App() {
         />
       )}
 
-      {lightboxSrc && (
-        <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
-      )}
+      {lightboxSrc && <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />}
 
-      {showThemeEditor && (
-        <ThemeEditor onClose={() => setShowThemeEditor(false)} />
-      )}
+      {showThemeEditor && <ThemeEditor onClose={() => setShowThemeEditor(false)} />}
 
       {showStats && (
         <ServerStats
@@ -928,7 +1088,9 @@ export default function App() {
           filters={loadNotifFiltersFull()}
           channels={ws.channels.map((c) => c.name)}
           users={ws.users}
-          onChange={(f) => { _saveNF(f); }}
+          onChange={(f) => {
+            _saveNF(f);
+          }}
           onClose={() => setShowNotifFilters(false)}
         />
       )}
@@ -943,10 +1105,7 @@ export default function App() {
         />
       )}
 
-      <DragDropOverlay
-        onDrop={canUpload ? handleFileUpload : () => {}}
-        enabled={canUpload}
-      />
+      <DragDropOverlay onDrop={canUpload ? handleFileUpload : () => {}} enabled={canUpload} />
 
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 

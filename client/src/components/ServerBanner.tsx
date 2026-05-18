@@ -1,6 +1,6 @@
+import { ChevronDown, ChevronUp, Info, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Info, X, ChevronDown, ChevronUp } from "lucide-react";
 
 interface ServerBannerProps {
   motd: string;
@@ -23,7 +23,11 @@ export function ServerBanner({ motd }: ServerBannerProps) {
         <span className="banner-text">{expanded || !isLong ? motd : motd.slice(0, 120) + "…"}</span>
         <div className="banner-actions">
           {isLong && (
-            <button className="banner-expand" onClick={() => setExpanded((v) => !v)} title={expanded ? "Collapse" : "Expand"}>
+            <button
+              className="banner-expand"
+              onClick={() => setExpanded((v) => !v)}
+              title={expanded ? "Collapse" : "Expand"}
+            >
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
           )}

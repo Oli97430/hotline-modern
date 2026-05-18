@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { Check, ClipboardPaste, Download, Palette, RotateCcw, Save, Upload, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Palette, X, Save, RotateCcw, Check, Upload, Download, ClipboardPaste } from "lucide-react";
 
 interface CustomTheme {
   id: string;
@@ -25,7 +25,9 @@ const ACTIVE_THEME_KEY = "hotline-active-theme";
 function loadThemes(): CustomTheme[] {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 function saveThemes(themes: CustomTheme[]) {
@@ -217,7 +219,11 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               onChange={(e) => setThemeName(e.target.value)}
               className="theme-name-input"
             />
-            <button className={`theme-save-btn ${saved ? "saved" : ""}`} onClick={handleSave} disabled={!themeName.trim()}>
+            <button
+              className={`theme-save-btn ${saved ? "saved" : ""}`}
+              onClick={handleSave}
+              disabled={!themeName.trim()}
+            >
               {saved ? <Check size={14} /> : <Save size={14} />}
               <span>{saved ? t("theme.saved") : t("theme.save")}</span>
             </button>
@@ -231,7 +237,14 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               {exported ? <Check size={14} /> : <Download size={14} />}
               <span>{exported ? t("theme.exported") : t("theme.export")}</span>
             </button>
-            <button className={`theme-import-btn ${showImport ? "active" : ""}`} onClick={() => { setShowImport(!showImport); setImportError(false); setImportSuccess(false); }}>
+            <button
+              className={`theme-import-btn ${showImport ? "active" : ""}`}
+              onClick={() => {
+                setShowImport(!showImport);
+                setImportError(false);
+                setImportSuccess(false);
+              }}
+            >
               <Upload size={14} />
               <span>{t("theme.import")}</span>
             </button>
@@ -243,7 +256,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                 className={`theme-import-input ${importError ? "error" : ""} ${importSuccess ? "success" : ""}`}
                 placeholder={t("theme.importPlaceholder")}
                 value={importText}
-                onChange={(e) => { setImportText(e.target.value); setImportError(false); }}
+                onChange={(e) => {
+                  setImportText(e.target.value);
+                  setImportError(false);
+                }}
                 rows={3}
               />
               {importError && <span className="theme-import-msg error">{t("theme.importError")}</span>}
@@ -261,11 +277,15 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               {themes.map((theme) => (
                 <div key={theme.id} className="theme-list-item">
                   <div className="theme-list-swatches">
-                    {Object.values(theme.colors).slice(0, 4).map((c, i) => (
-                      <span key={i} className="theme-swatch" style={{ background: c }} />
-                    ))}
+                    {Object.values(theme.colors)
+                      .slice(0, 4)
+                      .map((c, i) => (
+                        <span key={i} className="theme-swatch" style={{ background: c }} />
+                      ))}
                   </div>
-                  <span className="theme-list-name" onClick={() => handleLoadTheme(theme)}>{theme.name}</span>
+                  <span className="theme-list-name" onClick={() => handleLoadTheme(theme)}>
+                    {theme.name}
+                  </span>
                   <button className="theme-list-delete" onClick={() => handleDeleteTheme(theme.id)}>
                     <X size={12} />
                   </button>

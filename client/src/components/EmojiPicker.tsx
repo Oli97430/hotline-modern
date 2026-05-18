@@ -47,9 +47,7 @@ export function EmojiPicker({ onSelect, onClose, customEmojis, serverBaseUrl }: 
     : EMOJI_CATEGORIES;
 
   const hasCustom = customEmojis && customEmojis.length > 0;
-  const filteredCustom = hasCustom
-    ? customEmojis!.filter((e) => !filter || e.name.includes(filter.toLowerCase()))
-    : [];
+  const filteredCustom = hasCustom ? customEmojis!.filter((e) => !filter || e.name.includes(filter.toLowerCase())) : [];
 
   return (
     <div ref={ref} className="emoji-picker">
@@ -63,16 +61,10 @@ export function EmojiPicker({ onSelect, onClose, customEmojis, serverBaseUrl }: 
       />
       {hasCustom && (
         <div className="emoji-tabs">
-          <button
-            className={`emoji-tab ${tab === "standard" ? "active" : ""}`}
-            onClick={() => setTab("standard")}
-          >
+          <button className={`emoji-tab ${tab === "standard" ? "active" : ""}`} onClick={() => setTab("standard")}>
             {t("emoji.standard") || "Standard"}
           </button>
-          <button
-            className={`emoji-tab ${tab === "custom" ? "active" : ""}`}
-            onClick={() => setTab("custom")}
-          >
+          <button className={`emoji-tab ${tab === "custom" ? "active" : ""}`} onClick={() => setTab("custom")}>
             {t("emoji.custom") || "Custom"}
           </button>
         </div>
@@ -115,9 +107,7 @@ export function EmojiPicker({ onSelect, onClose, customEmojis, serverBaseUrl }: 
                 );
               })}
             </div>
-            {filteredCustom.length === 0 && (
-              <div className="emoji-empty">No custom emoji found</div>
-            )}
+            {filteredCustom.length === 0 && <div className="emoji-empty">No custom emoji found</div>}
           </div>
         )}
       </div>

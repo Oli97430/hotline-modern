@@ -1,5 +1,5 @@
+import { Loader, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { WifiOff, Loader } from "lucide-react";
 
 interface ConnectionStatusProps {
   status: string;

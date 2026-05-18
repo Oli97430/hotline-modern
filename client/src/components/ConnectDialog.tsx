@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { useTranslation } from "react-i18next";
 import { Capacitor } from "@capacitor/core";
 import { Loader, Star, X, Zap } from "lucide-react";
-import { useServerFavorites, ServerFavorite } from "../hooks/useServerFavorites";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { type ServerFavorite, useServerFavorites } from "../hooks/useServerFavorites";
 import { LAST_SERVER_IP_KEY } from "../hooks/useTrackerServers";
 import { ServerBrowser } from "./ServerBrowser";
 
@@ -113,10 +113,18 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
                     <span className="connect-fav-addr">{fav.address}</span>
                     <span className="connect-fav-nick">{fav.nickname}</span>
                   </button>
-                  <button className="connect-fav-quick" onClick={() => handleFavoriteConnect(fav)} title={t("connect.quickConnect")}>
+                  <button
+                    className="connect-fav-quick"
+                    onClick={() => handleFavoriteConnect(fav)}
+                    title={t("connect.quickConnect")}
+                  >
                     <Zap size={11} />
                   </button>
-                  <button className="connect-fav-remove" onClick={() => removeFavorite(fav.id)} title={t("connect.removeFavorite")}>
+                  <button
+                    className="connect-fav-remove"
+                    onClick={() => removeFavorite(fav.id)}
+                    title={t("connect.removeFavorite")}
+                  >
                     <X size={11} />
                   </button>
                 </li>

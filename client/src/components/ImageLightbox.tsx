@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { X, ZoomIn, ZoomOut, Download, RotateCw, Maximize } from "lucide-react";
+import { Download, Maximize, RotateCw, X, ZoomIn, ZoomOut } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 interface ImageLightboxProps {
   src: string;
@@ -11,12 +11,15 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
   const [rotation, setRotation] = useState(0);
   const [loaded, setLoaded] = useState(false);
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.key === "Escape") onClose();
-    if (e.key === "+" || e.key === "=") setScale((s) => Math.min(s + 0.25, 4));
-    if (e.key === "-") setScale((s) => Math.max(s - 0.25, 0.5));
-    if (e.key === "r") setRotation((r) => r + 90);
-  }, [onClose]);
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "+" || e.key === "=") setScale((s) => Math.min(s + 0.25, 4));
+      if (e.key === "-") setScale((s) => Math.max(s - 0.25, 0.5));
+      if (e.key === "r") setRotation((r) => r + 90);
+    },
+    [onClose],
+  );
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
@@ -45,7 +48,13 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
         <button onClick={() => setRotation((r) => r + 90)} title="Rotate">
           <RotateCw size={16} />
         </button>
-        <button onClick={() => { setScale(1); setRotation(0); }} title="Reset">
+        <button
+          onClick={() => {
+            setScale(1);
+            setRotation(0);
+          }}
+          title="Reset"
+        >
           <Maximize size={16} />
         </button>
         <span className="lightbox-scale">{Math.round(scale * 100)}%</span>
@@ -57,14 +66,21 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
         </button>
       </div>
       <div className="lightbox-content" onClick={(e) => e.stopPropagation()} onWheel={handleWheel}>
-        {!loaded && <div className="lightbox-loading"><div className="lightbox-spinner" /></div>}
+        {!loaded && (
+          <div className="lightbox-loading">
+            <div className="lightbox-spinner" />
+          </div>
+        )}
         <img
           src={src}
           alt=""
           className={`lightbox-img ${loaded ? "loaded" : ""}`}
           style={{ transform: `scale(${scale}) rotate(${rotation}deg)` }}
           onLoad={() => setLoaded(true)}
-          onDoubleClick={() => { setScale(1); setRotation(0); }}
+          onDoubleClick={() => {
+            setScale(1);
+            setRotation(0);
+          }}
           draggable={false}
         />
       </div>

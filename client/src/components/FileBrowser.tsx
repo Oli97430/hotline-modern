@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { ArrowUp, Download, File, Folder, FolderOpen, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Folder, File, ArrowUp, Upload, Download, FolderOpen } from "lucide-react";
-import { FileEntry } from "../lib/protocol";
-import { Identity, getFileAuthHeaders } from "../lib/crypto";
+import { getFileAuthHeaders, type Identity } from "../lib/crypto";
+import type { FileEntry } from "../lib/protocol";
 
 interface FileBrowserProps {
   serverAddress: string;
@@ -105,7 +105,9 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
 
       {breadcrumbs.length > 0 && (
         <div className="file-breadcrumb">
-          <button className="breadcrumb-item" onClick={() => fetchFiles("")}>~</button>
+          <button className="breadcrumb-item" onClick={() => fetchFiles("")}>
+            ~
+          </button>
           {breadcrumbs.map((part, i) => (
             <span key={i} className="breadcrumb-item">
               <span className="breadcrumb-sep">/</span>
@@ -118,7 +120,9 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
       <div className="file-entries">
         {loading && (
           <div className="file-skeleton">
-            <div className="skeleton-line" /><div className="skeleton-line" /><div className="skeleton-line" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line" />
           </div>
         )}
         {!loading && path && (
@@ -127,14 +131,23 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
             <span className="file-name">..</span>
           </div>
         )}
-        {!loading && entries.map((entry) => (
-          <div key={entry.name} className={`file-entry ${entry.isDir ? "dir" : ""}`} onClick={() => handleNavigate(entry)}>
-            {entry.isDir ? <Folder size={14} className="file-icon folder" /> : <File size={14} className="file-icon" />}
-            <span className="file-name">{entry.name}</span>
-            {!entry.isDir && <span className="file-size">{formatSize(entry.size)}</span>}
-            {!entry.isDir && canDownload && <Download size={12} className="file-dl" />}
-          </div>
-        ))}
+        {!loading &&
+          entries.map((entry) => (
+            <div
+              key={entry.name}
+              className={`file-entry ${entry.isDir ? "dir" : ""}`}
+              onClick={() => handleNavigate(entry)}
+            >
+              {entry.isDir ? (
+                <Folder size={14} className="file-icon folder" />
+              ) : (
+                <File size={14} className="file-icon" />
+              )}
+              <span className="file-name">{entry.name}</span>
+              {!entry.isDir && <span className="file-size">{formatSize(entry.size)}</span>}
+              {!entry.isDir && canDownload && <Download size={12} className="file-dl" />}
+            </div>
+          ))}
         {!loading && entries.length === 0 && (
           <div className="file-empty">
             <FolderOpen size={20} className="file-empty-icon" />

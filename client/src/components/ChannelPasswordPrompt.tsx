@@ -1,6 +1,6 @@
+import { ArrowRight, Lock } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Lock, ArrowRight } from "lucide-react";
 
 interface ChannelPasswordPromptProps {
   channelName: string;
@@ -36,7 +36,10 @@ export function ChannelPasswordPrompt({ channelName, onSubmit, onCancel }: Chann
             className="channel-pw-input"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleSubmit(); if (e.key === "Escape") onCancel(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleSubmit();
+              if (e.key === "Escape") onCancel();
+            }}
             placeholder={t("channel.passwordPlaceholderJoin")}
             autoFocus
           />

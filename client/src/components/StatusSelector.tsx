@@ -18,11 +18,7 @@ export function StatusSelector({ currentStatus, onStatusChange }: StatusSelector
   return (
     <div className="status-selector">
       <span className="status-dot-sel" style={{ backgroundColor: currentColor }} />
-      <select
-        value={currentStatus}
-        onChange={(e) => onStatusChange(e.target.value)}
-        className="status-select"
-      >
+      <select value={currentStatus} onChange={(e) => onStatusChange(e.target.value)} className="status-select">
         {STATUS_OPTIONS.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {t(opt.label)}
@@ -64,11 +60,7 @@ export function StatusSelector({ currentStatus, onStatusChange }: StatusSelector
 export function StatusDot({ status }: { status: string }) {
   const color = status === "away" ? "#eab308" : status === "busy" ? "#ef4444" : "#22c55e";
   return (
-    <span
-      className="user-status-dot"
-      style={{ backgroundColor: color }}
-      title={status}
-    >
+    <span className="user-status-dot" style={{ backgroundColor: color }} title={status}>
       <style>{`
         .user-status-dot {
           display: inline-block;

@@ -1,4 +1,4 @@
-import { Bold, Italic, Code, Link, Strikethrough } from "lucide-react";
+import { Bold, Code, Italic, Link, Strikethrough } from "lucide-react";
 
 interface FormatToolbarProps {
   onFormat: (wrapper: string, prefix?: string, suffix?: string) => void;
@@ -8,42 +8,22 @@ export function FormatToolbar({ onFormat }: FormatToolbarProps) {
   return (
     <div className="format-toolbar">
       <div className="format-group">
-        <button
-          className="format-btn"
-          onClick={() => onFormat("**")}
-          title="Bold (Ctrl+B)"
-        >
+        <button className="format-btn" onClick={() => onFormat("**")} title="Bold (Ctrl+B)">
           <Bold size={14} />
         </button>
-        <button
-          className="format-btn"
-          onClick={() => onFormat("*")}
-          title="Italic (Ctrl+I)"
-        >
+        <button className="format-btn" onClick={() => onFormat("*")} title="Italic (Ctrl+I)">
           <Italic size={14} />
         </button>
-        <button
-          className="format-btn"
-          onClick={() => onFormat("~~")}
-          title="Strikethrough"
-        >
+        <button className="format-btn" onClick={() => onFormat("~~")} title="Strikethrough">
           <Strikethrough size={14} />
         </button>
       </div>
       <div className="format-sep" />
       <div className="format-group">
-        <button
-          className="format-btn"
-          onClick={() => onFormat("`")}
-          title="Code"
-        >
+        <button className="format-btn" onClick={() => onFormat("`")} title="Code">
           <Code size={14} />
         </button>
-        <button
-          className="format-btn"
-          onClick={() => onFormat("[", "[", "](url)")}
-          title="Link"
-        >
+        <button className="format-btn" onClick={() => onFormat("[", "[", "](url)")} title="Link">
           <Link size={14} />
         </button>
       </div>

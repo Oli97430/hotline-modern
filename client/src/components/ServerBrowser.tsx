@@ -1,7 +1,7 @@
+import { ChevronDown, ChevronUp, Globe, Plus, RefreshCw, Settings, Users, Wifi, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, RefreshCw, Users, Plus, X, Wifi, Settings, ChevronDown, ChevronUp } from "lucide-react";
-import { useTrackerServers, TrackerServer } from "../hooks/useTrackerServers";
+import { type TrackerServer, useTrackerServers } from "../hooks/useTrackerServers";
 
 interface ServerBrowserProps {
   onConnect: (address: string) => void;
@@ -15,8 +15,7 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
 
   const handleConnect = (srv: TrackerServer) => {
     // Detect tunnel/cloud addresses — use wss:// without port
-    const isPublicDomain =
-      srv.address.includes(".") && !srv.address.match(/^\d+\.\d+\.\d+\.\d+$/) && srv.port === 443;
+    const isPublicDomain = srv.address.includes(".") && !srv.address.match(/^\d+\.\d+\.\d+\.\d+$/) && srv.port === 443;
     if (isPublicDomain) {
       onConnect(`wss://${srv.address}`);
     } else {
@@ -58,7 +57,11 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
               <div key={url} className="sb-tracker-item">
                 <Wifi size={10} />
                 <span className="sb-tracker-url">{url}</span>
-                <button className="sb-tracker-remove" onClick={() => removeTracker(url)} title={t("tracker.removeTracker")}>
+                <button
+                  className="sb-tracker-remove"
+                  onClick={() => removeTracker(url)}
+                  title={t("tracker.removeTracker")}
+                >
                   <X size={10} />
                 </button>
               </div>
@@ -81,15 +84,9 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
 
       <div className="sb-list">
         {error && <div className="sb-error">{t(error)}</div>}
-        {error && trackerUrls.length === 0 && (
-          <div className="sb-hint">{t("tracker.addTrackerHint")}</div>
-        )}
-        {!error && servers.length === 0 && !loading && (
-          <div className="sb-empty">{t("tracker.noServers")}</div>
-        )}
-        {loading && servers.length === 0 && (
-          <div className="sb-loading">{t("tracker.loading")}</div>
-        )}
+        {error && trackerUrls.length === 0 && <div className="sb-hint">{t("tracker.addTrackerHint")}</div>}
+        {!error && servers.length === 0 && !loading && <div className="sb-empty">{t("tracker.noServers")}</div>}
+        {loading && servers.length === 0 && <div className="sb-loading">{t("tracker.loading")}</div>}
         {servers.map((srv) => (
           <div
             key={`${srv.address}:${srv.port}`}
@@ -98,7 +95,12 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
             tabIndex={0}
             aria-label={`${srv.name || srv.address}, ${srv.users} utilisateurs`}
             onClick={() => handleConnect(srv)}
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleConnect(srv); } }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleConnect(srv);
+              }
+            }}
           >
             <div className="sb-server-info">
               <span className="sb-server-name">{srv.name}</span>
@@ -109,7 +111,9 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
                 <Users size={11} />
                 {srv.users}
               </span>
-              <span className="sb-server-addr">{srv.address}:{srv.port}</span>
+              <span className="sb-server-addr">
+                {srv.address}:{srv.port}
+              </span>
             </div>
           </div>
         ))}

@@ -1,11 +1,11 @@
 import nacl from "tweetnacl";
-import { encodeBase64, decodeBase64 } from "tweetnacl-util";
+import { decodeBase64, encodeBase64 } from "tweetnacl-util";
 
 const STORAGE_KEY = "hotline-identity";
 
 export interface Identity {
-  publicKey: Uint8Array;   // Ed25519 signing public key
-  secretKey: Uint8Array;   // Ed25519 signing secret key
+  publicKey: Uint8Array; // Ed25519 signing public key
+  secretKey: Uint8Array; // Ed25519 signing secret key
   boxPublicKey: Uint8Array; // Curve25519 encryption public key
   boxSecretKey: Uint8Array; // Curve25519 encryption secret key
 }
@@ -91,7 +91,7 @@ export function getOrCreateIdentity(): Identity {
 export function encryptDM(
   plaintext: string,
   peerBoxPublicKeyHex: string,
-  identity: Identity
+  identity: Identity,
 ): { ciphertext: string; nonce: string } {
   const peerBoxPK = fromHex(peerBoxPublicKeyHex);
   const nonce = nacl.randomBytes(nacl.box.nonceLength);
@@ -112,7 +112,7 @@ export function decryptDM(
   ciphertextBase64: string,
   nonceBase64: string,
   peerBoxPublicKeyHex: string,
-  identity: Identity
+  identity: Identity,
 ): string | null {
   try {
     const ciphertext = decodeBase64(ciphertextBase64);
@@ -159,4 +159,4 @@ export function getFileAuthHeaders(identity: Identity): Record<string, string> {
   };
 }
 
-export { toHex, fromHex };
+export { fromHex, toHex };

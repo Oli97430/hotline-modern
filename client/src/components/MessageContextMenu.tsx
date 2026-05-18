@@ -1,6 +1,6 @@
+import { Bookmark, Copy, Forward, Pencil, Pin, Quote, Reply, Smile, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, Reply, Smile, Pin, Pencil, Trash2, Bookmark, Quote, Forward } from "lucide-react";
 
 interface MessageContextMenuProps {
   position: { x: number; y: number };
@@ -79,11 +79,23 @@ export function MessageContextMenu({
 
   return (
     <div className="ctx-menu" ref={menuRef} style={style}>
-      <button className="ctx-item" onClick={() => { onReply?.(messageId); onClose(); }}>
+      <button
+        className="ctx-item"
+        onClick={() => {
+          onReply?.(messageId);
+          onClose();
+        }}
+      >
         <Reply size={14} />
         <span>{t("ctx.reply")}</span>
       </button>
-      <button className="ctx-item" onClick={() => { onReact?.(); onClose(); }}>
+      <button
+        className="ctx-item"
+        onClick={() => {
+          onReact?.();
+          onClose();
+        }}
+      >
         <Smile size={14} />
         <span>{t("ctx.react")}</span>
       </button>
@@ -96,13 +108,25 @@ export function MessageContextMenu({
         <span>{t("ctx.quote")}</span>
       </button>
       {onForward && (
-        <button className="ctx-item" onClick={() => { onForward(messageId); onClose(); }}>
+        <button
+          className="ctx-item"
+          onClick={() => {
+            onForward(messageId);
+            onClose();
+          }}
+        >
           <Forward size={14} />
           <span>{t("forward.title")}</span>
         </button>
       )}
       {onBookmark && (
-        <button className={`ctx-item ${isBookmarked ? "active" : ""}`} onClick={() => { onBookmark(messageId); onClose(); }}>
+        <button
+          className={`ctx-item ${isBookmarked ? "active" : ""}`}
+          onClick={() => {
+            onBookmark(messageId);
+            onClose();
+          }}
+        >
           <Bookmark size={14} />
           <span>{isBookmarked ? t("bookmarks.remove") : t("ctx.bookmark")}</span>
         </button>
@@ -110,20 +134,38 @@ export function MessageContextMenu({
       {isOwn && onEdit && (
         <>
           <div className="ctx-sep" />
-          <button className="ctx-item" onClick={() => { onEdit(messageId); onClose(); }}>
+          <button
+            className="ctx-item"
+            onClick={() => {
+              onEdit(messageId);
+              onClose();
+            }}
+          >
             <Pencil size={14} />
             <span>{t("ctx.edit")}</span>
           </button>
         </>
       )}
       {canModerate && onPin && (
-        <button className="ctx-item" onClick={() => { onPin(messageId); onClose(); }}>
+        <button
+          className="ctx-item"
+          onClick={() => {
+            onPin(messageId);
+            onClose();
+          }}
+        >
           <Pin size={14} />
           <span>{t("ctx.pin")}</span>
         </button>
       )}
       {(isOwn || canModerate) && onDelete && (
-        <button className="ctx-item danger" onClick={() => { onDelete(messageId); onClose(); }}>
+        <button
+          className="ctx-item danger"
+          onClick={() => {
+            onDelete(messageId);
+            onClose();
+          }}
+        >
           <Trash2 size={14} />
           <span>{t("ctx.delete")}</span>
         </button>

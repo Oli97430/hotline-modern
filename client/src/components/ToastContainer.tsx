@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { LogIn, LogOut, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface Toast {
   id: string;
@@ -30,7 +30,13 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
     <div className={`toast-item toast-${toast.type} ${exiting ? "exiting" : ""}`}>
       {icon && <span className="toast-icon">{icon}</span>}
       <span className="toast-text">{toast.message}</span>
-      <button className="toast-close" onClick={() => { setExiting(true); setTimeout(() => onDismiss(toast.id), 300); }}>
+      <button
+        className="toast-close"
+        onClick={() => {
+          setExiting(true);
+          setTimeout(() => onDismiss(toast.id), 300);
+        }}
+      >
         <X size={12} />
       </button>
     </div>

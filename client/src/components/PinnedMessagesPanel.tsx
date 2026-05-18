@@ -1,7 +1,7 @@
+import { Pin, Trash2, X } from "lucide-react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Pin, X, Trash2 } from "lucide-react";
-import { PinnedMessage } from "../hooks/useWebSocket";
+import type { PinnedMessage } from "../hooks/useWebSocket";
 
 interface PinnedMessagesPanelProps {
   messages: PinnedMessage[];
@@ -12,7 +12,14 @@ interface PinnedMessagesPanelProps {
   canModerate: boolean;
 }
 
-export function PinnedMessagesPanel({ messages, onRequestPins, onUnpin, onClose, activeChannel, canModerate }: PinnedMessagesPanelProps) {
+export function PinnedMessagesPanel({
+  messages,
+  onRequestPins,
+  onUnpin,
+  onClose,
+  activeChannel,
+  canModerate,
+}: PinnedMessagesPanelProps) {
   const { t, i18n } = useTranslation();
 
   useEffect(() => {
@@ -51,11 +58,7 @@ export function PinnedMessagesPanel({ messages, onRequestPins, onUnpin, onClose,
               <span className="pinned-nick">{msg.nickname}</span>
               <span className="pinned-time">{formatTime(msg.timestamp)}</span>
               {canModerate && onUnpin && (
-                <button
-                  className="pinned-unpin"
-                  onClick={() => onUnpin(msg.id, activeChannel)}
-                  title={t("pins.unpin")}
-                >
+                <button className="pinned-unpin" onClick={() => onUnpin(msg.id, activeChannel)} title={t("pins.unpin")}>
                   <Trash2 size={12} />
                 </button>
               )}

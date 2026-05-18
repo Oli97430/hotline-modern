@@ -1,6 +1,6 @@
+import { MessageSquare, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { X, MessageSquare } from "lucide-react";
-import { ChatMessage } from "../hooks/useWebSocket";
+import type { ChatMessage } from "../hooks/useWebSocket";
 import { MessageBubble } from "./MessageBubble";
 
 interface ThreadPanelProps {
@@ -40,7 +40,9 @@ export function ThreadPanel({
       <div className="thread-panel-header">
         <MessageSquare size={15} />
         <span className="thread-panel-title">{t("thread.title")}</span>
-        <span className="thread-panel-count">{replies.length} {replies.length === 1 ? t("thread.reply") : t("thread.replies")}</span>
+        <span className="thread-panel-count">
+          {replies.length} {replies.length === 1 ? t("thread.reply") : t("thread.replies")}
+        </span>
         <button className="thread-panel-close" onClick={onClose}>
           <X size={16} />
         </button>
@@ -74,16 +76,16 @@ export function ThreadPanel({
 
         {replies.length > 0 && (
           <div className="thread-separator">
-            <span>{replies.length} {replies.length === 1 ? t("thread.reply") : t("thread.replies")}</span>
+            <span>
+              {replies.length} {replies.length === 1 ? t("thread.reply") : t("thread.replies")}
+            </span>
           </div>
         )}
 
         {/* Replies */}
         {replies.map((msg, i) => {
           const prev = i > 0 ? replies[i - 1] : undefined;
-          const isGrouped = prev !== undefined
-            && prev.userId === msg.userId
-            && (msg.timestamp - prev.timestamp) < 120000;
+          const isGrouped = prev !== undefined && prev.userId === msg.userId && msg.timestamp - prev.timestamp < 120000;
           return (
             <MessageBubble
               key={msg.id}

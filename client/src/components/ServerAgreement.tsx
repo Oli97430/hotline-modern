@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 interface ServerAgreementProps {
@@ -16,7 +16,9 @@ function getAcceptedKey(serverAddress: string): string {
 async function hashAgreement(text: string): Promise<string> {
   if (typeof crypto !== "undefined" && crypto.subtle) {
     const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+    return Array.from(new Uint8Array(buf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
   }
   // Fallback: simple djb2 hash
   let h = 5381;
@@ -59,7 +61,9 @@ export function ServerAgreement({ agreement, serverAddress, onAccept, onDecline 
   return (
     <div className="agreement-overlay" role="dialog" aria-modal="true" aria-labelledby="agreement-title">
       <div className="agreement-modal">
-        <h2 id="agreement-title" className="agreement-title">{t("agreement.title")}</h2>
+        <h2 id="agreement-title" className="agreement-title">
+          {t("agreement.title")}
+        </h2>
         <div className="agreement-content">
           <pre className="agreement-text">{agreement}</pre>
         </div>

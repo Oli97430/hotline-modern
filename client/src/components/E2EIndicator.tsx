@@ -1,6 +1,6 @@
+import { Check, Copy, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Shield, ShieldCheck, ShieldAlert, Copy, Check } from "lucide-react";
 
 interface E2EIndicatorProps {
   enabled: boolean;
@@ -48,11 +48,7 @@ export function E2EIndicator({ enabled, peerFingerprint, ownFingerprint }: E2EIn
 
   return (
     <>
-      <button
-        className="e2e-indicator encrypted"
-        onClick={() => setShowDetails((v) => !v)}
-        title={t("e2e.encrypted")}
-      >
+      <button className="e2e-indicator encrypted" onClick={() => setShowDetails((v) => !v)} title={t("e2e.encrypted")}>
         <ShieldCheck size={13} />
         <span>{t("e2e.label")}</span>
       </button>

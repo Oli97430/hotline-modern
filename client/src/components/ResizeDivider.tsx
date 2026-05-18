@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 interface ResizeDividerProps {
   direction: "horizontal" | "vertical";
@@ -25,7 +25,7 @@ export function ResizeDivider({ direction, onResize, onResizeEnd }: ResizeDivide
         onResize(delta);
       }
     },
-    [direction, onResize]
+    [direction, onResize],
   );
 
   const handleEnd = useCallback(() => {

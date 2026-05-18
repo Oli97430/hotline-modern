@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { Calendar, Clock, Send, Trash2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Clock, Send, Trash2, Calendar } from "lucide-react";
 
 export interface ScheduledMessage {
   id: string;
@@ -15,7 +15,9 @@ const STORAGE_KEY = "hotline-scheduled-messages";
 export function loadScheduledMessages(): ScheduledMessage[] {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-  } catch { return []; }
+  } catch {
+    return [];
+  }
 }
 
 export function saveScheduledMessages(msgs: ScheduledMessage[]) {
@@ -30,7 +32,13 @@ interface MessageSchedulerProps {
   onClose: () => void;
 }
 
-export function MessageScheduler({ activeChannel, scheduledMessages, onSchedule, onDelete, onClose }: MessageSchedulerProps) {
+export function MessageScheduler({
+  activeChannel,
+  scheduledMessages,
+  onSchedule,
+  onDelete,
+  onClose,
+}: MessageSchedulerProps) {
   const { t } = useTranslation();
   const [content, setContent] = useState("");
   const [dateTime, setDateTime] = useState("");
@@ -104,11 +112,7 @@ export function MessageScheduler({ activeChannel, scheduledMessages, onSchedule,
                 className="scheduler-datetime"
                 min={new Date().toISOString().slice(0, 16)}
               />
-              <button
-                className="scheduler-submit"
-                onClick={handleSchedule}
-                disabled={!content.trim() || !dateTime}
-              >
+              <button className="scheduler-submit" onClick={handleSchedule} disabled={!content.trim() || !dateTime}>
                 <Send size={12} />
                 <span>{t("scheduler.schedule")}</span>
               </button>
@@ -117,7 +121,9 @@ export function MessageScheduler({ activeChannel, scheduledMessages, onSchedule,
 
           {channelMsgs.length > 0 && (
             <div className="scheduler-list">
-              <span className="scheduler-list-label">{t("scheduler.pending")} — #{activeChannel}</span>
+              <span className="scheduler-list-label">
+                {t("scheduler.pending")} — #{activeChannel}
+              </span>
               {channelMsgs.map((msg) => (
                 <div key={msg.id} className="scheduler-item">
                   <div className="scheduler-item-info">

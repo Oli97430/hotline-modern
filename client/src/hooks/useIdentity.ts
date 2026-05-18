@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Identity, getOrCreateIdentity, getPublicKeyHex } from "../lib/crypto";
+import { getOrCreateIdentity, getPublicKeyHex, type Identity } from "../lib/crypto";
 
 export function useIdentity() {
   const [identity] = useState<Identity>(() => getOrCreateIdentity());

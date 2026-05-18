@@ -1,7 +1,7 @@
+import { Clock, Hash, MessageCircle, TrendingUp, Users, X } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { X, MessageCircle, Users, Hash, Clock, TrendingUp } from "lucide-react";
-import { ChatMessage } from "../hooks/useWebSocket";
+import type { ChatMessage } from "../hooks/useWebSocket";
 
 interface ServerStatsProps {
   messages: ChatMessage[];
@@ -59,7 +59,9 @@ export function ServerStats({ messages, userCount, channelCount, serverName, onC
       <div className="stats-panel" onClick={(e) => e.stopPropagation()}>
         <div className="stats-header">
           <TrendingUp size={18} />
-          <h3>{serverName} — {t("stats.title")}</h3>
+          <h3>
+            {serverName} — {t("stats.title")}
+          </h3>
           <button className="stats-close" onClick={onClose}>
             <X size={16} />
           </button>
@@ -102,10 +104,7 @@ export function ServerStats({ messages, userCount, channelCount, serverName, onC
             <div className="stats-chart">
               {stats.hourly.map((count, i) => (
                 <div key={i} className="stats-bar-wrap" title={`${i}:00 — ${count} msgs`}>
-                  <div
-                    className="stats-bar"
-                    style={{ height: `${(count / maxHourly) * 100}%` }}
-                  />
+                  <div className="stats-bar" style={{ height: `${(count / maxHourly) * 100}%` }} />
                 </div>
               ))}
             </div>

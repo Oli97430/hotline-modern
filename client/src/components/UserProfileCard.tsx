@@ -1,5 +1,5 @@
+import { Copy, Eye, MessageSquare, Shield, Star, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Shield, Star, User, Eye, MessageSquare, Copy } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
 import { UserAvatar } from "./UserAvatar";
 
@@ -32,7 +32,18 @@ function RoleBadge({ role }: { role: string }) {
   );
 }
 
-export function UserProfileCard({ user, position, onClose, onDM, onKick, onBan, onOp, onDeop, canModerate, isSelf }: UserProfileCardProps) {
+export function UserProfileCard({
+  user,
+  position,
+  onClose,
+  onDM,
+  onKick,
+  onBan,
+  onOp,
+  onDeop,
+  canModerate,
+  isSelf,
+}: UserProfileCardProps) {
   const { t } = useTranslation();
 
   const handleCopyId = () => {
@@ -73,28 +84,58 @@ export function UserProfileCard({ user, position, onClose, onDM, onKick, onBan, 
 
         {!isSelf && (
           <div className="profile-actions">
-            <button className="profile-action-btn primary" onClick={() => { onDM(user.userId); onClose(); }}>
+            <button
+              className="profile-action-btn primary"
+              onClick={() => {
+                onDM(user.userId);
+                onClose();
+              }}
+            >
               <MessageSquare size={14} />
               {t("users.sendDM")}
             </button>
             {canModerate && user.role !== "operator" && user.role !== "admin" && (
-              <button className="profile-action-btn" onClick={() => { onOp?.(user.userId); onClose(); }}>
+              <button
+                className="profile-action-btn"
+                onClick={() => {
+                  onOp?.(user.userId);
+                  onClose();
+                }}
+              >
                 <Shield size={14} />
                 {t("profile.promote")}
               </button>
             )}
             {canModerate && user.role === "operator" && (
-              <button className="profile-action-btn" onClick={() => { onDeop?.(user.userId); onClose(); }}>
+              <button
+                className="profile-action-btn"
+                onClick={() => {
+                  onDeop?.(user.userId);
+                  onClose();
+                }}
+              >
                 <User size={14} />
                 {t("profile.demote")}
               </button>
             )}
             {canModerate && (
               <>
-                <button className="profile-action-btn danger" onClick={() => { onKick?.(user.userId); onClose(); }}>
+                <button
+                  className="profile-action-btn danger"
+                  onClick={() => {
+                    onKick?.(user.userId);
+                    onClose();
+                  }}
+                >
                   {t("profile.kick")}
                 </button>
-                <button className="profile-action-btn danger" onClick={() => { onBan?.(user.userId); onClose(); }}>
+                <button
+                  className="profile-action-btn danger"
+                  onClick={() => {
+                    onBan?.(user.userId);
+                    onClose();
+                  }}
+                >
                   {t("profile.ban")}
                 </button>
               </>

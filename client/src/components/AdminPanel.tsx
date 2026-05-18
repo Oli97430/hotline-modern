@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { Check, Hash, Pencil, Save, Settings, Shield, Trash2, Users, UserX, VolumeX, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Settings, Shield, X, UserX, Save, Check, Users, Hash, VolumeX, Pencil, Trash2 } from "lucide-react";
 import type { AdminBan, AdminMute, AdminUser } from "../hooks/useWebSocket";
 
 type Tab = "settings" | "users" | "channels" | "bans";
@@ -30,11 +30,26 @@ interface AdminPanelProps {
 }
 
 export function AdminPanel({
-  serverName, motd, onUpdateSettings, onRequestBanList, onUnban, onClose,
-  adminBans, adminMutes, adminUsers, channels,
-  onMuteUser, onUnmuteUser, onRequestMuteList, onRequestAdminUserList,
-  onRenameChannel, onDeleteChannel, onCreateChannel,
-  onKickUser, onBanUser, onSetUserRole,
+  serverName,
+  motd,
+  onUpdateSettings,
+  onRequestBanList,
+  onUnban,
+  onClose,
+  adminBans,
+  adminMutes,
+  adminUsers,
+  channels,
+  onMuteUser,
+  onUnmuteUser,
+  onRequestMuteList,
+  onRequestAdminUserList,
+  onRenameChannel,
+  onDeleteChannel,
+  onCreateChannel,
+  onKickUser,
+  onBanUser,
+  onSetUserRole,
 }: AdminPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("settings");
@@ -97,21 +112,40 @@ export function AdminPanel({
         <div className="admin-header">
           <Shield size={18} />
           <h3>{t("admin.title")}</h3>
-          <button className="admin-close" onClick={onClose}><X size={16} /></button>
+          <button className="admin-close" onClick={onClose}>
+            <X size={16} />
+          </button>
         </div>
 
         <div className="admin-tabs">
           <button className={`admin-tab ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
-            <Settings size={14} />{t("admin.settings")}
+            <Settings size={14} />
+            {t("admin.settings")}
           </button>
-          <button className={`admin-tab ${tab === "users" ? "active" : ""}`} onClick={() => { setTab("users"); onRequestAdminUserList(); }}>
-            <Users size={14} />{t("admin.users")}
+          <button
+            className={`admin-tab ${tab === "users" ? "active" : ""}`}
+            onClick={() => {
+              setTab("users");
+              onRequestAdminUserList();
+            }}
+          >
+            <Users size={14} />
+            {t("admin.users")}
           </button>
           <button className={`admin-tab ${tab === "channels" ? "active" : ""}`} onClick={() => setTab("channels")}>
-            <Hash size={14} />{t("admin.channels")}
+            <Hash size={14} />
+            {t("admin.channels")}
           </button>
-          <button className={`admin-tab ${tab === "bans" ? "active" : ""}`} onClick={() => { setTab("bans"); onRequestBanList(); onRequestMuteList(); }}>
-            <UserX size={14} />{t("admin.bans")}
+          <button
+            className={`admin-tab ${tab === "bans" ? "active" : ""}`}
+            onClick={() => {
+              setTab("bans");
+              onRequestBanList();
+              onRequestMuteList();
+            }}
+          >
+            <UserX size={14} />
+            {t("admin.bans")}
           </button>
         </div>
 
@@ -161,11 +195,21 @@ export function AdminPanel({
                       </div>
                       <div className="admin-list-meta">
                         <span className="admin-pubkey">{u.publicKey.slice(0, 16)}...</span>
-                        {!u.online && <span>{t("admin.lastSeen")}: {formatDate(u.lastSeen)}</span>}
+                        {!u.online && (
+                          <span>
+                            {t("admin.lastSeen")}: {formatDate(u.lastSeen)}
+                          </span>
+                        )}
                       </div>
                       <div className="admin-list-actions">
-                        {u.online && <button className="admin-btn-sm" onClick={() => onKickUser(u.publicKey)}>{t("admin.kick")}</button>}
-                        <button className="admin-btn-sm danger" onClick={() => onBanUser(u.publicKey)}>{t("profile.ban")}</button>
+                        {u.online && (
+                          <button className="admin-btn-sm" onClick={() => onKickUser(u.publicKey)}>
+                            {t("admin.kick")}
+                          </button>
+                        )}
+                        <button className="admin-btn-sm danger" onClick={() => onBanUser(u.publicKey)}>
+                          {t("profile.ban")}
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -185,7 +229,9 @@ export function AdminPanel({
                   placeholder={t("channel.name")}
                   onKeyDown={(e) => e.key === "Enter" && handleCreateChannel()}
                 />
-                <button className="admin-btn-sm accent" onClick={handleCreateChannel}>{t("admin.createChannel")}</button>
+                <button className="admin-btn-sm accent" onClick={handleCreateChannel}>
+                  {t("admin.createChannel")}
+                </button>
               </div>
               <ul className="admin-list">
                 {channels.map((ch) => (
@@ -197,22 +243,40 @@ export function AdminPanel({
                           value={renameValue}
                           onChange={(e) => setRenameValue(e.target.value)}
                           onBlur={() => handleRename(ch.name)}
-                          onKeyDown={(e) => { if (e.key === "Enter") handleRename(ch.name); if (e.key === "Escape") setRenaming(null); }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handleRename(ch.name);
+                            if (e.key === "Escape") setRenaming(null);
+                          }}
                           autoFocus
                         />
                       ) : (
                         <span className="admin-channel-name">#{ch.name}</span>
                       )}
-                      <span className="admin-channel-count">{ch.userCount} {t("channelSettings.members")}</span>
-                      {ch.hasPassword && <span className="admin-badge password">{t("channelSettings.passwordProtected")}</span>}
+                      <span className="admin-channel-count">
+                        {ch.userCount} {t("channelSettings.members")}
+                      </span>
+                      {ch.hasPassword && (
+                        <span className="admin-badge password">{t("channelSettings.passwordProtected")}</span>
+                      )}
                     </div>
                     <div className="admin-list-actions">
                       {ch.name !== "lobby" && (
                         <>
-                          <button className="admin-btn-sm" onClick={() => { setRenaming(ch.name); setRenameValue(ch.name); }} title={t("admin.rename")}>
+                          <button
+                            className="admin-btn-sm"
+                            onClick={() => {
+                              setRenaming(ch.name);
+                              setRenameValue(ch.name);
+                            }}
+                            title={t("admin.rename")}
+                          >
                             <Pencil size={12} />
                           </button>
-                          <button className="admin-btn-sm danger" onClick={() => onDeleteChannel(ch.name)} title={t("admin.deleteChannel")}>
+                          <button
+                            className="admin-btn-sm danger"
+                            onClick={() => onDeleteChannel(ch.name)}
+                            title={t("admin.deleteChannel")}
+                          >
                             <Trash2 size={12} />
                           </button>
                         </>
@@ -229,17 +293,41 @@ export function AdminPanel({
           {tab === "bans" && (
             <>
               {/* Mute form */}
-              <div className="admin-section-label"><VolumeX size={13} /> {t("admin.mutes")}</div>
+              <div className="admin-section-label">
+                <VolumeX size={13} /> {t("admin.mutes")}
+              </div>
               <div className="admin-mute-form">
-                <select className="admin-mute-select" value={muteTarget} onChange={(e) => setMuteTarget(e.target.value)}>
+                <select
+                  className="admin-mute-select"
+                  value={muteTarget}
+                  onChange={(e) => setMuteTarget(e.target.value)}
+                >
                   <option value="">{t("admin.muteUser")}</option>
-                  {adminUsers.filter((u) => u.online).map((u) => (
-                    <option key={u.publicKey} value={u.publicKey}>{u.nickname}</option>
-                  ))}
+                  {adminUsers
+                    .filter((u) => u.online)
+                    .map((u) => (
+                      <option key={u.publicKey} value={u.publicKey}>
+                        {u.nickname}
+                      </option>
+                    ))}
                 </select>
-                <input type="text" placeholder={t("admin.muteReason")} value={muteReason} onChange={(e) => setMuteReason(e.target.value)} />
-                <input type="number" min={0} placeholder={t("admin.muteDuration")} value={muteDuration} onChange={(e) => setMuteDuration(Number(e.target.value))} style={{ width: 80 }} />
-                <button className="admin-btn-sm accent" onClick={handleMute}>{t("admin.mute")}</button>
+                <input
+                  type="text"
+                  placeholder={t("admin.muteReason")}
+                  value={muteReason}
+                  onChange={(e) => setMuteReason(e.target.value)}
+                />
+                <input
+                  type="number"
+                  min={0}
+                  placeholder={t("admin.muteDuration")}
+                  value={muteDuration}
+                  onChange={(e) => setMuteDuration(Number(e.target.value))}
+                  style={{ width: 80 }}
+                />
+                <button className="admin-btn-sm accent" onClick={handleMute}>
+                  {t("admin.mute")}
+                </button>
               </div>
 
               {adminMutes.length > 0 ? (
@@ -250,13 +338,17 @@ export function AdminPanel({
                         <span className="admin-user-nick">{m.publicKey.slice(0, 16)}...</span>
                         {m.reason && <span className="admin-text-muted">{m.reason}</span>}
                         {m.expiresAt ? (
-                          <span className="admin-badge">{t("admin.expiresAt")}: {formatDate(m.expiresAt)}</span>
+                          <span className="admin-badge">
+                            {t("admin.expiresAt")}: {formatDate(m.expiresAt)}
+                          </span>
                         ) : (
                           <span className="admin-badge">{t("admin.permanent")}</span>
                         )}
                       </div>
                       <div className="admin-list-actions">
-                        <button className="admin-btn-sm" onClick={() => onUnmuteUser(m.publicKey)}>{t("admin.unmute")}</button>
+                        <button className="admin-btn-sm" onClick={() => onUnmuteUser(m.publicKey)}>
+                          {t("admin.unmute")}
+                        </button>
                       </div>
                     </li>
                   ))}
@@ -265,7 +357,9 @@ export function AdminPanel({
                 <div className="admin-empty">{t("admin.noMutes")}</div>
               )}
 
-              <div className="admin-section-label" style={{ marginTop: 16 }}><UserX size={13} /> {t("admin.bans")}</div>
+              <div className="admin-section-label" style={{ marginTop: 16 }}>
+                <UserX size={13} /> {t("admin.bans")}
+              </div>
               <p className="admin-ban-info">{t("admin.banInfo")}</p>
               {adminBans.length > 0 ? (
                 <ul className="admin-list">
@@ -276,7 +370,9 @@ export function AdminPanel({
                         <span className="admin-text-muted">{formatDate(b.bannedAt)}</span>
                       </div>
                       <div className="admin-list-actions">
-                        <button className="admin-btn-sm" onClick={() => onUnban(b.publicKey)}>{t("admin.unmute")}</button>
+                        <button className="admin-btn-sm" onClick={() => onUnban(b.publicKey)}>
+                          {t("admin.unmute")}
+                        </button>
                       </div>
                     </li>
                   ))}

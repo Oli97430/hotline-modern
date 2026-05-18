@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useTranslation } from "react-i18next";
 import { Upload } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface DragDropOverlayProps {
   onDrop: (file: File) => void;
@@ -12,14 +12,17 @@ export function DragDropOverlay({ onDrop, enabled }: DragDropOverlayProps) {
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
 
-  const handleDragEnter = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    if (!enabled) return;
-    dragCounterRef.current++;
-    if (e.dataTransfer?.types.includes("Files")) {
-      setIsDragging(true);
-    }
-  }, [enabled]);
+  const handleDragEnter = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault();
+      if (!enabled) return;
+      dragCounterRef.current++;
+      if (e.dataTransfer?.types.includes("Files")) {
+        setIsDragging(true);
+      }
+    },
+    [enabled],
+  );
 
   const handleDragLeave = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -33,14 +36,17 @@ export function DragDropOverlay({ onDrop, enabled }: DragDropOverlayProps) {
     e.preventDefault();
   }, []);
 
-  const handleDrop = useCallback((e: DragEvent) => {
-    e.preventDefault();
-    dragCounterRef.current = 0;
-    setIsDragging(false);
-    if (!enabled) return;
-    const file = e.dataTransfer?.files[0];
-    if (file) onDrop(file);
-  }, [enabled, onDrop]);
+  const handleDrop = useCallback(
+    (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+      if (!enabled) return;
+      const file = e.dataTransfer?.files[0];
+      if (file) onDrop(file);
+    },
+    [enabled, onDrop],
+  );
 
   useEffect(() => {
     document.addEventListener("dragenter", handleDragEnter);

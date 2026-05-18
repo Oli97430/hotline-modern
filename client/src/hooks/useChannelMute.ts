@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 const STORAGE_KEY = "hotline_muted_channels";
 
@@ -20,17 +20,18 @@ export function useChannelMute() {
 
   const toggleMute = useCallback((channel: string) => {
     setMutedChannels((prev) => {
-      const updated = prev.includes(channel)
-        ? prev.filter((c) => c !== channel)
-        : [...prev, channel];
+      const updated = prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel];
       saveMuted(updated);
       return updated;
     });
   }, []);
 
-  const isMuted = useCallback((channel: string) => {
-    return mutedChannels.includes(channel);
-  }, [mutedChannels]);
+  const isMuted = useCallback(
+    (channel: string) => {
+      return mutedChannels.includes(channel);
+    },
+    [mutedChannels],
+  );
 
   return { mutedChannels, toggleMute, isMuted };
 }

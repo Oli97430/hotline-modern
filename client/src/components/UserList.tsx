@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { Clock, Eye, Shield, Star, User } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Shield, Star, User, Eye, Clock } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
 import { UserAvatar } from "./UserAvatar";
 
@@ -59,7 +59,10 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
     };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", closeOnEsc);
-    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", closeOnEsc); };
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", closeOnEsc);
+    };
   }, []);
 
   // Focus first menu item when context menu opens
@@ -101,7 +104,12 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
             className={`user-entry ${user.userId !== currentUserId ? "clickable" : ""} ${user.userId === currentUserId ? "self" : ""}`}
             tabIndex={user.userId !== currentUserId ? 0 : undefined}
             onClick={(e) => handleUserClick(user.userId, e)}
-            onKeyDown={(e) => { if ((e.key === "Enter" || e.key === " ") && user.userId !== currentUserId) { e.preventDefault(); handleUserClick(user.userId, e as unknown as React.MouseEvent); } }}
+            onKeyDown={(e) => {
+              if ((e.key === "Enter" || e.key === " ") && user.userId !== currentUserId) {
+                e.preventDefault();
+                handleUserClick(user.userId, e as unknown as React.MouseEvent);
+              }
+            }}
           >
             <div className="user-entry-avatar">
               <UserAvatar userId={user.userId} nickname={user.nickname} size={22} />
@@ -116,7 +124,13 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
       </ul>
 
       {menuUser && menuTarget && (
-        <div ref={menuRef} className="user-menu" role="menu" aria-label={`Actions for ${menuTarget.nickname}`} style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}>
+        <div
+          ref={menuRef}
+          className="user-menu"
+          role="menu"
+          aria-label={`Actions for ${menuTarget.nickname}`}
+          style={{ position: "fixed", left: menuPos.x, top: menuPos.y }}
+        >
           <div className="user-menu-header">
             <span className="user-menu-nick">{menuTarget.nickname}</span>
             <span className="user-menu-role" style={{ color: `var(--role-${menuTarget.role})` }}>
@@ -129,28 +143,60 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           {menuTarget.connectedAt && (
             <div className="user-menu-info">
               <Clock size={12} />
-              <span>{t("users.onlineSince")}: {formatDuration(menuTarget.connectedAt)}</span>
+              <span>
+                {t("users.onlineSince")}: {formatDuration(menuTarget.connectedAt)}
+              </span>
             </div>
           )}
           <div className="user-menu-actions">
-            <button onClick={() => { onDM?.(menuUser); setMenuUser(null); }}>
+            <button
+              onClick={() => {
+                onDM?.(menuUser);
+                setMenuUser(null);
+              }}
+            >
               {t("users.sendDM")}
             </button>
             {canModerate && menuTarget.role !== "operator" && (
-              <button onClick={() => { onOp?.(menuUser); setMenuUser(null); }}>
+              <button
+                onClick={() => {
+                  onOp?.(menuUser);
+                  setMenuUser(null);
+                }}
+              >
                 {t("roles.operator")}
               </button>
             )}
             {canModerate && menuTarget.role === "operator" && (
-              <button onClick={() => { onDeop?.(menuUser); setMenuUser(null); }}>
+              <button
+                onClick={() => {
+                  onDeop?.(menuUser);
+                  setMenuUser(null);
+                }}
+              >
                 {t("roles.member")}
               </button>
             )}
             {canModerate && (
-              <button onClick={() => { onKick?.(menuUser); setMenuUser(null); }}>Kick</button>
+              <button
+                onClick={() => {
+                  onKick?.(menuUser);
+                  setMenuUser(null);
+                }}
+              >
+                Kick
+              </button>
             )}
             {canModerate && (
-              <button className="danger" onClick={() => { onBan?.(menuUser); setMenuUser(null); }}>Ban</button>
+              <button
+                className="danger"
+                onClick={() => {
+                  onBan?.(menuUser);
+                  setMenuUser(null);
+                }}
+              >
+                Ban
+              </button>
             )}
           </div>
         </div>

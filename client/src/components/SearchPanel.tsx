@@ -1,7 +1,7 @@
-import { useState, useRef, useEffect } from "react";
-import { useTranslation } from "react-i18next";
 import { Search, X } from "lucide-react";
-import { SearchResult } from "../hooks/useWebSocket";
+import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import type { SearchResult } from "../hooks/useWebSocket";
 
 interface SearchPanelProps {
   onSearch: (query: string, channel?: string) => void;
@@ -19,7 +19,11 @@ function highlightText(text: string, query: string): (string | JSX.Element)[] {
   let key = 0;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index));
-    parts.push(<mark key={key++} className="search-highlight">{match[1]}</mark>);
+    parts.push(
+      <mark key={key++} className="search-highlight">
+        {match[1]}
+      </mark>,
+    );
     last = match.index + match[0].length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -38,19 +42,21 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
     try {
       const saved = localStorage.getItem(SEARCH_HISTORY_KEY);
       return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   });
   const [inputFocused, setInputFocused] = useState(true);
 
   const saveToHistory = (q: string) => {
     if (q.length < 2) return;
-    const updated = [q, ...searchHistory.filter(h => h !== q)].slice(0, 20);
+    const updated = [q, ...searchHistory.filter((h) => h !== q)].slice(0, 20);
     setSearchHistory(updated);
     localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
   };
 
   const removeFromHistory = (q: string) => {
-    const updated = searchHistory.filter(h => h !== q);
+    const updated = searchHistory.filter((h) => h !== q);
     setSearchHistory(updated);
     localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(updated));
   };
@@ -97,15 +103,9 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           onBlur={() => setTimeout(() => setInputFocused(false), 200)}
           placeholder={t("search.placeholder")}
         />
-        {results.length > 0 && (
-          <span className="search-count">{results.length}</span>
-        )}
+        {results.length > 0 && <span className="search-count">{results.length}</span>}
         <label className="search-scope">
-          <input
-            type="checkbox"
-            checked={searchAll}
-            onChange={(e) => setSearchAll(e.target.checked)}
-          />
+          <input type="checkbox" checked={searchAll} onChange={(e) => setSearchAll(e.target.checked)} />
           <span>{t("search.allChannels")}</span>
         </label>
         <button className="search-close" onClick={onClose}>
@@ -117,7 +117,13 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
         <ul className="search-history">
           {searchHistory.map((h) => (
             <li key={h} className="search-history-item">
-              <button className="search-history-btn" onClick={() => { setQuery(h); handleChange(h); }}>
+              <button
+                className="search-history-btn"
+                onClick={() => {
+                  setQuery(h);
+                  handleChange(h);
+                }}
+              >
                 <Search size={12} />
                 <span>{h}</span>
               </button>

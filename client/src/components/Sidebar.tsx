@@ -1,8 +1,8 @@
+import { BellOff, Hash, Lock, LogOut, MessageSquare, Plus, Settings, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Hash, Plus, LogOut, MessageSquare, Trash2, Lock, BellOff, Settings } from "lucide-react";
+import type { VoiceParticipant } from "../hooks/useVoiceChat";
 import { StatusDot } from "./StatusSelector";
 import { VoicePanel } from "./VoicePanel";
-import type { VoiceParticipant } from "../hooks/useVoiceChat";
 
 interface DMConversation {
   peerId: string;
@@ -79,12 +79,22 @@ export function Sidebar({
       <div className="sidebar-header">
         <h2>{serverName}</h2>
         <div className="sidebar-header-actions">
-          {onAdminPanel && (role === "admin") && (
-            <button className="sidebar-admin" onClick={onAdminPanel} title={t("admin.title")} aria-label={t("admin.title")}>
+          {onAdminPanel && role === "admin" && (
+            <button
+              className="sidebar-admin"
+              onClick={onAdminPanel}
+              title={t("admin.title")}
+              aria-label={t("admin.title")}
+            >
               <Settings size={15} />
             </button>
           )}
-          <button className="sidebar-disconnect" onClick={onDisconnect} title={t("sidebar.disconnect")} aria-label={t("sidebar.disconnect")}>
+          <button
+            className="sidebar-disconnect"
+            onClick={onDisconnect}
+            title={t("sidebar.disconnect")}
+            aria-label={t("sidebar.disconnect")}
+          >
             <LogOut size={16} />
           </button>
         </div>
@@ -94,16 +104,19 @@ export function Sidebar({
         <div className="sidebar-section-header">
           <span>{t("sidebar.channels")}</span>
           {canCreateChannel && (
-            <button className="sidebar-add" onClick={onCreateChannel} title={t("sidebar.createChannel")} aria-label={t("sidebar.createChannel")}>
+            <button
+              className="sidebar-add"
+              onClick={onCreateChannel}
+              title={t("sidebar.createChannel")}
+              aria-label={t("sidebar.createChannel")}
+            >
               <Plus size={14} />
             </button>
           )}
         </div>
 
         <ul className="channel-list" role="listbox" aria-label={t("sidebar.channels")}>
-          {channels.length === 0 && (
-            <li className="channel-empty">{t("sidebar.noChannels")}</li>
-          )}
+          {channels.length === 0 && <li className="channel-empty">{t("sidebar.noChannels")}</li>}
           {channels.map((ch, idx) => (
             <li
               key={ch.name}
@@ -113,37 +126,56 @@ export function Sidebar({
               aria-label={`${ch.name}${(unreadCounts[ch.name] || 0) > 0 ? `, ${unreadCounts[ch.name]} non lus` : ""}, ${ch.userCount} utilisateurs`}
               className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
               onClick={() => onSelectChannel(ch.name)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectChannel(ch.name); } }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelectChannel(ch.name);
+                }
+              }}
               draggable={!!onReorderChannels}
-              onDragStart={(e) => { e.dataTransfer.setData("text/plain", String(idx)); }}
-              onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("drag-over"); }}
-              onDragLeave={(e) => { e.currentTarget.classList.remove("drag-over"); }}
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", String(idx));
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.currentTarget.classList.add("drag-over");
+              }}
+              onDragLeave={(e) => {
+                e.currentTarget.classList.remove("drag-over");
+              }}
               onDrop={(e) => {
                 e.currentTarget.classList.remove("drag-over");
                 const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
                 if (isNaN(fromIdx) || fromIdx === idx || !onReorderChannels) return;
-                const names = channels.map(c => c.name);
+                const names = channels.map((c) => c.name);
                 const [removed] = names.splice(fromIdx, 1);
                 names.splice(idx, 0, removed);
                 onReorderChannels(names);
               }}
             >
-              {ch.hasPassword ? <Lock size={14} className="channel-icon" /> : <Hash size={14} className="channel-icon" />}
-              <span className="channel-name" title={ch.name}>{ch.name}</span>
-              {typingChannels?.includes(ch.name) && (
-                <span className="channel-typing-dot" />
+              {ch.hasPassword ? (
+                <Lock size={14} className="channel-icon" />
+              ) : (
+                <Hash size={14} className="channel-icon" />
               )}
-              {(unreadCounts[ch.name] || 0) > 0 && (
-                <span className="channel-unread">{unreadCounts[ch.name]}</span>
-              )}
+              <span className="channel-name" title={ch.name}>
+                {ch.name}
+              </span>
+              {typingChannels?.includes(ch.name) && <span className="channel-typing-dot" />}
+              {(unreadCounts[ch.name] || 0) > 0 && <span className="channel-unread">{unreadCounts[ch.name]}</span>}
               {mutedChannels?.includes(ch.name) && (
                 <BellOff size={11} className="channel-muted-icon" aria-hidden="true" />
               )}
-              <span className="channel-count" aria-hidden="true">{ch.userCount}</span>
+              <span className="channel-count" aria-hidden="true">
+                {ch.userCount}
+              </span>
               {onToggleMute && (
                 <button
                   className="channel-mute-btn"
-                  onClick={(e) => { e.stopPropagation(); onToggleMute(ch.name); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleMute(ch.name);
+                  }}
                   title={mutedChannels?.includes(ch.name) ? t("sidebar.unmute") : t("sidebar.mute")}
                 >
                   <BellOff size={11} />
@@ -152,7 +184,10 @@ export function Sidebar({
               {canCreateChannel && ch.name !== "lobby" && (
                 <button
                   className="channel-delete"
-                  onClick={(e) => { e.stopPropagation(); onDeleteChannel(ch.name); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteChannel(ch.name);
+                  }}
                   title={t("sidebar.deleteChannel")}
                 >
                   <Trash2 size={12} />
@@ -191,7 +226,12 @@ export function Sidebar({
                   aria-label={`${dm.peerNick}${dm.unread > 0 ? `, ${dm.unread} non lus` : ""}`}
                   className={`channel-item ${activeDM === dm.peerId ? "active" : ""}`}
                   onClick={() => onSelectDM(dm.peerId)}
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelectDM(dm.peerId); } }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectDM(dm.peerId);
+                    }
+                  }}
                 >
                   <MessageSquare size={14} className="channel-icon" />
                   <span className="channel-name">{dm.peerNick}</span>
@@ -207,7 +247,9 @@ export function Sidebar({
         <div className="sidebar-footer">
           <StatusDot status={userStatus || "available"} />
           <span className="sidebar-nick">{nickname}</span>
-          <span className="sidebar-role" data-role={role}>{role}</span>
+          <span className="sidebar-role" data-role={role}>
+            {role}
+          </span>
         </div>
       )}
 

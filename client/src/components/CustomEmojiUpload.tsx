@@ -1,6 +1,6 @@
-import { useState, useRef } from "react";
+import { Plus, Trash2, Upload, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Upload, Plus, Trash2 } from "lucide-react";
 import type { ServerCustomEmoji } from "../hooks/useWebSocket";
 
 interface CustomEmojiUploadProps {
@@ -13,16 +13,29 @@ interface CustomEmojiUploadProps {
 
 // Keep these for backward compatibility — they are no-ops now that we use the server
 const STORAGE_KEY = "hotline-custom-emojis";
-interface LegacyEmoji { id: string; name: string; url: string; }
+interface LegacyEmoji {
+  id: string;
+  name: string;
+  url: string;
+}
 export function loadCustomEmojis(): LegacyEmoji[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }
-  catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  } catch {
+    return [];
+  }
 }
 export function saveCustomEmojis(emojis: LegacyEmoji[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(emojis));
 }
 
-export function CustomEmojiUpload({ emojis, serverBaseUrl, onUploadToServer, onDelete, onClose }: CustomEmojiUploadProps) {
+export function CustomEmojiUpload({
+  emojis,
+  serverBaseUrl,
+  onUploadToServer,
+  onDelete,
+  onClose,
+}: CustomEmojiUploadProps) {
   const { t } = useTranslation();
   const [emojiName, setEmojiName] = useState("");
   const [preview, setPreview] = useState<string | null>(null);

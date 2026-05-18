@@ -1,13 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
-import i18n from "../i18n";
-
+import { beforeEach, describe, expect, it, vi } from "vitest";
 // Components
 import { MessageForwardDialog } from "../components/MessageForwardDialog";
+import { MessageScheduler, type ScheduledMessage } from "../components/MessageScheduler";
 import { ServerStats } from "../components/ServerStats";
 import { ThemeEditor } from "../components/ThemeEditor";
-import { MessageScheduler, ScheduledMessage } from "../components/MessageScheduler";
+import i18n from "../i18n";
 
 // Helper to wrap with i18n
 function renderWithI18n(ui: React.ReactElement) {
@@ -56,9 +55,7 @@ describe("MessageForwardDialog", () => {
 
   it("forward button is disabled without channel selection", () => {
     renderWithI18n(<MessageForwardDialog {...defaultProps} />);
-    const submitBtn = screen.getAllByRole("button").find(
-      (btn) => btn.textContent?.includes("Forward")
-    );
+    const submitBtn = screen.getAllByRole("button").find((btn) => btn.textContent?.includes("Forward"));
     expect(submitBtn).toHaveAttribute("disabled");
   });
 
@@ -79,11 +76,51 @@ describe("MessageForwardDialog", () => {
 
 describe("ServerStats", () => {
   const mockMessages = [
-    { id: "1", channel: "general", userId: "u1", nickname: "Alice", content: "Hi", role: "admin", timestamp: Date.now() - 1000 },
-    { id: "2", channel: "general", userId: "u2", nickname: "Bob", content: "Hey", role: "member", timestamp: Date.now() - 2000 },
-    { id: "3", channel: "random", userId: "u1", nickname: "Alice", content: "Test", role: "admin", timestamp: Date.now() - 3000 },
-    { id: "4", channel: "general", userId: "u1", nickname: "Alice", content: "Again", role: "admin", timestamp: Date.now() - 100000 },
-    { id: "5", channel: "random", userId: "u3", nickname: "Charlie", content: "Yo", role: "member", timestamp: Date.now() - 200000 },
+    {
+      id: "1",
+      channel: "general",
+      userId: "u1",
+      nickname: "Alice",
+      content: "Hi",
+      role: "admin",
+      timestamp: Date.now() - 1000,
+    },
+    {
+      id: "2",
+      channel: "general",
+      userId: "u2",
+      nickname: "Bob",
+      content: "Hey",
+      role: "member",
+      timestamp: Date.now() - 2000,
+    },
+    {
+      id: "3",
+      channel: "random",
+      userId: "u1",
+      nickname: "Alice",
+      content: "Test",
+      role: "admin",
+      timestamp: Date.now() - 3000,
+    },
+    {
+      id: "4",
+      channel: "general",
+      userId: "u1",
+      nickname: "Alice",
+      content: "Again",
+      role: "admin",
+      timestamp: Date.now() - 100000,
+    },
+    {
+      id: "5",
+      channel: "random",
+      userId: "u3",
+      nickname: "Charlie",
+      content: "Yo",
+      role: "member",
+      timestamp: Date.now() - 200000,
+    },
   ];
 
   const defaultProps = {
@@ -242,7 +279,13 @@ describe("MessageScheduler", () => {
 
   it("shows existing scheduled messages", () => {
     const msgs: ScheduledMessage[] = [
-      { id: "s1", channel: "general", content: "Scheduled hello", scheduledTime: Date.now() + 60000, createdAt: Date.now() },
+      {
+        id: "s1",
+        channel: "general",
+        content: "Scheduled hello",
+        scheduledTime: Date.now() + 60000,
+        createdAt: Date.now(),
+      },
     ];
     renderWithI18n(<MessageScheduler {...defaultProps} scheduledMessages={msgs} />);
     expect(screen.getByText("Scheduled hello")).toBeInTheDocument();

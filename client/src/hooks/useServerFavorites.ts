@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 export interface ServerFavorite {
   id: string;
@@ -32,7 +32,7 @@ export function useServerFavorites() {
       const existing = prev.find((f) => f.address === address && f.nickname === nickname);
       if (existing) {
         const updated = prev.map((f) =>
-          f.id === existing.id ? { ...f, lastUsed: Date.now(), label: label || f.label } : f
+          f.id === existing.id ? { ...f, lastUsed: Date.now(), label: label || f.label } : f,
         );
         saveFavorites(updated);
         return updated;

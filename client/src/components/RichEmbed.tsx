@@ -1,4 +1,4 @@
-import { Play, ExternalLink } from "lucide-react";
+import { ExternalLink, Play } from "lucide-react";
 
 interface RichEmbedProps {
   url: string;
@@ -45,8 +45,8 @@ function YouTubeEmbed({ videoId }: { videoId: string }) {
       <div className="rich-embed-info">
         <span className="rich-embed-source">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="#ff0000">
-            <path d="M23.5 6.2c-.3-1-1-1.8-2-2.1C19.6 3.5 12 3.5 12 3.5s-7.6 0-9.5.6c-1 .3-1.8 1.1-2 2.1C0 8.1 0 12 0 12s0 3.9.5 5.8c.3 1 1 1.8 2 2.1 1.9.6 9.5.6 9.5.6s7.6 0 9.5-.6c1-.3 1.8-1.1 2-2.1.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8z"/>
-            <path fill="#fff" d="M9.5 15.5V8.5l6.5 3.5z"/>
+            <path d="M23.5 6.2c-.3-1-1-1.8-2-2.1C19.6 3.5 12 3.5 12 3.5s-7.6 0-9.5.6c-1 .3-1.8 1.1-2 2.1C0 8.1 0 12 0 12s0 3.9.5 5.8c.3 1 1 1.8 2 2.1 1.9.6 9.5.6 9.5.6s7.6 0 9.5-.6c1-.3 1.8-1.1 2-2.1.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8z" />
+            <path fill="#fff" d="M9.5 15.5V8.5l6.5 3.5z" />
           </svg>
           <span>YouTube</span>
         </span>
@@ -59,15 +59,10 @@ function YouTubeEmbed({ videoId }: { videoId: string }) {
 
 function TwitterEmbed({ tweetId, url }: { tweetId: string; url: string }) {
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="rich-embed rich-embed-twitter"
-    >
+    <a href={url} target="_blank" rel="noopener noreferrer" className="rich-embed rich-embed-twitter">
       <div className="rich-embed-twitter-icon">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
         </svg>
       </div>
       <div className="rich-embed-info">

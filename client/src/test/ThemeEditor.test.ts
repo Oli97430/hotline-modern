@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 // Test the theme utility functions directly
 describe("Theme utilities", () => {
@@ -16,11 +16,13 @@ describe("Theme utilities", () => {
     });
 
     it("applies theme when active theme exists", async () => {
-      const themes = [{
-        id: "test-theme",
-        name: "Test",
-        colors: { "--accent": "#ff0000", "--bg-primary": "#000000" },
-      }];
+      const themes = [
+        {
+          id: "test-theme",
+          name: "Test",
+          colors: { "--accent": "#ff0000", "--bg-primary": "#000000" },
+        },
+      ];
       localStorage.setItem("hotline-custom-themes", JSON.stringify(themes));
       localStorage.setItem("hotline-active-theme", "test-theme");
 
@@ -32,11 +34,13 @@ describe("Theme utilities", () => {
     });
 
     it("sets accent-rgb when accent color is applied", async () => {
-      const themes = [{
-        id: "rgb-theme",
-        name: "RGB Test",
-        colors: { "--accent": "#ff8800" },
-      }];
+      const themes = [
+        {
+          id: "rgb-theme",
+          name: "RGB Test",
+          colors: { "--accent": "#ff8800" },
+        },
+      ];
       localStorage.setItem("hotline-custom-themes", JSON.stringify(themes));
       localStorage.setItem("hotline-active-theme", "rgb-theme");
 

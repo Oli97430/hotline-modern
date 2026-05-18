@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface TrackerServer {
   name: string;
@@ -70,9 +70,7 @@ function loadTrackerUrls(): string[] {
         if (isRemote || isNativeApp()) {
           const target = isRemote ? currentHost : localStorage.getItem(LAST_SERVER_IP_KEY) || "";
           if (target) {
-            const fixed = parsed.map((url: string) =>
-              url.replace(/\/\/(localhost|127\.0\.0\.1)/, `//${target}`),
-            );
+            const fixed = parsed.map((url: string) => url.replace(/\/\/(localhost|127\.0\.0\.1)/, `//${target}`));
             if (JSON.stringify(fixed) !== saved) {
               localStorage.setItem(TRACKER_URLS_KEY, JSON.stringify(fixed));
             }
@@ -80,9 +78,7 @@ function loadTrackerUrls(): string[] {
           }
         }
         if (isNativeApp()) {
-          const valid = parsed.filter(
-            (url: string) => !url.includes("//localhost") && !url.includes("//127.0.0.1"),
-          );
+          const valid = parsed.filter((url: string) => !url.includes("//localhost") && !url.includes("//127.0.0.1"));
           if (valid.length > 0) return valid;
         }
         return parsed;

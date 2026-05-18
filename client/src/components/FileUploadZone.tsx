@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef } from "react";
+import { FileIcon, Upload } from "lucide-react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, FileIcon } from "lucide-react";
-import { Identity, getFileAuthHeaders } from "../lib/crypto";
+import { getFileAuthHeaders, type Identity } from "../lib/crypto";
 
 interface FileUploadZoneProps {
   serverAddress: string;
@@ -40,50 +40,56 @@ export function FileUploadZone({ serverAddress, identity, onFileUploaded, childr
     e.stopPropagation();
   }, []);
 
-  const uploadFile = useCallback(async (file: File) => {
-    setUploading(true);
-    setUploadProgress(file.name);
+  const uploadFile = useCallback(
+    async (file: File) => {
+      setUploading(true);
+      setUploadProgress(file.name);
 
-    try {
-      const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
-      const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
-      const uploadUrl = `${protocol}${base}/files/`;
+      try {
+        const protocol = serverAddress.startsWith("wss://") ? "https://" : "http://";
+        const base = serverAddress.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+        const uploadUrl = `${protocol}${base}/files/`;
 
-      const formData = new FormData();
-      formData.append("file", file);
+        const formData = new FormData();
+        formData.append("file", file);
 
-      const resp = await fetch(uploadUrl, {
-        method: "POST",
-        headers: getFileAuthHeaders(identity),
-        body: formData,
-      });
+        const resp = await fetch(uploadUrl, {
+          method: "POST",
+          headers: getFileAuthHeaders(identity),
+          body: formData,
+        });
 
-      if (!resp.ok) {
-        throw new Error(`Upload failed: ${resp.status}`);
+        if (!resp.ok) {
+          throw new Error(`Upload failed: ${resp.status}`);
+        }
+
+        const result = await resp.json();
+        const fileUrl = `${protocol}${base}/files/${result.path}`;
+        onFileUploaded(fileUrl, result.filename || file.name);
+      } catch (err) {
+        console.error("Upload error:", err);
+      } finally {
+        setUploading(false);
+        setUploadProgress("");
       }
+    },
+    [serverAddress, identity, onFileUploaded],
+  );
 
-      const result = await resp.json();
-      const fileUrl = `${protocol}${base}/files/${result.path}`;
-      onFileUploaded(fileUrl, result.filename || file.name);
-    } catch (err) {
-      console.error("Upload error:", err);
-    } finally {
-      setUploading(false);
-      setUploadProgress("");
-    }
-  }, [serverAddress, identity, onFileUploaded]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(false);
+      dragCounter.current = 0;
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(false);
-    dragCounter.current = 0;
-
-    const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      uploadFile(files[0]);
-    }
-  }, [uploadFile]);
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        uploadFile(files[0]);
+      }
+    },
+    [uploadFile],
+  );
 
   return (
     <div
@@ -175,11 +181,7 @@ export function FileUploadButton({ onFileSelect }: FileUploadButtonProps) {
 
   return (
     <>
-      <button
-        className="file-upload-btn"
-        onClick={() => inputRef.current?.click()}
-        title={t("files.upload")}
-      >
+      <button className="file-upload-btn" onClick={() => inputRef.current?.click()} title={t("files.upload")}>
         <Upload size={16} />
       </button>
       <input

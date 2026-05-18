@@ -40,7 +40,15 @@ export function LinkPreview({ url }: LinkPreviewProps) {
     <a href={url} target="_blank" rel="noopener noreferrer" className="link-preview">
       <div className="link-preview-favicon">
         {favicon ? (
-          <img src={favicon} alt="" width={16} height={16} onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+          <img
+            src={favicon}
+            alt=""
+            width={16}
+            height={16}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
+          />
         ) : (
           <Globe size={14} />
         )}

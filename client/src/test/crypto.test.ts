@@ -1,18 +1,18 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import {
-  generateIdentity,
-  saveIdentity,
-  loadIdentity,
-  getOrCreateIdentity,
-  signMessage,
-  getPublicKeyHex,
-  getBoxPublicKeyHex,
-  encryptDM,
-  decryptDM,
-  toHex,
-  fromHex,
-} from "../lib/crypto";
 import nacl from "tweetnacl";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  decryptDM,
+  encryptDM,
+  fromHex,
+  generateIdentity,
+  getBoxPublicKeyHex,
+  getOrCreateIdentity,
+  getPublicKeyHex,
+  loadIdentity,
+  saveIdentity,
+  signMessage,
+  toHex,
+} from "../lib/crypto";
 
 describe("crypto", () => {
   beforeEach(() => {

@@ -1,12 +1,12 @@
+import { Bookmark, Pencil, Pin, Reply, Smile, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Smile, Pencil, Trash2, Pin, Reply, Bookmark } from "lucide-react";
-import { MessageReaction } from "../hooks/useWebSocket";
-import { MessageContextMenu } from "./MessageContextMenu";
-import { LinkPreview } from "./LinkPreview";
+import type { MessageReaction } from "../hooks/useWebSocket";
 import { CodeBlock } from "./CodeBlock";
+import { LinkPreview } from "./LinkPreview";
+import { MessageContextMenu } from "./MessageContextMenu";
+import { isEmbeddableUrl, RichEmbed } from "./RichEmbed";
 import { UserAvatar } from "./UserAvatar";
-import { RichEmbed, isEmbeddableUrl } from "./RichEmbed";
 import { AudioMessage } from "./VoiceRecorder";
 
 const IMAGE_REGEX = /\b(https?:\/\/[^\s]+\.(?:png|jpg|jpeg|gif|webp|svg)(?:\?[^\s]*)?)\b/gi;
@@ -17,16 +17,25 @@ const BARE_URL_REGEX = /\bhttps?:\/\/[^\s]+/g;
 function formatMessage(text: string): (string | JSX.Element)[] {
   const parts: (string | JSX.Element)[] = [];
   let key = 0;
-  const regex = /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(\~\~[^~]+\~\~)|(@\w+)|(\b(https?:\/\/[^\s]+))/g;
+  const regex =
+    /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(@\w+)|(\b(https?:\/\/[^\s]+))/g;
   let last = 0;
   let match;
   while ((match = regex.exec(text)) !== null) {
     if (match.index > last) parts.push(text.slice(last, match.index));
     if (match[1]) {
       // [text](url) markdown link
-      parts.push(<a key={key++} className="msg-link" href={match[3]} target="_blank" rel="noopener noreferrer">{match[2]}</a>);
+      parts.push(
+        <a key={key++} className="msg-link" href={match[3]} target="_blank" rel="noopener noreferrer">
+          {match[2]}
+        </a>,
+      );
     } else if (match[4]) {
-      parts.push(<code key={key++} className="msg-code">{match[4].slice(1, -1)}</code>);
+      parts.push(
+        <code key={key++} className="msg-code">
+          {match[4].slice(1, -1)}
+        </code>,
+      );
     } else if (match[5]) {
       parts.push(<strong key={key++}>{match[5].slice(2, -2)}</strong>);
     } else if (match[6]) {
@@ -36,9 +45,17 @@ function formatMessage(text: string): (string | JSX.Element)[] {
       parts.push(<del key={key++}>{match[7].slice(2, -2)}</del>);
     } else if (match[8]) {
       // @mention
-      parts.push(<span key={key++} className="msg-mention">{match[8]}</span>);
+      parts.push(
+        <span key={key++} className="msg-mention">
+          {match[8]}
+        </span>,
+      );
     } else if (match[10]) {
-      parts.push(<a key={key++} className="msg-link" href={match[10]} target="_blank" rel="noopener noreferrer">{match[10]}</a>);
+      parts.push(
+        <a key={key++} className="msg-link" href={match[10]} target="_blank" rel="noopener noreferrer">
+          {match[10]}
+        </a>,
+      );
     }
     last = match.index + match[0].length;
   }
@@ -124,13 +141,41 @@ interface MessageBubbleProps {
 
 const QUICK_REACTIONS = ["\u{1F44D}", "\u{2764}\u{FE0F}", "\u{1F602}", "\u{1F44F}", "\u{1F525}", "\u{1F914}"];
 
-export function MessageBubble({ id, userId, nickname, content, role, timestamp, isOwn, edited, reactions, currentUserId, canModerate, system, msgType, onReact, onRemoveReact, onEdit, onDelete, onPin, onReply, onBookmark, isBookmarked, isPinned, replyContext, isGrouped, onImageClick, onQuote, onThreadOpen, onForward }: MessageBubbleProps) {
+export function MessageBubble({
+  id,
+  userId,
+  nickname,
+  content,
+  role,
+  timestamp,
+  isOwn,
+  edited,
+  reactions,
+  currentUserId,
+  canModerate,
+  system,
+  msgType,
+  onReact,
+  onRemoveReact,
+  onEdit,
+  onDelete,
+  onPin,
+  onReply,
+  onBookmark,
+  isBookmarked,
+  isPinned,
+  replyContext,
+  isGrouped,
+  onImageClick,
+  onQuote,
+  onThreadOpen,
+  onForward,
+}: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
 
   if (system) {
-    const systemText = content === "joined"
-      ? t("system.userJoined", { name: nickname })
-      : t("system.userLeft", { name: nickname });
+    const systemText =
+      content === "joined" ? t("system.userJoined", { name: nickname }) : t("system.userLeft", { name: nickname });
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "4px 16px" }}>
         <span style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic", opacity: 0.7 }}>
@@ -163,7 +208,7 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
 
   const roleColor = `var(--role-${role})`;
   const codeBlocks = useMemo(() => extractCodeBlocks(content), [content]);
-  const textContent = useMemo(() => hasCodeBlock(content) ? getTextWithoutCodeBlocks(content) : content, [content]);
+  const textContent = useMemo(() => (hasCodeBlock(content) ? getTextWithoutCodeBlocks(content) : content), [content]);
   const images = useMemo(() => extractImages(content), [content]);
   const previewUrls = useMemo(() => extractPreviewUrls(content), [content]);
   const embedUrls = useMemo(() => extractEmbedUrls(content), [content]);
@@ -194,11 +239,18 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
     <div
       className={`message ${isOwn ? "own" : ""} ${isGrouped ? "grouped" : ""}`}
       onMouseEnter={() => setShowActions(true)}
-      onMouseLeave={() => { setShowActions(false); setShowReactPicker(false); }}
+      onMouseLeave={() => {
+        setShowActions(false);
+        setShowReactPicker(false);
+      }}
       onContextMenu={handleContextMenu}
     >
       {replyContext && (
-        <div className="message-reply-context" onClick={() => onThreadOpen?.(id)} style={onThreadOpen ? { cursor: "pointer" } : undefined}>
+        <div
+          className="message-reply-context"
+          onClick={() => onThreadOpen?.(id)}
+          style={onThreadOpen ? { cursor: "pointer" } : undefined}
+        >
           <Reply size={10} className="reply-icon" />
           <span className="reply-context-nick">{replyContext.nickname}</span>
           <span className="reply-context-text">{replyContext.content.slice(0, 60)}</span>
@@ -211,14 +263,18 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
           <span className="message-nick" style={{ color: roleColor }}>
             {nickname}
           </span>
-          <span className="message-time" title={fullTime}>{time}</span>
+          <span className="message-time" title={fullTime}>
+            {time}
+          </span>
           {edited && <span className="message-edited">{t("chat.edited")}</span>}
           {isPinned && <Pin size={11} className="message-pin-badge" />}
         </div>
       )}
 
       {isGrouped && showActions && (
-        <span className="message-time-inline" title={fullTime}>{time}</span>
+        <span className="message-time-inline" title={fullTime}>
+          {time}
+        </span>
       )}
 
       {editing ? (
@@ -227,11 +283,18 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
             className="message-edit-input"
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleEditSubmit(); if (e.key === "Escape") setEditing(false); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleEditSubmit();
+              if (e.key === "Escape") setEditing(false);
+            }}
             autoFocus
           />
-          <button className="message-edit-save" onClick={handleEditSubmit}>OK</button>
-          <button className="message-edit-cancel" onClick={() => setEditing(false)}>ESC</button>
+          <button className="message-edit-save" onClick={handleEditSubmit}>
+            OK
+          </button>
+          <button className="message-edit-cancel" onClick={() => setEditing(false)}>
+            ESC
+          </button>
         </div>
       ) : msgType === "voice" ? (
         <>
@@ -240,9 +303,7 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
             return voiceUrl ? (
               <AudioMessage src={voiceUrl} />
             ) : (
-              <div className="message-content">
-                {formatMessage(content)}
-              </div>
+              <div className="message-content">{formatMessage(content)}</div>
             );
           })()}
         </>
@@ -252,9 +313,18 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
             <div className="message-content">
               {textContent.split("\n").map((line, i) => {
                 if (line.startsWith("> ")) {
-                  return <div key={i} className="msg-blockquote">{formatMessage(line.slice(2))}</div>;
+                  return (
+                    <div key={i} className="msg-blockquote">
+                      {formatMessage(line.slice(2))}
+                    </div>
+                  );
                 }
-                return <span key={i}>{i > 0 && "\n"}{formatMessage(line)}</span>;
+                return (
+                  <span key={i}>
+                    {i > 0 && "\n"}
+                    {formatMessage(line)}
+                  </span>
+                );
               })}
             </div>
           )}
@@ -270,7 +340,7 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
                   alt=""
                   className="message-img-preview"
                   loading="lazy"
-                  onClick={() => onImageClick ? onImageClick(url) : window.open(url, "_blank")}
+                  onClick={() => (onImageClick ? onImageClick(url) : window.open(url, "_blank"))}
                 />
               ))}
             </div>
@@ -310,23 +380,47 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
 
       {showActions && !editing && (
         <div className="message-actions">
-          <button onClick={() => onReply?.(id)} title="Reply"><Reply size={13} /></button>
-          <button onClick={() => setShowReactPicker((v) => !v)} title="React"><Smile size={13} /></button>
+          <button onClick={() => onReply?.(id)} title="Reply">
+            <Reply size={13} />
+          </button>
+          <button onClick={() => setShowReactPicker((v) => !v)} title="React">
+            <Smile size={13} />
+          </button>
           {onBookmark && (
             <button className={isBookmarked ? "action-bookmarked" : ""} onClick={() => onBookmark(id)} title="Bookmark">
               <Bookmark size={13} />
             </button>
           )}
-          {isOwn && <button onClick={() => { setEditing(true); setEditContent(content); }} title="Edit"><Pencil size={13} /></button>}
-          {(isOwn || canModerate) && <button className="action-danger" onClick={() => onDelete?.(id)} title="Delete"><Trash2 size={13} /></button>}
-          {canModerate && <button onClick={() => onPin?.(id)} title="Pin"><Pin size={13} /></button>}
+          {isOwn && (
+            <button
+              onClick={() => {
+                setEditing(true);
+                setEditContent(content);
+              }}
+              title="Edit"
+            >
+              <Pencil size={13} />
+            </button>
+          )}
+          {(isOwn || canModerate) && (
+            <button className="action-danger" onClick={() => onDelete?.(id)} title="Delete">
+              <Trash2 size={13} />
+            </button>
+          )}
+          {canModerate && (
+            <button onClick={() => onPin?.(id)} title="Pin">
+              <Pin size={13} />
+            </button>
+          )}
         </div>
       )}
 
       {showReactPicker && (
         <div className="message-react-picker">
           {QUICK_REACTIONS.map((e) => (
-            <button key={e} onClick={() => handleReactionClick(e)}>{e}</button>
+            <button key={e} onClick={() => handleReactionClick(e)}>
+              {e}
+            </button>
           ))}
         </div>
       )}
@@ -341,13 +435,30 @@ export function MessageBubble({ id, userId, nickname, content, role, timestamp, 
           isBookmarked={isBookmarked}
           onClose={() => setContextMenu(null)}
           onReply={onReply}
-          onReact={() => { setShowReactPicker(true); setContextMenu(null); }}
-          onEdit={isOwn ? () => { setEditing(true); setEditContent(content); setContextMenu(null); } : undefined}
+          onReact={() => {
+            setShowReactPicker(true);
+            setContextMenu(null);
+          }}
+          onEdit={
+            isOwn
+              ? () => {
+                  setEditing(true);
+                  setEditContent(content);
+                  setContextMenu(null);
+                }
+              : undefined
+          }
           onDelete={onDelete}
           onPin={onPin}
           onBookmark={onBookmark}
-          onCopyText={() => { navigator.clipboard.writeText(content); setContextMenu(null); }}
-          onQuote={() => { onQuote?.(content, nickname); setContextMenu(null); }}
+          onCopyText={() => {
+            navigator.clipboard.writeText(content);
+            setContextMenu(null);
+          }}
+          onQuote={() => {
+            onQuote?.(content, nickname);
+            setContextMenu(null);
+          }}
           onForward={onForward}
         />
       )}

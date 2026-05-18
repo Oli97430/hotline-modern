@@ -1,6 +1,6 @@
+import { Hash, Lock, Users } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Hash, Users, Lock } from "lucide-react";
 
 interface ChannelSettingsModalProps {
   channel: { name: string; topic: string; userCount: number; hasPassword?: boolean };
@@ -24,9 +24,7 @@ export function ChannelSettingsModal({ channel, onSetTopic, onClose, canEdit }: 
     <div className="modal-overlay" onClick={onClose}>
       <div className="chsettings-modal" onClick={(e) => e.stopPropagation()}>
         <div className="chsettings-header">
-          <div className="chsettings-icon">
-            {channel.hasPassword ? <Lock size={18} /> : <Hash size={18} />}
-          </div>
+          <div className="chsettings-icon">{channel.hasPassword ? <Lock size={18} /> : <Hash size={18} />}</div>
           <div>
             <h3>{channel.name}</h3>
             <span className="chsettings-subtitle">{t("channelSettings.title")}</span>
@@ -36,7 +34,9 @@ export function ChannelSettingsModal({ channel, onSetTopic, onClose, canEdit }: 
         <div className="chsettings-info">
           <div className="chsettings-stat">
             <Users size={14} />
-            <span>{channel.userCount} {t("channelSettings.members")}</span>
+            <span>
+              {channel.userCount} {t("channelSettings.members")}
+            </span>
           </div>
           {channel.hasPassword && (
             <div className="chsettings-stat">

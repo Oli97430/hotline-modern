@@ -24,18 +24,14 @@ export function useTabNotification(totalUnread: number) {
 
     let visible = true;
     const interval = setInterval(() => {
-      document.title = visible
-        ? `(${totalUnread}) ${originalTitle.current}`
-        : `💬 New messages`;
+      document.title = visible ? `(${totalUnread}) ${originalTitle.current}` : `💬 New messages`;
       visible = !visible;
     }, 1500);
 
     const handleVisibility = () => {
       if (!document.hidden) {
         clearInterval(interval);
-        document.title = totalUnread > 0
-          ? `(${totalUnread}) ${originalTitle.current}`
-          : originalTitle.current;
+        document.title = totalUnread > 0 ? `(${totalUnread}) ${originalTitle.current}` : originalTitle.current;
       }
     };
 
