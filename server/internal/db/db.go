@@ -259,7 +259,7 @@ func (d *DB) SaveMessage(msg Message) error {
 
 func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 	rows, err := d.conn.Query(
-		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?",
+		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM (SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC",
 		channel, limit,
 	)
 	if err != nil {
@@ -274,10 +274,6 @@ func (d *DB) GetMessages(channel string, limit int) ([]Message, error) {
 			return nil, err
 		}
 		messages = append(messages, m)
-	}
-
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
 	}
 	return messages, nil
 }
@@ -530,7 +526,7 @@ func (d *DB) IsBanned(publicKey string) (bool, error) {
 
 func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]Message, error) {
 	rows, err := d.conn.Query(
-		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?",
+		"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM (SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT ?) ORDER BY timestamp ASC",
 		channel, before, limit,
 	)
 	if err != nil {
@@ -545,11 +541,6 @@ func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]M
 			return nil, err
 		}
 		messages = append(messages, m)
-	}
-
-	// Reverse to chronological order
-	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
-		messages[i], messages[j] = messages[j], messages[i]
 	}
 	return messages, nil
 }

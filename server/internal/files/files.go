@@ -2,6 +2,7 @@ package files
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -36,6 +37,14 @@ func New(rootDir string, authMgr *auth.Manager, permMgr *permissions.Manager) *S
 
 func (s *Server) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/files/", s.handleFiles)
+}
+
+func (s *Server) validatePath(reqPath string) (string, error) {
+	fullPath := filepath.Join(s.rootDir, filepath.Clean("/"+reqPath))
+	if !strings.HasPrefix(fullPath, s.rootDir) {
+		return "", fmt.Errorf("path traversal attempt")
+	}
+	return fullPath, nil
 }
 
 func (s *Server) handleFiles(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +99,8 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, role string) 
 		return
 	}
 
-	fullPath := filepath.Join(s.rootDir, filepath.Clean(reqPath))
-	if !strings.HasPrefix(fullPath, s.rootDir) {
+	fullPath, err := s.validatePath(reqPath)
+	if err != nil {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
@@ -111,8 +120,8 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request, role string) 
 }
 
 func (s *Server) listDirectory(w http.ResponseWriter, r *http.Request, dirPath string) {
-	fullPath := filepath.Join(s.rootDir, filepath.Clean(dirPath))
-	if !strings.HasPrefix(fullPath, s.rootDir) {
+	fullPath, err := s.validatePath(dirPath)
+	if err != nil {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
@@ -166,8 +175,8 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request, role strin
 		reqPath = reqPath + header.Filename
 	}
 
-	fullPath := filepath.Join(s.rootDir, filepath.Clean(reqPath))
-	if !strings.HasPrefix(fullPath, s.rootDir) {
+	fullPath, err := s.validatePath(reqPath)
+	if err != nil {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}

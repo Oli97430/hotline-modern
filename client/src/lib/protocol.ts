@@ -93,6 +93,24 @@ export interface ErrorPayload {
   message: string;
 }
 
+export const MSG = {
+  AUTH: "auth",
+  AUTH_NONCE: "auth.nonce",
+  AUTH_OK: "auth.ok",
+  CHAT_SEND: "chat.send",
+  CHAT_MESSAGE: "chat.message",
+  CHAT_HISTORY: "chat.history",
+  CHANNEL_LIST: "channel.list",
+  CHANNEL_JOIN: "channel.join",
+  USER_LIST: "user.list",
+  USER_JOINED: "user.joined",
+  USER_LEFT: "user.left",
+  DM_SEND: "dm.send",
+  DM_MESSAGE: "dm.message",
+  TYPING: "typing",
+  ERROR: "error",
+} as const;
+
 export function createMessage(type: string, payload: unknown): WsMessage {
   return {
     type,

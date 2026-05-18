@@ -14,6 +14,16 @@ func New(database *db.DB) *Manager {
 	return &Manager{db: database}
 }
 
+func clampLimit(limit, min, max int) int {
+	if limit < min {
+		return min
+	}
+	if limit > max {
+		return max
+	}
+	return limit
+}
+
 func (m *Manager) SaveMessage(id, channel, userKey, nickname, content, replyTo, msgType string) error {
 	msg := db.Message{
 		ID:        id,
@@ -32,9 +42,7 @@ func (m *Manager) GetHistory(channel string, limit int) ([]db.Message, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	if limit > 200 {
-		limit = 200
-	}
+	limit = clampLimit(limit, 1, 200)
 	return m.db.GetMessages(channel, limit)
 }
 
@@ -66,9 +74,7 @@ func (m *Manager) SearchMessages(query string, channel string, limit int) ([]db.
 	if limit <= 0 {
 		limit = 30
 	}
-	if limit > 100 {
-		limit = 100
-	}
+	limit = clampLimit(limit, 1, 100)
 	return m.db.SearchMessages(query, channel, limit)
 }
 
@@ -136,8 +142,6 @@ func (m *Manager) GetHistoryBefore(channel string, before time.Time, limit int) 
 	if limit <= 0 {
 		limit = 50
 	}
-	if limit > 200 {
-		limit = 200
-	}
+	limit = clampLimit(limit, 1, 200)
 	return m.db.GetMessagesBefore(channel, before, limit)
 }

@@ -44,9 +44,65 @@ type Client struct {
 }
 
 const (
-	rateLimitTokens   = 10.0 // max tokens (burst)
-	rateLimitRefill   = 2.0  // tokens per second
-	rateLimitCost     = 1.0  // cost per message
+	rateLimitTokens = 10.0 // max tokens (burst)
+	rateLimitRefill = 2.0  // tokens per second
+	rateLimitCost   = 1.0  // cost per message
+)
+
+// WebSocket message type constants
+const (
+	MsgAuth                 = "auth"
+	MsgAuthNonce            = "auth.nonce"
+	MsgAuthOK               = "auth.ok"
+	MsgAuthError            = "auth.error"
+	MsgChatSend             = "chat.send"
+	MsgChatMessage          = "chat.message"
+	MsgChatEdit             = "chat.edit"
+	MsgChatEdited           = "chat.edited"
+	MsgChatDelete           = "chat.delete"
+	MsgChatDeleted          = "chat.deleted"
+	MsgChatHistory          = "chat.history"
+	MsgChatRead             = "chat.read"
+	MsgChatReadReceipt      = "chat.read_receipt"
+	MsgChatSearch           = "chat.search"
+	MsgChatSearchResults    = "chat.search_results"
+	MsgChannelCreate        = "channel.create"
+	MsgChannelJoin          = "channel.join"
+	MsgChannelLeave         = "channel.leave"
+	MsgChannelList          = "channel.list"
+	MsgChannelMembers       = "channel.members"
+	MsgUserList             = "user.list"
+	MsgUserJoined           = "user.joined"
+	MsgUserLeft             = "user.left"
+	MsgUserNick             = "user.nick"
+	MsgUserNickChanged      = "user.nick_changed"
+	MsgUserStatus           = "user.status"
+	MsgUserStatusChanged    = "user.status_changed"
+	MsgUserRoleChanged      = "user.role_changed"
+	MsgDMSend               = "dm.send"
+	MsgDMMessage            = "dm.message"
+	MsgTyping               = "typing"
+	MsgReactionAdd          = "reaction.add"
+	MsgReactionRemove       = "reaction.remove"
+	MsgReactionUpdated      = "reaction.updated"
+	MsgPinAdd               = "pin.add"
+	MsgPinRemove            = "pin.remove"
+	MsgPinAdded             = "pin.added"
+	MsgPinRemoved           = "pin.removed"
+	MsgPinList              = "pin.list"
+	MsgAdminKick            = "admin.kick"
+	MsgAdminBan             = "admin.ban"
+	MsgAdminUnban           = "admin.unban"
+	MsgAdminBanlist         = "admin.banlist"
+	MsgAdminSetRole         = "admin.set_role"
+	MsgAdminOp              = "admin.op"
+	MsgAdminTopic           = "admin.topic"
+	MsgAdminDeleteChannel   = "admin.delete_channel"
+	MsgAdminSettings        = "admin.settings"
+	MsgAdminUnbanned        = "admin.unbanned"
+	MsgChannelDelete        = "channel.delete"
+	MsgServerSettingsUpdated = "server.settings_updated"
+	MsgError                = "error"
 )
 
 func (c *Client) consumeToken() bool {
@@ -170,7 +226,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	nonceMsg := Message{
-		Type:      "auth.nonce",
+		Type:      MsgAuthNonce,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]string{"nonce": nonce}),
@@ -244,7 +300,7 @@ func (c *Client) writePump() {
 
 func (h *Hub) handleMessage(client *Client, msg Message) {
 	// Rate limit all messages except auth
-	if msg.Type != "auth" && client.PublicKey != "" {
+	if msg.Type != MsgAuth && client.PublicKey != "" {
 		if !client.consumeToken() {
 			h.sendError(client, "rate limited: slow down")
 			return
@@ -252,65 +308,65 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 	}
 
 	switch msg.Type {
-	case "auth":
+	case MsgAuth:
 		h.handleAuth(client, msg)
-	case "chat.send":
+	case MsgChatSend:
 		h.handleChatSend(client, msg)
-	case "channel.join":
+	case MsgChannelJoin:
 		h.handleChannelJoin(client, msg)
-	case "channel.leave":
+	case MsgChannelLeave:
 		h.handleChannelLeave(client, msg)
-	case "channel.create":
+	case MsgChannelCreate:
 		h.handleChannelCreate(client, msg)
-	case "user.list":
+	case MsgUserList:
 		h.handleUserList(client)
-	case "channel.list":
+	case MsgChannelList:
 		h.handleChannelList(client)
-	case "admin.kick":
+	case MsgAdminKick:
 		h.handleKick(client, msg)
-	case "admin.ban":
+	case MsgAdminBan:
 		h.handleBan(client, msg)
-	case "admin.op":
+	case MsgAdminOp:
 		h.handleOp(client, msg)
-	case "admin.topic":
+	case MsgAdminTopic:
 		h.handleTopic(client, msg)
-	case "dm.send":
+	case MsgDMSend:
 		h.handleDMSend(client, msg)
-	case "typing":
+	case MsgTyping:
 		h.handleTyping(client, msg)
-	case "channel.delete":
+	case MsgChannelDelete:
 		h.handleChannelDelete(client, msg)
-	case "chat.search":
+	case MsgChatSearch:
 		h.handleSearch(client, msg)
-	case "chat.edit":
+	case MsgChatEdit:
 		h.handleChatEdit(client, msg)
-	case "chat.delete":
+	case MsgChatDelete:
 		h.handleChatDelete(client, msg)
-	case "reaction.add":
+	case MsgReactionAdd:
 		h.handleReactionAdd(client, msg)
-	case "reaction.remove":
+	case MsgReactionRemove:
 		h.handleReactionRemove(client, msg)
-	case "pin.add":
+	case MsgPinAdd:
 		h.handlePinAdd(client, msg)
-	case "pin.remove":
+	case MsgPinRemove:
 		h.handlePinRemove(client, msg)
-	case "pin.list":
+	case MsgPinList:
 		h.handlePinList(client, msg)
-	case "user.nick":
+	case MsgUserNick:
 		h.handleNickChange(client, msg)
-	case "admin.settings":
+	case MsgAdminSettings:
 		h.handleAdminSettings(client, msg)
-	case "admin.banlist":
+	case MsgAdminBanlist:
 		h.handleBanList(client)
-	case "admin.unban":
+	case MsgAdminUnban:
 		h.handleUnban(client, msg)
-	case "user.status":
+	case MsgUserStatus:
 		h.handleUserStatus(client, msg)
-	case "channel.members":
+	case MsgChannelMembers:
 		h.handleChannelMembers(client, msg)
-	case "chat.history":
+	case MsgChatHistory:
 		h.handleChatHistory(client, msg)
-	case "chat.read":
+	case MsgChatRead:
 		h.handleChatRead(client, msg)
 	}
 }
@@ -331,7 +387,7 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 	role, err := h.auth.Verify(client.ID, payload.PublicKey, payload.Signature, payload.Nonce, payload.Nickname)
 	if err != nil {
 		h.sendToClient(client, Message{
-			Type:      "auth.error",
+			Type:      MsgAuthError,
 			ID:        uuid.New().String(),
 			Timestamp: time.Now().UnixMilli(),
 			Payload:   mustMarshal(map[string]string{"reason": err.Error()}),
@@ -364,7 +420,7 @@ func (h *Hub) handleAuth(client *Client, msg Message) {
 	}
 
 	h.sendToClient(client, Message{
-		Type:      "auth.ok",
+		Type:      MsgAuthOK,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -435,7 +491,7 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 	}
 
 	chatMsg := Message{
-		Type:      "chat.message",
+		Type:      MsgChatMessage,
 		ID:        msgID,
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(chatPayload),
@@ -540,7 +596,7 @@ func (h *Hub) handleUserList(client *Client) {
 	h.mu.RUnlock()
 
 	h.sendToClient(client, Message{
-		Type:      "user.list",
+		Type:      MsgUserList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"users": users}),
@@ -566,7 +622,7 @@ func (h *Hub) handleChannelList(client *Client) {
 	}
 
 	h.sendToClient(client, Message{
-		Type:      "channel.list",
+		Type:      MsgChannelList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"channels": list}),
@@ -607,7 +663,7 @@ func (h *Hub) broadcastToChannel(channel string, msg Message) {
 
 func (h *Hub) broadcastUserJoined(client *Client) {
 	msg := Message{
-		Type:      "user.joined",
+		Type:      MsgUserJoined,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -625,7 +681,7 @@ func (h *Hub) broadcastUserLeft(client *Client) {
 		return
 	}
 	msg := Message{
-		Type:      "user.left",
+		Type:      MsgUserLeft,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -655,7 +711,7 @@ func (h *Hub) broadcastChannelList() {
 	}
 
 	msg := Message{
-		Type:      "channel.list",
+		Type:      MsgChannelList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"channels": list}),
@@ -706,7 +762,7 @@ func (h *Hub) sendHistory(client *Client, channel string) {
 			payload["msgType"] = m.MsgType
 		}
 		h.sendToClient(client, Message{
-			Type:      "chat.message",
+			Type:      MsgChatMessage,
 			ID:        m.ID,
 			Timestamp: m.Timestamp.UnixMilli(),
 			Payload:   mustMarshal(payload),
@@ -716,7 +772,7 @@ func (h *Hub) sendHistory(client *Client, channel string) {
 
 func (h *Hub) sendError(client *Client, message string) {
 	h.sendToClient(client, Message{
-		Type:      "error",
+		Type:      MsgError,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"code": "error", "message": message}),
@@ -742,7 +798,7 @@ func (h *Hub) handleKick(client *Client, msg Message) {
 
 	if target != nil {
 		h.sendToClient(target, Message{
-			Type:      "error",
+			Type:      MsgError,
 			ID:        uuid.New().String(),
 			Timestamp: time.Now().UnixMilli(),
 			Payload:   mustMarshal(map[string]interface{}{"code": "kicked", "message": "You have been kicked"}),
@@ -779,7 +835,7 @@ func (h *Hub) handleBan(client *Client, msg Message) {
 
 	if target != nil {
 		h.sendToClient(target, Message{
-			Type:      "error",
+			Type:      MsgError,
 			ID:        uuid.New().String(),
 			Timestamp: time.Now().UnixMilli(),
 			Payload:   mustMarshal(map[string]interface{}{"code": "banned", "message": "You have been banned"}),
@@ -815,7 +871,7 @@ func (h *Hub) handleOp(client *Client, msg Message) {
 	h.mu.Unlock()
 
 	h.broadcastAll(Message{
-		Type:      "user.role_changed",
+		Type:      MsgUserRoleChanged,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -901,7 +957,7 @@ func (h *Hub) handleDMSend(client *Client, msg Message) {
 	}
 
 	dmMsg := Message{
-		Type:      "dm.message",
+		Type:      MsgDMMessage,
 		ID:        msgID,
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(outPayload),
@@ -939,7 +995,7 @@ func (h *Hub) handleTyping(client *Client, msg Message) {
 	}
 
 	typingMsg := Message{
-		Type:      "typing",
+		Type:      MsgTyping,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1031,7 +1087,7 @@ func (h *Hub) handleAdminSettings(client *Client, msg Message) {
 
 	// Broadcast updated info to all clients
 	h.broadcastAll(Message{
-		Type:      "server.settings_updated",
+		Type:      MsgServerSettingsUpdated,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1065,7 +1121,7 @@ func (h *Hub) handleBanList(client *Client) {
 	}
 
 	h.sendToClient(client, Message{
-		Type:      "admin.banlist",
+		Type:      MsgAdminBanlist,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"bans": list}),
@@ -1093,7 +1149,7 @@ func (h *Hub) handleUnban(client *Client, msg Message) {
 	h.permissions.SetRole(payload.PublicKey, permissions.RoleMember)
 
 	h.sendToClient(client, Message{
-		Type:      "admin.unbanned",
+		Type:      MsgAdminUnbanned,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"publicKey": payload.PublicKey}),
@@ -1125,7 +1181,7 @@ func (h *Hub) handleChatEdit(client *Client, msg Message) {
 	}
 
 	editMsg := Message{
-		Type:      "chat.edited",
+		Type:      MsgChatEdited,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1168,7 +1224,7 @@ func (h *Hub) handleChatDelete(client *Client, msg Message) {
 	}
 
 	deleteMsg := Message{
-		Type:      "chat.deleted",
+		Type:      MsgChatDeleted,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1203,7 +1259,7 @@ func (h *Hub) handleReactionAdd(client *Client, msg Message) {
 	}
 
 	reactMsg := Message{
-		Type:      "reaction.updated",
+		Type:      MsgReactionUpdated,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1244,7 +1300,7 @@ func (h *Hub) handleReactionRemove(client *Client, msg Message) {
 	}
 
 	reactMsg := Message{
-		Type:      "reaction.updated",
+		Type:      MsgReactionUpdated,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1281,7 +1337,7 @@ func (h *Hub) handlePinAdd(client *Client, msg Message) {
 	}
 
 	pinMsg := Message{
-		Type:      "pin.added",
+		Type:      MsgPinAdded,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1313,7 +1369,7 @@ func (h *Hub) handlePinRemove(client *Client, msg Message) {
 	}
 
 	unpinMsg := Message{
-		Type:      "pin.removed",
+		Type:      MsgPinRemoved,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1350,7 +1406,7 @@ func (h *Hub) handlePinList(client *Client, msg Message) {
 	}
 
 	h.sendToClient(client, Message{
-		Type:      "pin.list",
+		Type:      MsgPinList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "messages": msgs}),
@@ -1378,7 +1434,7 @@ func (h *Hub) handleNickChange(client *Client, msg Message) {
 	client.Nickname = payload.Nickname
 
 	h.broadcastAll(Message{
-		Type:      "user.nick_changed",
+		Type:      MsgUserNickChanged,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1427,7 +1483,7 @@ func (h *Hub) handleSearch(client *Client, msg Message) {
 	}
 
 	h.sendToClient(client, Message{
-		Type:      "chat.search_results",
+		Type:      MsgChatSearchResults,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"query": payload.Query, "results": msgs}),
@@ -1455,7 +1511,7 @@ func (h *Hub) handleUserStatus(client *Client, msg Message) {
 	client.Status = payload.Status
 
 	h.broadcastAll(Message{
-		Type:      "user.status_changed",
+		Type:      MsgUserStatusChanged,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1494,7 +1550,7 @@ func (h *Hub) handleChannelMembers(client *Client, msg Message) {
 	h.mu.RUnlock()
 
 	h.sendToClient(client, Message{
-		Type:      "channel.members",
+		Type:      MsgChannelMembers,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1557,7 +1613,7 @@ func (h *Hub) handleChatHistory(client *Client, msg Message) {
 	}
 
 	h.sendToClient(client, Message{
-		Type:      "chat.history",
+		Type:      MsgChatHistory,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{
@@ -1584,7 +1640,7 @@ func (h *Hub) handleChatRead(client *Client, msg Message) {
 	}
 	// Broadcast read receipt to channel members
 	h.broadcastToChannel(payload.Channel, Message{
-		Type:      "chat.read_receipt",
+		Type:      MsgChatReadReceipt,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload: mustMarshal(map[string]interface{}{

@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$TOOL_INPUT\" | grep -qE '\\.tsx?\"' ; then FILE=$(echo \"$TOOL_INPUT\" | grep -oP '\"file_path\":\\s*\"\\K[^\"]+'); if [ -n \"$FILE\" ] && echo \"$FILE\" | grep -qE '\\.(ts|tsx)$'; then npx @biomejs/biome format --write \"$FILE\" 2>/dev/null; fi; fi; exit 0"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "FILE_PATH=$(echo \"$TOOL_INPUT\" | grep -oP '\"file_path\":\\s*\"\\K[^\"]+'); if echo \"$FILE_PATH\" | grep -qiE '\\.(db|sqlite|key|pem|p12|pfx)$'; then echo 'BLOCK: Cannot modify database or credential files directly' >&2; exit 2; fi; if echo \"$FILE_PATH\" | grep -qiE '(^|\\/)\\.env'; then echo 'BLOCK: Cannot modify .env files — edit manually' >&2; exit 2; fi; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

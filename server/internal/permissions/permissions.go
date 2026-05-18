@@ -44,7 +44,7 @@ func (m *Manager) CanJoinChannel(role, channel string) bool {
 }
 
 func (m *Manager) CanCreateChannel(role string) bool {
-	return role == RoleAdmin || role == RoleOperator
+	return role == RoleAdmin || role == RoleOperator || role == RoleMember
 }
 
 func (m *Manager) CanUpload(role string) bool {

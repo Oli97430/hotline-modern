@@ -2,16 +2,35 @@
 server/data/
 *.db
 
-# Binaries (but allow release/)
+# Binaries
 *.exe
-!release/*.exe
+*.exe~
+builds/
+!release/
 
 # Node
+node_modules/
 client/node_modules/
 client/.vite/
+package-lock.json
+client/package-lock.json
 
 # Tauri
 client/src-tauri/target/
+client/src-tauri/Cargo.lock
+
+# Android (Capacitor)
+client/android/
+
+# Build output
+client/dist/
+data/hotline.db
+
+# Test artifacts
+test-data-*/
+hotline-test-*/
+hotline-polish-*/
+debug-*.mjs
 
 # IDE
 .idea/
@@ -27,6 +46,5 @@ Thumbs.db
 .env
 .env.local
 
-# Claude
-.claude/
+# Logs
 server.log

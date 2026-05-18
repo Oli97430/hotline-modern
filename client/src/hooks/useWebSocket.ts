@@ -531,242 +531,160 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setReadReceipts({});
   }, []);
 
-  const sendChat = useCallback((channel: string, content: string, msgType?: string) => {
+  const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const payload: Record<string, string> = { channel, content };
-      if (msgType) payload.msgType = msgType;
-      const msg = createMessage("chat.send", payload);
+      const msg = createMessage(type, payload);
       wsRef.current.send(JSON.stringify(msg));
     }
   }, []);
+
+  const sendChat = useCallback((channel: string, content: string, msgType?: string) => {
+    const payload: Record<string, string> = { channel, content };
+    if (msgType) payload.msgType = msgType;
+    wsSend("chat.send", payload);
+  }, [wsSend]);
 
   const joinChannel = useCallback((channel: string, password?: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const payload: Record<string, string> = { channel };
-      if (password) payload.password = password;
-      const msg = createMessage("channel.join", payload);
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    const payload: Record<string, string> = { channel };
+    if (password) payload.password = password;
+    wsSend("channel.join", payload);
+  }, [wsSend]);
 
   const leaveChannel = useCallback((channel: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.leave", { channel });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("channel.leave", { channel });
+  }, [wsSend]);
 
   const createChannel = useCallback((name: string, topic: string, password?: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.create", { name, topic, password: password || "" });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("channel.create", { name, topic, password: password || "" });
+  }, [wsSend]);
 
   const requestUserList = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("user.list", {});
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("user.list", {});
+  }, [wsSend]);
 
   const requestChannelList = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.list", {});
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("channel.list", {});
+  }, [wsSend]);
 
   const kickUser = useCallback((userId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.kick", { userId });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.kick", { userId });
+  }, [wsSend]);
 
   const banUser = useCallback((userId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.ban", { userId });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.ban", { userId });
+  }, [wsSend]);
 
   const setUserRole = useCallback((userId: string, role: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.op", { userId, role });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.op", { userId, role });
+  }, [wsSend]);
 
   const setTopic = useCallback((channel: string, topic: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.topic", { channel, topic });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.topic", { channel, topic });
+  }, [wsSend]);
 
   const sendDM = useCallback((targetId: string, content: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const peerBoxPK = usersRef.current.find((u) => u.userId === targetId)?.boxPublicKey;
-      if (peerBoxPK) {
-        // Encrypt the message with the peer's box public key
-        const { ciphertext, nonce } = encryptDM(content, peerBoxPK, identity);
-        const msg = createMessage("dm.send", {
-          targetId,
-          content: "",
-          encrypted: true,
-          ciphertext,
-          nonce,
-          senderBoxPublicKey: getBoxPublicKeyHex(identity),
-        });
-        wsRef.current.send(JSON.stringify(msg));
-      } else {
-        // Fallback: peer doesn't have box key (old client), send plaintext
-        const msg = createMessage("dm.send", { targetId, content });
-        wsRef.current.send(JSON.stringify(msg));
-      }
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    const peerBoxPK = usersRef.current.find((u) => u.userId === targetId)?.boxPublicKey;
+    if (peerBoxPK) {
+      // Encrypt the message with the peer's box public key
+      const { ciphertext, nonce } = encryptDM(content, peerBoxPK, identity);
+      wsSend("dm.send", {
+        targetId,
+        content: "",
+        encrypted: true,
+        ciphertext,
+        nonce,
+        senderBoxPublicKey: getBoxPublicKeyHex(identity),
+      });
+    } else {
+      // Fallback: peer doesn't have box key (old client), send plaintext
+      wsSend("dm.send", { targetId, content });
     }
-  }, [identity]);
+  }, [identity, wsSend]);
 
   const sendTyping = useCallback((channel: string, targetId?: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("typing", { channel, targetId: targetId || "" });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("typing", { channel, targetId: targetId || "" });
+  }, [wsSend]);
 
   const deleteChannel = useCallback((name: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.delete", { name });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("channel.delete", { name });
+  }, [wsSend]);
 
   const search = useCallback((query: string, channel?: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("chat.search", { query, channel: channel || "" });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("chat.search", { query, channel: channel || "" });
+  }, [wsSend]);
 
   const clearSearch = useCallback(() => {
     setSearchResults([]);
   }, []);
 
   const editMessage = useCallback((messageId: string, content: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("chat.edit", { messageId, content });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("chat.edit", { messageId, content });
+  }, [wsSend]);
 
   const deleteMessage = useCallback((messageId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("chat.delete", { messageId });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("chat.delete", { messageId });
+  }, [wsSend]);
 
   const addReaction = useCallback((messageId: string, emoji: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("reaction.add", { messageId, emoji });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("reaction.add", { messageId, emoji });
+  }, [wsSend]);
 
   const removeReaction = useCallback((messageId: string, emoji: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("reaction.remove", { messageId, emoji });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("reaction.remove", { messageId, emoji });
+  }, [wsSend]);
 
   const pinMessage = useCallback((messageId: string, channel: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("pin.add", { messageId, channel });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("pin.add", { messageId, channel });
+  }, [wsSend]);
 
   const unpinMessage = useCallback((messageId: string, channel: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("pin.remove", { messageId, channel });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("pin.remove", { messageId, channel });
+  }, [wsSend]);
 
   const requestPins = useCallback((channel: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("pin.list", { channel });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("pin.list", { channel });
+  }, [wsSend]);
 
   const changeNickname = useCallback((nickname: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("user.nick", { nickname });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("user.nick", { nickname });
+  }, [wsSend]);
 
   const sendChatWithReply = useCallback((channel: string, content: string, replyTo: string, msgType?: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const payload: Record<string, string> = { channel, content, replyTo };
-      if (msgType) payload.msgType = msgType;
-      const msg = createMessage("chat.send", payload);
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    const payload: Record<string, string> = { channel, content, replyTo };
+    if (msgType) payload.msgType = msgType;
+    wsSend("chat.send", payload);
+  }, [wsSend]);
 
   const updateServerSettings = useCallback((serverName: string, motd: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.settings", { serverName, motd });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.settings", { serverName, motd });
+  }, [wsSend]);
 
   const requestBanList = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.banlist", {});
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.banlist", {});
+  }, [wsSend]);
 
   const unbanUser = useCallback((publicKey: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("admin.unban", { publicKey });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("admin.unban", { publicKey });
+  }, [wsSend]);
 
   const setUserStatus = useCallback((status: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("user.status", { status });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("user.status", { status });
+  }, [wsSend]);
 
   const requestChannelMembers = useCallback((channel: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("channel.members", { channel });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("channel.members", { channel });
+  }, [wsSend]);
 
   const loadHistory = useCallback((channel: string, beforeTimestamp: number) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      setHistoryLoading(true);
-      const msg = createMessage("chat.history", { channel, before: beforeTimestamp, limit: 50 });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+    setHistoryLoading(true);
+    wsSend("chat.history", { channel, before: beforeTimestamp, limit: 50 });
+  }, [wsSend]);
 
   const sendReadReceipt = useCallback((channel: string, messageId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const msg = createMessage("chat.read", { channel, messageId });
-      wsRef.current.send(JSON.stringify(msg));
-    }
-  }, []);
+    wsSend("chat.read", { channel, messageId });
+  }, [wsSend]);
 
   useEffect(() => {
     const interval = setInterval(() => {
