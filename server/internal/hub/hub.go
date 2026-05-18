@@ -129,6 +129,11 @@ const (
 	MsgRetentionExport       = "retention.export"
 	MsgChannelPerms          = "channel.permissions"
 	MsgChannelPermsSet       = "channel.permissions.set"
+	MsgChannelSlowmode       = "channel.slowmode"
+	MsgChannelDescription    = "channel.description"
+	MsgUserNoteAdd           = "user_note.add"
+	MsgUserNoteList          = "user_note.list"
+	MsgUserNoteDelete        = "user_note.delete"
 	MsgError                 = "error"
 )
 
@@ -155,15 +160,16 @@ type VoiceParticipant struct {
 }
 
 type Hub struct {
-	clients       map[string]*Client
-	pubKeyIndex   map[string]*Client                            // publicKey -> client (fast lookup)
-	channels      map[string]map[string]*Client                 // channel -> clientID -> client
-	voiceChannels map[string]map[string]*VoiceParticipant       // channel -> publicKey -> participant
-	register      chan *Client
-	unregister   chan *Client
-	auth         *auth.Manager
-	chat         *chat.Manager
-	permissions  *permissions.Manager
+	clients         map[string]*Client
+	pubKeyIndex     map[string]*Client                            // publicKey -> client (fast lookup)
+	channels        map[string]map[string]*Client                 // channel -> clientID -> client
+	voiceChannels   map[string]map[string]*VoiceParticipant       // channel -> publicKey -> participant
+	slowmodeTracker map[string]map[string]int64                   // channel -> publicKey -> lastMessageUnixMilli
+	register        chan *Client
+	unregister      chan *Client
+	auth            *auth.Manager
+	chat            *chat.Manager
+	permissions     *permissions.Manager
 	serverName      string
 	motd            string
 	agreement       string
@@ -183,12 +189,13 @@ func New(authMgr *auth.Manager, chatMgr *chat.Manager, permMgr *permissions.Mana
 	}
 
 	h := &Hub{
-		clients:        make(map[string]*Client),
-		pubKeyIndex:    make(map[string]*Client),
-		channels:       make(map[string]map[string]*Client),
-		voiceChannels:  make(map[string]map[string]*VoiceParticipant),
-		register:       make(chan *Client),
-		unregister:     make(chan *Client),
+		clients:         make(map[string]*Client),
+		pubKeyIndex:     make(map[string]*Client),
+		channels:        make(map[string]map[string]*Client),
+		voiceChannels:   make(map[string]map[string]*VoiceParticipant),
+		slowmodeTracker: make(map[string]map[string]int64),
+		register:        make(chan *Client),
+		unregister:      make(chan *Client),
 		auth:           authMgr,
 		chat:           chatMgr,
 		permissions:    permMgr,
@@ -491,6 +498,16 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleChannelPerms(client, msg)
 	case MsgChannelPermsSet:
 		h.handleChannelPermsSet(client, msg)
+	case MsgChannelSlowmode:
+		h.handleChannelSlowmode(client, msg)
+	case MsgChannelDescription:
+		h.handleChannelDescription(client, msg)
+	case MsgUserNoteAdd:
+		h.handleUserNoteAdd(client, msg)
+	case MsgUserNoteList:
+		h.handleUserNoteList(client, msg)
+	case MsgUserNoteDelete:
+		h.handleUserNoteDelete(client, msg)
 	}
 }
 
@@ -599,6 +616,25 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 		return
 	}
 
+	// Check slowmode (admins/operators bypass)
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		if slowSecs, err := h.chat.GetChannelSlowmode(payload.Channel); err == nil && slowSecs > 0 {
+			now := time.Now().UnixMilli()
+			h.mu.RLock()
+			lastMsg := int64(0)
+			if tracker := h.slowmodeTracker[payload.Channel]; tracker != nil {
+				lastMsg = tracker[client.PublicKey]
+			}
+			h.mu.RUnlock()
+			waitMs := int64(slowSecs) * 1000
+			if lastMsg > 0 && now-lastMsg < waitMs {
+				remaining := (waitMs - (now - lastMsg) + 999) / 1000 // ceil to seconds
+				h.sendError(client, fmt.Sprintf("Slowmode: wait %d seconds", remaining))
+				return
+			}
+		}
+	}
+
 	if !client.Channels[payload.Channel] {
 		h.sendError(client, "not in channel")
 		return
@@ -606,6 +642,14 @@ func (h *Hub) handleChatSend(client *Client, msg Message) {
 
 	msgID := uuid.New().String()
 	h.chat.SaveMessage(msgID, payload.Channel, client.PublicKey, client.Nickname, payload.Content, payload.ReplyTo, payload.MsgType)
+
+	// Update slowmode tracker
+	h.mu.Lock()
+	if h.slowmodeTracker[payload.Channel] == nil {
+		h.slowmodeTracker[payload.Channel] = make(map[string]int64)
+	}
+	h.slowmodeTracker[payload.Channel][client.PublicKey] = time.Now().UnixMilli()
+	h.mu.Unlock()
 
 	chatPayload := map[string]interface{}{
 		"channel":  payload.Channel,
@@ -746,10 +790,12 @@ func (h *Hub) handleChannelList(client *Client) {
 		}
 		h.mu.RUnlock()
 		list = append(list, map[string]interface{}{
-			"name":        ch.Name,
-			"topic":       ch.Topic,
-			"userCount":   count,
-			"hasPassword": ch.Password != "",
+			"name":            ch.Name,
+			"topic":           ch.Topic,
+			"userCount":       count,
+			"hasPassword":     ch.Password != "",
+			"slowmode":        ch.SlowmodeSeconds,
+			"description":     ch.Description,
 		})
 	}
 
@@ -836,10 +882,12 @@ func (h *Hub) broadcastChannelList() {
 		}
 		h.mu.RUnlock()
 		list = append(list, map[string]interface{}{
-			"name":        ch.Name,
-			"topic":       ch.Topic,
-			"userCount":   count,
-			"hasPassword": ch.Password != "",
+			"name":            ch.Name,
+			"topic":           ch.Topic,
+			"userCount":       count,
+			"hasPassword":     ch.Password != "",
+			"slowmode":        ch.SlowmodeSeconds,
+			"description":     ch.Description,
 		})
 	}
 
@@ -2442,6 +2490,62 @@ func (h *Hub) handleRetentionExport(client *Client, msg Message) {
 	})
 }
 
+// ── Channel slowmode & description handlers ─────────────────────────
+
+func (h *Hub) handleChannelSlowmode(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel string `json:"channel"`
+		Seconds int    `json:"seconds"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.Seconds < 0 || payload.Seconds > 3600 {
+		h.sendError(client, "slowmode must be 0-3600 seconds")
+		return
+	}
+
+	if err := h.chat.SetChannelSlowmode(payload.Channel, payload.Seconds); err != nil {
+		h.sendError(client, "failed to set slowmode")
+		return
+	}
+
+	h.broadcastChannelList()
+}
+
+func (h *Hub) handleChannelDescription(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel     string `json:"channel"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if len(payload.Description) > 500 {
+		h.sendError(client, "description too long (max 500 characters)")
+		return
+	}
+
+	if err := h.chat.SetChannelDescription(payload.Channel, payload.Description); err != nil {
+		h.sendError(client, "failed to set description")
+		return
+	}
+
+	h.broadcastChannelList()
+}
+
 // ── Channel permission handlers ─────────────────────────────────────
 
 var validChannelPermissions = map[string]bool{
@@ -2560,6 +2664,111 @@ func (h *Hub) handleChannelPermsSet(client *Client, msg Message) {
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "permissions": list}),
+	})
+}
+
+// ── User note handlers ──────────────────────────────────────────────
+
+func (h *Hub) handleUserNoteAdd(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		TargetUserId string `json:"targetUserId"`
+		Content      string `json:"content"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.TargetUserId == "" || payload.Content == "" {
+		h.sendError(client, "targetUserId and content required")
+		return
+	}
+	if len(payload.Content) > 500 {
+		h.sendError(client, "note too long (max 500 characters)")
+		return
+	}
+
+	if err := h.chat.AddUserNote(payload.TargetUserId, client.PublicKey, client.Nickname, payload.Content); err != nil {
+		h.sendError(client, "failed to add note")
+		return
+	}
+
+	h.sendUserNoteList(client, payload.TargetUserId)
+}
+
+func (h *Hub) handleUserNoteList(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		TargetUserId string `json:"targetUserId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.TargetUserId == "" {
+		h.sendError(client, "targetUserId required")
+		return
+	}
+
+	h.sendUserNoteList(client, payload.TargetUserId)
+}
+
+func (h *Hub) handleUserNoteDelete(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		NoteId       int    `json:"noteId"`
+		TargetUserId string `json:"targetUserId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.DeleteUserNote(payload.NoteId); err != nil {
+		h.sendError(client, "failed to delete note")
+		return
+	}
+
+	if payload.TargetUserId != "" {
+		h.sendUserNoteList(client, payload.TargetUserId)
+	}
+}
+
+func (h *Hub) sendUserNoteList(client *Client, targetUserId string) {
+	notes, err := h.chat.GetUserNotes(targetUserId)
+	if err != nil {
+		h.sendError(client, "failed to get notes")
+		return
+	}
+
+	var list []map[string]interface{}
+	for _, n := range notes {
+		list = append(list, map[string]interface{}{
+			"id":         n.ID,
+			"targetKey":  n.TargetKey,
+			"authorKey":  n.AuthorKey,
+			"authorName": n.AuthorName,
+			"content":    n.Content,
+			"createdAt":  n.CreatedAt,
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgUserNoteList,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"targetUserId": targetUserId, "notes": list}),
 	})
 }
 

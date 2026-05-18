@@ -1,10 +1,12 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -179,6 +181,221 @@ func main() {
 			line := fmt.Sprintf("[%s] <%s> %s\n", ts, m.Nickname, m.Content)
 			w.Write([]byte(line))
 		}
+	})
+
+	// Backup: GET /backup?key=adminPublicKey
+	mux.HandleFunc("/backup", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			http.Error(w, "missing key parameter", http.StatusUnauthorized)
+			return
+		}
+		role := permManager.GetRole(key)
+		if role != "admin" {
+			http.Error(w, "admin access required", http.StatusForbidden)
+			return
+		}
+
+		// Create temp dir for the backup
+		tmpDir, err := os.MkdirTemp("", "hotline-backup-")
+		if err != nil {
+			http.Error(w, "failed to create temp directory", http.StatusInternalServerError)
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+
+		// Backup the database
+		dbBackupPath := filepath.Join(tmpDir, "hotline.db")
+		if err := database.BackupTo(dbBackupPath); err != nil {
+			log.Printf("Backup: DB backup failed: %v", err)
+			http.Error(w, "database backup failed", http.StatusInternalServerError)
+			return
+		}
+
+		// Create zip file
+		zipPath := filepath.Join(tmpDir, "backup.zip")
+		zipFile, err := os.Create(zipPath)
+		if err != nil {
+			http.Error(w, "failed to create zip", http.StatusInternalServerError)
+			return
+		}
+		zw := zip.NewWriter(zipFile)
+
+		// Add database to zip
+		dbData, err := os.ReadFile(dbBackupPath)
+		if err != nil {
+			zipFile.Close()
+			http.Error(w, "failed to read db backup", http.StatusInternalServerError)
+			return
+		}
+		fw, err := zw.Create("hotline.db")
+		if err != nil {
+			zipFile.Close()
+			http.Error(w, "zip write error", http.StatusInternalServerError)
+			return
+		}
+		fw.Write(dbData)
+
+		// Add files directory to zip
+		filepath.Walk(filesDir, func(path string, info os.FileInfo, err error) error {
+			if err != nil || info.IsDir() {
+				return nil
+			}
+			relPath, err := filepath.Rel(filesDir, path)
+			if err != nil {
+				return nil
+			}
+			fw, err := zw.Create("files/" + filepath.ToSlash(relPath))
+			if err != nil {
+				return nil
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil
+			}
+			fw.Write(data)
+			return nil
+		})
+
+		zw.Close()
+		zipFile.Close()
+
+		// Stream the zip to the response
+		dateName := time.Now().Format("2006-01-02")
+		w.Header().Set("Content-Type", "application/zip")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="hotline-backup-%s.zip"`, dateName))
+		http.ServeFile(w, r, zipPath)
+	})
+
+	// Restore: POST /restore?key=adminPublicKey
+	mux.HandleFunc("/restore", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodPost {
+			http.Error(w, "POST only", http.StatusMethodNotAllowed)
+			return
+		}
+		key := r.URL.Query().Get("key")
+		if key == "" {
+			http.Error(w, "missing key parameter", http.StatusUnauthorized)
+			return
+		}
+		role := permManager.GetRole(key)
+		if role != "admin" {
+			http.Error(w, "admin access required", http.StatusForbidden)
+			return
+		}
+
+		// Limit upload to 100MB
+		r.Body = http.MaxBytesReader(w, r.Body, 100<<20)
+		if err := r.ParseMultipartForm(100 << 20); err != nil {
+			http.Error(w, "file too large or invalid form", http.StatusBadRequest)
+			return
+		}
+
+		file, _, err := r.FormFile("backup")
+		if err != nil {
+			http.Error(w, "missing backup file", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		// Save uploaded file to temp location
+		tmpFile, err := os.CreateTemp("", "hotline-restore-*.zip")
+		if err != nil {
+			http.Error(w, "failed to create temp file", http.StatusInternalServerError)
+			return
+		}
+		tmpPath := tmpFile.Name()
+		defer os.Remove(tmpPath)
+
+		written, err := io.Copy(tmpFile, file)
+		tmpFile.Close()
+		if err != nil {
+			http.Error(w, "failed to save upload", http.StatusInternalServerError)
+			return
+		}
+
+		// Open the zip
+		zr, err := zip.OpenReader(tmpPath)
+		if err != nil {
+			http.Error(w, "invalid zip file", http.StatusBadRequest)
+			return
+		}
+		defer zr.Close()
+
+		// Extract files
+		for _, f := range zr.File {
+			if f.FileInfo().IsDir() {
+				continue
+			}
+
+			// Security: prevent path traversal
+			cleanName := filepath.Clean(f.Name)
+			if strings.Contains(cleanName, "..") {
+				continue
+			}
+
+			if cleanName == "hotline.db" {
+				// Restore database
+				rc, err := f.Open()
+				if err != nil {
+					continue
+				}
+				dbData, err := io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					continue
+				}
+				if err := os.WriteFile(dbPath, dbData, 0644); err != nil {
+					log.Printf("Restore: failed to write database: %v", err)
+				} else {
+					log.Printf("Restore: database restored (%d bytes)", len(dbData))
+				}
+			} else if strings.HasPrefix(filepath.ToSlash(cleanName), "files/") {
+				// Restore uploaded files
+				relPath := strings.TrimPrefix(filepath.ToSlash(cleanName), "files/")
+				destPath := filepath.Join(filesDir, filepath.FromSlash(relPath))
+				destDir := filepath.Dir(destPath)
+				os.MkdirAll(destDir, 0755)
+
+				rc, err := f.Open()
+				if err != nil {
+					continue
+				}
+				fData, err := io.ReadAll(rc)
+				rc.Close()
+				if err != nil {
+					continue
+				}
+				if err := os.WriteFile(destPath, fData, 0644); err != nil {
+					log.Printf("Restore: failed to write file %s: %v", relPath, err)
+				}
+			}
+		}
+
+		log.Printf("Restore: backup restored from %d byte zip", written)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"ok":      true,
+			"message": "Restored successfully. Please restart the server.",
+		})
 	})
 
 	// Tracker: POST /register

@@ -64,6 +64,7 @@ import { loadSavedTheme, ThemeEditor } from "./components/ThemeEditor";
 import { ThreadPanel } from "./components/ThreadPanel";
 import { ToastContainer, useToasts } from "./components/ToastContainer";
 import { UserList } from "./components/UserList";
+import { UserProfileCard } from "./components/UserProfileCard";
 import { useChannelMute } from "./hooks/useChannelMute";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { useIdentity } from "./hooks/useIdentity";
@@ -103,6 +104,7 @@ export default function App() {
   const [showScheduler, setShowScheduler] = useState(false);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
   const [channelOrder, setChannelOrder] = useState<string[]>(loadChannelOrder);
+  const [profileUser, setProfileUser] = useState<{ userId: string; position: { x: number; y: number } } | null>(null);
 
   // Resizable panel widths (persisted in localStorage)
   const [sidebarWidth, setSidebarWidth] = useState(() => {
@@ -898,6 +900,7 @@ export default function App() {
             messages={activeDM ? dmMessagesAsChatMessages : ws.messages}
             activeChannel={activeChannel}
             channelTopic={activeCh?.topic}
+            channelSlowmode={activeCh?.slowmode}
             currentUserId={ws.serverInfo?.userId || ""}
             currentRole={ws.serverInfo?.role}
             typingUsers={ws.typingUsers}
@@ -1007,6 +1010,10 @@ export default function App() {
           onOp={(uid) => ws.setUserRole(uid, "operator")}
           onDeop={(uid) => ws.setUserRole(uid, "member")}
           onDM={handleSelectDM}
+          onProfileClick={(userId, position) => {
+            ws.requestProfile(userId);
+            setProfileUser({ userId, position });
+          }}
         />
         <FileBrowser
           serverAddress={serverAddress}
@@ -1015,6 +1022,33 @@ export default function App() {
           canDownload={canDownload}
         />
       </div>
+
+      {profileUser && (() => {
+        const pu = ws.users.find((u) => u.userId === profileUser.userId);
+        if (!pu) return null;
+        const isSelf = pu.userId === ws.serverInfo?.userId;
+        return (
+          <UserProfileCard
+            user={pu}
+            position={profileUser.position}
+            onClose={() => setProfileUser(null)}
+            onDM={(uid) => { handleSelectDM(uid); setProfileUser(null); }}
+            onKick={ws.kickUser}
+            onBan={ws.banUser}
+            onOp={(uid) => ws.setUserRole(uid, "operator")}
+            onDeop={(uid) => ws.setUserRole(uid, "member")}
+            canModerate={canCreateChannel}
+            isSelf={isSelf}
+            profile={ws.profileCache[pu.userId]}
+            onUpdateProfile={ws.updateProfile}
+            viewerRole={ws.serverInfo?.role}
+            userNotes={ws.userNotes[pu.userId]}
+            onAddNote={ws.addUserNote}
+            onDeleteNote={ws.deleteUserNote}
+            onRequestNotes={ws.requestUserNotes}
+          />
+        );
+      })()}
 
       {showCreateModal && (
         <CreateChannelModal onSubmit={handleCreateChannelSubmit} onClose={() => setShowCreateModal(false)} />
@@ -1029,6 +1063,8 @@ export default function App() {
           channelPermissions={ws.channelPermissions[activeCh.name]}
           onRequestChannelPermissions={ws.requestChannelPermissions}
           onSetChannelPermission={ws.setChannelPermission}
+          onSetSlowmode={ws.setChannelSlowmode}
+          onSetDescription={ws.setChannelDescription}
           isAdmin={ws.serverInfo?.role === "admin"}
         />
       )}
@@ -1063,6 +1099,8 @@ export default function App() {
           onRequestRetentionStats={ws.requestRetentionStats}
           onPurgeMessages={ws.purgeMessages}
           onExportMessages={ws.exportMessages}
+          serverBaseUrl={serverBaseUrl}
+          currentUserId={ws.serverInfo?.userId || ""}
         />
       )}
 

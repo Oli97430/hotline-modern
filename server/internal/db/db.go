@@ -3,6 +3,7 @@ package db
 import (
 	"crypto/rand"
 	"database/sql"
+	"os"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -11,6 +12,7 @@ import (
 
 type DB struct {
 	conn *sql.DB
+	path string
 }
 
 type User struct {
@@ -22,11 +24,13 @@ type User struct {
 }
 
 type Channel struct {
-	Name      string
-	Topic     string
-	CreatedBy string
-	Password  string
-	CreatedAt time.Time
+	Name            string
+	Topic           string
+	CreatedBy       string
+	Password        string
+	SlowmodeSeconds int
+	Description     string
+	CreatedAt       time.Time
 }
 
 type Message struct {
@@ -51,11 +55,29 @@ func Open(path string) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{conn: conn}, nil
+	return &DB{conn: conn, path: path}, nil
 }
 
 func (d *DB) Close() error {
 	return d.conn.Close()
+}
+
+// BackupTo copies the database file to destPath after checkpointing the WAL.
+func (d *DB) BackupTo(destPath string) error {
+	_, err := d.conn.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+	if err != nil {
+		return err
+	}
+	src, err := os.ReadFile(d.path)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(destPath, src, 0644)
+}
+
+// Path returns the filesystem path of the database file.
+func (d *DB) Path() string {
+	return d.path
 }
 
 func migrate(conn *sql.DB) error {
@@ -168,6 +190,10 @@ func migrate(conn *sql.DB) error {
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
 
+	// Migration: add slowmode_seconds and description columns to channels
+	conn.Exec("ALTER TABLE channels ADD COLUMN slowmode_seconds INTEGER NOT NULL DEFAULT 0")
+	conn.Exec("ALTER TABLE channels ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+
 	// Migration: channel_permissions table
 	conn.Exec(`CREATE TABLE IF NOT EXISTS channel_permissions (
 		channel TEXT NOT NULL,
@@ -189,6 +215,17 @@ func migrate(conn *sql.DB) error {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
 	conn.Exec(`CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)`)
+
+	// Migration: user_notes table for admin notes on users
+	conn.Exec(`CREATE TABLE IF NOT EXISTS user_notes (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		target_key TEXT NOT NULL,
+		author_key TEXT NOT NULL,
+		author_name TEXT NOT NULL DEFAULT '',
+		content TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_notes_target ON user_notes(target_key)`)
 
 	return nil
 }
@@ -225,7 +262,7 @@ func (d *DB) HasAnyUser() (bool, error) {
 }
 
 func (d *DB) GetChannels() ([]Channel, error) {
-	rows, err := d.conn.Query("SELECT name, topic, created_by, password, created_at FROM channels")
+	rows, err := d.conn.Query("SELECT name, topic, created_by, password, slowmode_seconds, description, created_at FROM channels")
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +271,7 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	var channels []Channel
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.Name, &c.Topic, &c.CreatedBy, &c.Password, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.Name, &c.Topic, &c.CreatedBy, &c.Password, &c.SlowmodeSeconds, &c.Description, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		channels = append(channels, c)
@@ -296,6 +333,28 @@ func (d *DB) CheckChannelPassword(name, password string) (bool, error) {
 func (d *DB) SetChannelTopic(name, topic string) error {
 	_, err := d.conn.Exec("UPDATE channels SET topic = ? WHERE name = ?", topic, name)
 	return err
+}
+
+func (d *DB) SetChannelSlowmode(channel string, seconds int) error {
+	_, err := d.conn.Exec("UPDATE channels SET slowmode_seconds = ? WHERE name = ?", seconds, channel)
+	return err
+}
+
+func (d *DB) GetChannelSlowmode(channel string) (int, error) {
+	var seconds int
+	err := d.conn.QueryRow("SELECT slowmode_seconds FROM channels WHERE name = ?", channel).Scan(&seconds)
+	return seconds, err
+}
+
+func (d *DB) SetChannelDescription(channel, description string) error {
+	_, err := d.conn.Exec("UPDATE channels SET description = ? WHERE name = ?", description, channel)
+	return err
+}
+
+func (d *DB) GetChannelDescription(channel string) (string, error) {
+	var desc string
+	err := d.conn.QueryRow("SELECT description FROM channels WHERE name = ?", channel).Scan(&desc)
+	return desc, err
 }
 
 func (d *DB) DeleteChannel(name string) error {
@@ -1019,6 +1078,15 @@ type ChannelPermission struct {
 	Allowed    bool
 }
 
+type UserNote struct {
+	ID         int
+	TargetKey  string
+	AuthorKey  string
+	AuthorName string
+	Content    string
+	CreatedAt  string
+}
+
 func (d *DB) SetChannelPermission(channel, role, permission string, allowed bool) error {
 	val := 0
 	if allowed {
@@ -1073,4 +1141,40 @@ func (d *DB) CheckChannelPermission(channel, role, permission string) *bool {
 	}
 	result := allowed == 1
 	return &result
+}
+
+// User note management
+
+func (d *DB) AddUserNote(targetKey, authorKey, authorName, content string) error {
+	_, err := d.conn.Exec(
+		"INSERT INTO user_notes (target_key, author_key, author_name, content) VALUES (?, ?, ?, ?)",
+		targetKey, authorKey, authorName, content,
+	)
+	return err
+}
+
+func (d *DB) GetUserNotes(targetKey string) ([]UserNote, error) {
+	rows, err := d.conn.Query(
+		"SELECT id, target_key, author_key, author_name, content, created_at FROM user_notes WHERE target_key = ? ORDER BY created_at DESC",
+		targetKey,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var notes []UserNote
+	for rows.Next() {
+		var n UserNote
+		if err := rows.Scan(&n.ID, &n.TargetKey, &n.AuthorKey, &n.AuthorName, &n.Content, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		notes = append(notes, n)
+	}
+	return notes, nil
+}
+
+func (d *DB) DeleteUserNote(id int) error {
+	_, err := d.conn.Exec("DELETE FROM user_notes WHERE id = ?", id)
+	return err
 }

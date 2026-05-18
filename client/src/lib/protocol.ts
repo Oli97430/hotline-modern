@@ -46,6 +46,8 @@ export interface ChannelInfo {
   topic: string;
   userCount: number;
   hasPassword: boolean;
+  slowmode?: number;
+  description?: string;
 }
 
 export interface ChannelListPayload {

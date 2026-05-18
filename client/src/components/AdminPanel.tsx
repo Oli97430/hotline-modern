@@ -9,6 +9,7 @@ import {
   Settings,
   Shield,
   Trash2,
+  Upload,
   Users,
   UserX,
   VolumeX,
@@ -48,6 +49,8 @@ interface AdminPanelProps {
   onRequestRetentionStats: () => void;
   onPurgeMessages: (channel: string, olderThanDays: number) => void;
   onExportMessages: (channel: string, limit: number) => void;
+  serverBaseUrl: string;
+  currentUserId: string;
 }
 
 function auditActionIcon(action: string) {
@@ -100,6 +103,8 @@ export function AdminPanel({
   onRequestRetentionStats,
   onPurgeMessages,
   onExportMessages,
+  serverBaseUrl,
+  currentUserId,
 }: AdminPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("settings");
@@ -122,6 +127,13 @@ export function AdminPanel({
   const [purgeOlderThan, setPurgeOlderThan] = useState(30);
   const [showPurgeConfirm, setShowPurgeConfirm] = useState(false);
   const [exportChannel, setExportChannel] = useState("");
+
+  // Backup/restore state
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [restoreResult, setRestoreResult] = useState<string | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
   useEffect(() => {
     onRequestBanList();
@@ -157,6 +169,43 @@ export function AdminPanel({
     onRenameChannel(oldName, renameValue.trim());
     setRenaming(null);
     setRenameValue("");
+  };
+
+  const handleDownloadBackup = () => {
+    setBackupLoading(true);
+    const url = `${serverBaseUrl}/backup?key=${encodeURIComponent(currentUserId)}`;
+    // Use a hidden link to trigger download
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => setBackupLoading(false), 3000);
+  };
+
+  const handleRestore = async () => {
+    if (!restoreFile) return;
+    setRestoreLoading(true);
+    setRestoreResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("backup", restoreFile);
+      const url = `${serverBaseUrl}/restore?key=${encodeURIComponent(currentUserId)}`;
+      const resp = await fetch(url, { method: "POST", body: formData });
+      if (resp.ok) {
+        setRestoreResult(t("backup.restored"));
+      } else {
+        const text = await resp.text();
+        setRestoreResult(text || "Restore failed");
+      }
+    } catch {
+      setRestoreResult("Restore failed");
+    } finally {
+      setRestoreLoading(false);
+      setShowRestoreConfirm(false);
+      setRestoreFile(null);
+    }
   };
 
   const formatDate = (ms: number) =>
@@ -241,6 +290,71 @@ export function AdminPanel({
                 {saved ? <Check size={14} /> : <Save size={14} />}
                 {saved ? t("admin.saved") : t("admin.save")}
               </button>
+
+              {/* Backup section */}
+              <div className="admin-section-label" style={{ marginTop: 20 }}>
+                <Database size={13} /> {t("backup.title")}
+              </div>
+              <div className="backup-section">
+                <button
+                  className="admin-btn-sm accent"
+                  onClick={handleDownloadBackup}
+                  disabled={backupLoading}
+                >
+                  <Download size={12} />
+                  {backupLoading ? t("backup.downloading") : t("backup.download")}
+                </button>
+
+                <div className="backup-restore">
+                  <div className="admin-section-label" style={{ marginTop: 12 }}>
+                    <Upload size={13} /> {t("backup.restore")}
+                  </div>
+                  <p className="admin-ban-info">{t("backup.restoreWarning")}</p>
+                  <div className="backup-restore-form">
+                    <input
+                      type="file"
+                      accept=".zip"
+                      onChange={(e) => {
+                        setRestoreFile(e.target.files?.[0] || null);
+                        setRestoreResult(null);
+                        setShowRestoreConfirm(false);
+                      }}
+                      className="backup-file-input"
+                    />
+                    {restoreFile && !showRestoreConfirm && (
+                      <button
+                        className="admin-btn-sm danger"
+                        onClick={() => setShowRestoreConfirm(true)}
+                        disabled={restoreLoading}
+                      >
+                        <Upload size={12} />
+                        {restoreLoading ? t("backup.restoring") : t("backup.restoreBtn")}
+                      </button>
+                    )}
+                    {showRestoreConfirm && (
+                      <div className="retention-confirm">
+                        <p className="retention-confirm-text">{t("backup.confirmRestore")}</p>
+                        <div className="retention-confirm-actions">
+                          <button
+                            className="admin-btn-sm danger"
+                            onClick={handleRestore}
+                            disabled={restoreLoading}
+                          >
+                            <Upload size={12} />
+                            {restoreLoading ? t("backup.restoring") : t("backup.restoreBtn")}
+                          </button>
+                          <button className="admin-btn-sm" onClick={() => setShowRestoreConfirm(false)}>
+                            {t("channel.cancel")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {restoreResult && (
+                      <div className="backup-result">{restoreResult}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </>
           )}
 
@@ -980,6 +1094,50 @@ export function AdminPanel({
         .retention-confirm-actions {
           display: flex;
           gap: 8px;
+        }
+
+        /* Backup section styles */
+        .backup-section {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .backup-restore {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .backup-restore-form {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .backup-file-input {
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .backup-file-input::file-selector-button {
+          padding: 4px 10px;
+          font-size: 11px;
+          font-weight: 500;
+          border-radius: var(--radius-sm);
+          color: var(--text-secondary);
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          cursor: pointer;
+          margin-right: 8px;
+        }
+        .backup-file-input::file-selector-button:hover {
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+        }
+        .backup-result {
+          font-size: 12px;
+          padding: 8px 12px;
+          border-radius: var(--radius-sm);
+          background: rgba(16,185,129,0.1);
+          color: #10b981;
+          font-weight: 500;
         }
       `}</style>
     </div>

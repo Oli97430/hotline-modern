@@ -66,6 +66,22 @@ func (m *Manager) SetTopic(channel, topic string) error {
 	return m.db.SetChannelTopic(channel, topic)
 }
 
+func (m *Manager) SetChannelSlowmode(channel string, seconds int) error {
+	return m.db.SetChannelSlowmode(channel, seconds)
+}
+
+func (m *Manager) GetChannelSlowmode(channel string) (int, error) {
+	return m.db.GetChannelSlowmode(channel)
+}
+
+func (m *Manager) SetChannelDescription(channel, description string) error {
+	return m.db.SetChannelDescription(channel, description)
+}
+
+func (m *Manager) GetChannelDescription(channel string) (string, error) {
+	return m.db.GetChannelDescription(channel)
+}
+
 func (m *Manager) DeleteChannel(name string) error {
 	return m.db.DeleteChannel(name)
 }
@@ -225,4 +241,15 @@ func (m *Manager) DeleteChannelPermission(channel, role, permission string) erro
 }
 func (m *Manager) CheckChannelPermission(channel, role, permission string) *bool {
 	return m.db.CheckChannelPermission(channel, role, permission)
+}
+
+// User note pass-through
+func (m *Manager) AddUserNote(targetKey, authorKey, authorName, content string) error {
+	return m.db.AddUserNote(targetKey, authorKey, authorName, content)
+}
+func (m *Manager) GetUserNotes(targetKey string) ([]db.UserNote, error) {
+	return m.db.GetUserNotes(targetKey)
+}
+func (m *Manager) DeleteUserNote(id int) error {
+	return m.db.DeleteUserNote(id)
 }

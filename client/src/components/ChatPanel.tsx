@@ -25,6 +25,7 @@ interface ChatPanelProps {
   messages: ChatMessage[];
   activeChannel: string;
   channelTopic?: string;
+  channelSlowmode?: number;
   currentUserId: string;
   currentRole?: string;
   typingUsers: TypingUser[];
@@ -70,6 +71,7 @@ export function ChatPanel({
   messages,
   activeChannel,
   channelTopic,
+  channelSlowmode,
   currentUserId,
   currentRole,
   typingUsers,
@@ -119,6 +121,8 @@ export function ChatPanel({
   const [newMsgCount, setNewMsgCount] = useState(0);
   const [stickyDate, setStickyDate] = useState<string | null>(null);
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
+  const [cooldownEnd, setCooldownEnd] = useState(0);
+  const [cooldownLeft, setCooldownLeft] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingThrottleRef = useRef(0);
@@ -203,6 +207,31 @@ export function ChatPanel({
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
   }, [channelMessages, isScrolledUp, lastReadStorageKey]);
+
+  // Slowmode cooldown timer
+  useEffect(() => {
+    if (cooldownEnd <= Date.now()) {
+      setCooldownLeft(0);
+      return;
+    }
+    setCooldownLeft(Math.ceil((cooldownEnd - Date.now()) / 1000));
+    const interval = setInterval(() => {
+      const remaining = Math.ceil((cooldownEnd - Date.now()) / 1000);
+      if (remaining <= 0) {
+        setCooldownLeft(0);
+        clearInterval(interval);
+      } else {
+        setCooldownLeft(remaining);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, [cooldownEnd]);
+
+  // Reset cooldown when channel changes
+  useEffect(() => {
+    setCooldownEnd(0);
+    setCooldownLeft(0);
+  }, [activeChannel]);
 
   // Scroll to top = load more history; track scroll position + sticky date
   const handleScroll = useCallback(() => {
@@ -290,12 +319,17 @@ export function ChatPanel({
   const handleSend = () => {
     const text = input.trim();
     if (!text) return;
+    if (cooldownLeft > 0) return;
 
     if (text.startsWith("/") && onSlashCommand) {
       const parts = text.slice(1).split(/\s+/);
       onSlashCommand(parts[0], parts.slice(1));
     } else {
       onSendMessage(activeChannel, text);
+      // Start cooldown if slowmode is active
+      if (channelSlowmode && channelSlowmode > 0) {
+        setCooldownEnd(Date.now() + channelSlowmode * 1000);
+      }
     }
     setInput("");
   };
@@ -398,6 +432,9 @@ export function ChatPanel({
           <span className="chat-topic" onClick={onChannelSettings} style={{ cursor: "pointer" }}>
             {channelTopic}
           </span>
+        )}
+        {!dmMode && channelSlowmode !== undefined && channelSlowmode > 0 && (
+          <span className="chat-slowmode-badge">{t("slowmode.active", { seconds: channelSlowmode })}</span>
         )}
         {dmMode && (
           <div style={{ position: "relative", marginLeft: 8 }}>
@@ -643,6 +680,9 @@ export function ChatPanel({
             />
           )}
         </div>
+        {cooldownLeft > 0 && (
+          <span className="chat-cooldown-badge">{t("slowmode.wait", { seconds: cooldownLeft })}</span>
+        )}
         {!input.trim() && canUpload ? (
           <button
             className="chat-mic-btn"
@@ -653,7 +693,7 @@ export function ChatPanel({
             <Mic size={18} />
           </button>
         ) : (
-          <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim()} aria-label={t("chat.send")}>
+          <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim() || cooldownLeft > 0} aria-label={t("chat.send")}>
             <Send size={18} />
           </button>
         )}
@@ -1022,6 +1062,25 @@ export function ChatPanel({
           font-size: 11px;
           color: var(--text-muted);
           font-style: italic;
+        }
+        .chat-slowmode-badge {
+          font-size: 11px;
+          color: var(--warning, #e09f3e);
+          background: rgba(224, 159, 62, 0.12);
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-weight: 600;
+          white-space: nowrap;
+          flex-shrink: 0;
+        }
+        .chat-cooldown-badge {
+          font-size: 11px;
+          color: var(--warning, #e09f3e);
+          font-weight: 600;
+          white-space: nowrap;
+          flex-shrink: 0;
+          padding: 0 4px;
+          animation: fadeIn 0.15s ease;
         }
       `}</style>
     </div>

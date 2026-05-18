@@ -1,7 +1,7 @@
-import { Copy, Edit3, Eye, Globe, MessageCircle, MessageSquare, Save, Shield, Star, User, X } from "lucide-react";
-import { useState } from "react";
+import { Copy, Edit3, Eye, Globe, MessageCircle, MessageSquare, Save, Shield, Star, StickyNote, Trash2, User, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { UserProfile } from "../hooks/useWebSocket";
+import type { UserNote, UserProfile } from "../hooks/useWebSocket";
 import { StatusDot } from "./StatusSelector";
 import { UserAvatar } from "./UserAvatar";
 
@@ -18,6 +18,11 @@ interface UserProfileCardProps {
   isSelf: boolean;
   profile?: UserProfile | null;
   onUpdateProfile?: (bio: string, customStatus: string, pronouns: string, timezone: string) => void;
+  viewerRole?: string;
+  userNotes?: UserNote[];
+  onAddNote?: (targetUserId: string, content: string) => void;
+  onDeleteNote?: (noteId: number, targetUserId: string) => void;
+  onRequestNotes?: (targetUserId: string) => void;
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -49,6 +54,11 @@ export function UserProfileCard({
   isSelf,
   profile,
   onUpdateProfile,
+  viewerRole,
+  userNotes,
+  onAddNote,
+  onDeleteNote,
+  onRequestNotes,
 }: UserProfileCardProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -57,6 +67,14 @@ export function UserProfileCard({
   const [editPronouns, setEditPronouns] = useState(profile?.pronouns || "");
   const [editTimezone, setEditTimezone] = useState(profile?.timezone || "");
   const [saved, setSaved] = useState(false);
+  const [noteText, setNoteText] = useState("");
+  const isViewerAdmin = viewerRole === "admin" || viewerRole === "operator";
+
+  useEffect(() => {
+    if (isViewerAdmin && onRequestNotes) {
+      onRequestNotes(user.userId);
+    }
+  }, [user.userId, isViewerAdmin, onRequestNotes]);
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(user.userId);
@@ -253,6 +271,63 @@ export function UserProfileCard({
                 </button>
               </>
             )}
+          </div>
+        )}
+
+        {isViewerAdmin && (
+          <div className="profile-notes-section">
+            <div className="profile-notes-header">
+              <StickyNote size={12} />
+              <span>{t("notes.title")}</span>
+            </div>
+            {(!userNotes || userNotes.length === 0) && (
+              <div className="profile-notes-empty">{t("notes.empty")}</div>
+            )}
+            {userNotes && userNotes.length > 0 && (
+              <div className="profile-notes-list">
+                {userNotes.map((note) => (
+                  <div key={note.id} className="profile-note-item">
+                    <div className="profile-note-meta">
+                      <span className="profile-note-author">{t("notes.by", { name: note.authorName })}</span>
+                      <span className="profile-note-date">
+                        {new Date(note.createdAt).toLocaleDateString()}
+                      </span>
+                      <button
+                        className="profile-note-delete"
+                        title={t("notes.delete")}
+                        onClick={() => onDeleteNote?.(note.id, user.userId)}
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    </div>
+                    <div className="profile-note-content">{note.content}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="profile-note-add">
+              <textarea
+                className="profile-note-textarea"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder={t("notes.placeholder")}
+                maxLength={500}
+                rows={2}
+              />
+              <button
+                className="profile-action-btn primary profile-note-submit"
+                disabled={!noteText.trim()}
+                onClick={() => {
+                  if (noteText.trim()) {
+                    onAddNote?.(user.userId, noteText.trim());
+                    setNoteText("");
+                  }
+                }}
+              >
+                <StickyNote size={14} />
+                {t("notes.add")}
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -463,6 +538,104 @@ export function UserProfileCard({
           padding: 4px 0;
           text-align: center;
           font-weight: 500;
+        }
+        .profile-notes-section {
+          border-top: 1px solid var(--border);
+          margin-top: 8px;
+          padding-top: 8px;
+        }
+        .profile-notes-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+        }
+        .profile-notes-empty {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-style: italic;
+          padding: 4px 0;
+        }
+        .profile-notes-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          max-height: 140px;
+          overflow-y: auto;
+          margin-bottom: 6px;
+        }
+        .profile-note-item {
+          background: var(--bg-tertiary);
+          border-radius: var(--radius-sm);
+          padding: 6px 8px;
+        }
+        .profile-note-meta {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 2px;
+        }
+        .profile-note-author {
+          font-size: 10px;
+          font-weight: 600;
+          color: var(--text-muted);
+        }
+        .profile-note-date {
+          font-size: 9px;
+          color: var(--text-muted);
+          opacity: 0.7;
+        }
+        .profile-note-delete {
+          margin-left: auto;
+          color: var(--text-muted);
+          opacity: 0.5;
+          transition: opacity var(--transition-fast), color var(--transition-fast);
+          padding: 2px;
+        }
+        .profile-note-delete:hover {
+          opacity: 1;
+          color: var(--danger);
+        }
+        .profile-note-content {
+          font-size: 11px;
+          color: var(--text-secondary);
+          line-height: 1.4;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        .profile-note-add {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .profile-note-textarea {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          padding: 6px 8px;
+          font-size: 11px;
+          color: var(--text-primary);
+          outline: none;
+          resize: vertical;
+          font-family: inherit;
+          transition: border-color var(--transition-fast);
+        }
+        .profile-note-textarea:focus {
+          border-color: var(--accent);
+        }
+        .profile-note-submit {
+          align-self: flex-end;
+          padding: 4px 10px !important;
+          font-size: 11px !important;
+        }
+        .profile-note-submit:disabled {
+          opacity: 0.4;
+          pointer-events: none;
         }
       `}</style>
     </>

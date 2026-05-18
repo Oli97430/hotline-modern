@@ -165,6 +165,15 @@ export interface ChannelPermissionData {
   allowed: boolean;
 }
 
+export interface UserNote {
+  id: number;
+  targetKey: string;
+  authorKey: string;
+  authorName: string;
+  content: string;
+  createdAt: string;
+}
+
 export interface RetentionStats {
   totalMessages: number;
   byChannel: ChannelMessageCount[];
@@ -190,7 +199,7 @@ export interface UseWebSocketReturn {
   messages: ChatMessage[];
   dmMessages: DMMessage[];
   typingUsers: TypingUser[];
-  channels: { name: string; topic: string; userCount: number; hasPassword: boolean }[];
+  channels: { name: string; topic: string; userCount: number; hasPassword: boolean; slowmode?: number; description?: string }[];
   users: {
     userId: string;
     nickname: string;
@@ -216,6 +225,7 @@ export interface UseWebSocketReturn {
   profileCache: Record<string, UserProfile>;
   retentionStats: RetentionStats | null;
   voiceState: VoiceStatePayload | null;
+  userNotes: Record<string, UserNote[]>;
   channelPermissions: Record<string, ChannelPermissionData[]>;
   wsRef: React.RefObject<WebSocket | null>;
   connect: (address: string, nickname: string) => void;
@@ -270,6 +280,11 @@ export interface UseWebSocketReturn {
   exportMessages: (channel: string, limit: number) => void;
   requestChannelPermissions: (channel: string) => void;
   setChannelPermission: (channel: string, role: string, permission: string, allowed: boolean | null) => void;
+  setChannelSlowmode: (channel: string, seconds: number) => void;
+  setChannelDescription: (channel: string, description: string) => void;
+  addUserNote: (targetUserId: string, content: string) => void;
+  requestUserNotes: (targetUserId: string) => void;
+  deleteUserNote: (noteId: number, targetUserId: string) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -319,6 +334,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [retentionStats, setRetentionStats] = useState<RetentionStats | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceStatePayload | null>(null);
   const [channelPermissions, setChannelPermissions] = useState<Record<string, ChannelPermissionData[]>>({});
+  const [userNotes, setUserNotes] = useState<Record<string, UserNote[]>>({});
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -715,6 +731,14 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           }));
           break;
         }
+        case "user_note.list": {
+          const payload = msg.payload as { targetUserId: string; notes: UserNote[] };
+          setUserNotes((prev) => ({
+            ...prev,
+            [payload.targetUserId]: payload.notes || [],
+          }));
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -821,6 +845,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setProfileCache({});
     setVoiceState(null);
     setChannelPermissions({});
+    setUserNotes({});
   }, []);
 
   const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
@@ -1171,6 +1196,41 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     [wsSend],
   );
 
+  const setChannelSlowmode = useCallback(
+    (channel: string, seconds: number) => {
+      wsSend("channel.slowmode", { channel, seconds });
+    },
+    [wsSend],
+  );
+
+  const setChannelDescription = useCallback(
+    (channel: string, description: string) => {
+      wsSend("channel.description", { channel, description });
+    },
+    [wsSend],
+  );
+
+  const addUserNote = useCallback(
+    (targetUserId: string, content: string) => {
+      wsSend("user_note.add", { targetUserId, content });
+    },
+    [wsSend],
+  );
+
+  const requestUserNotes = useCallback(
+    (targetUserId: string) => {
+      wsSend("user_note.list", { targetUserId });
+    },
+    [wsSend],
+  );
+
+  const deleteUserNote = useCallback(
+    (noteId: number, targetUserId: string) => {
+      wsSend("user_note.delete", { noteId, targetUserId });
+    },
+    [wsSend],
+  );
+
   const requestProfile = useCallback(
     (userId: string) => {
       wsSend("profile.get", { userId });
@@ -1277,9 +1337,15 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     requestProfile,
     updateProfile,
     voiceState,
+    userNotes,
+    addUserNote,
+    requestUserNotes,
+    deleteUserNote,
     channelPermissions,
     requestChannelPermissions,
     setChannelPermission,
+    setChannelSlowmode,
+    setChannelDescription,
     wsRef,
   };
 }

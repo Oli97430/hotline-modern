@@ -1,16 +1,18 @@
-import { Hash, Lock, Shield, Users } from "lucide-react";
+import { Clock, Hash, Lock, Shield, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChannelPermissionData } from "../hooks/useWebSocket";
 
 interface ChannelSettingsModalProps {
-  channel: { name: string; topic: string; userCount: number; hasPassword?: boolean };
+  channel: { name: string; topic: string; userCount: number; hasPassword?: boolean; slowmode?: number; description?: string };
   onSetTopic: (channel: string, topic: string) => void;
   onClose: () => void;
   canEdit: boolean;
   channelPermissions?: ChannelPermissionData[];
   onRequestChannelPermissions?: (channel: string) => void;
   onSetChannelPermission?: (channel: string, role: string, permission: string, allowed: boolean | null) => void;
+  onSetSlowmode?: (channel: string, seconds: number) => void;
+  onSetDescription?: (channel: string, description: string) => void;
   isAdmin?: boolean;
 }
 
@@ -31,6 +33,16 @@ function cycleState(current: PermState): PermState {
   return "default";
 }
 
+const SLOWMODE_OPTIONS = [
+  { value: 0, label: "slowmode.off" },
+  { value: 5, label: "5s" },
+  { value: 10, label: "10s" },
+  { value: 30, label: "30s" },
+  { value: 60, label: "1min" },
+  { value: 300, label: "5min" },
+  { value: 900, label: "15min" },
+] as const;
+
 export function ChannelSettingsModal({
   channel,
   onSetTopic,
@@ -39,10 +51,14 @@ export function ChannelSettingsModal({
   channelPermissions,
   onRequestChannelPermissions,
   onSetChannelPermission,
+  onSetSlowmode,
+  onSetDescription,
   isAdmin,
 }: ChannelSettingsModalProps) {
   const { t } = useTranslation();
   const [topic, setTopic] = useState(channel.topic);
+  const [description, setDescription] = useState(channel.description || "");
+  const [slowmode, setSlowmode] = useState(channel.slowmode || 0);
 
   useEffect(() => {
     if (isAdmin && onRequestChannelPermissions) {
@@ -54,8 +70,18 @@ export function ChannelSettingsModal({
     if (topic !== channel.topic) {
       onSetTopic(channel.name, topic.trim());
     }
+    if (description !== (channel.description || "") && onSetDescription) {
+      onSetDescription(channel.name, description.trim());
+    }
+    if (slowmode !== (channel.slowmode || 0) && onSetSlowmode) {
+      onSetSlowmode(channel.name, slowmode);
+    }
     onClose();
   };
+
+  const hasChanges = topic !== channel.topic
+    || description !== (channel.description || "")
+    || slowmode !== (channel.slowmode || 0);
 
   const handlePermClick = (role: string, permission: string) => {
     if (!onSetChannelPermission || !channelPermissions) return;
@@ -111,6 +137,43 @@ export function ChannelSettingsModal({
           )}
         </div>
 
+        <div className="chsettings-field">
+          <label>{t("channel.description")}</label>
+          {canEdit ? (
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder={t("channel.descPlaceholder")}
+              maxLength={500}
+              rows={3}
+            />
+          ) : (
+            <div className="chsettings-topic-display">
+              {channel.description || <em className="text-muted">{t("channel.descPlaceholder")}</em>}
+            </div>
+          )}
+        </div>
+
+        {canEdit && (
+          <div className="chsettings-field">
+            <label>
+              <Clock size={12} style={{ marginRight: 4, verticalAlign: "middle" }} />
+              {t("slowmode.label")}
+            </label>
+            <select
+              className="chsettings-select"
+              value={slowmode}
+              onChange={(e) => setSlowmode(Number(e.target.value))}
+            >
+              {SLOWMODE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.value === 0 ? t("slowmode.off") : opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {isAdmin && channelPermissions && (
           <div className="chsettings-field">
             <label>
@@ -154,7 +217,7 @@ export function ChannelSettingsModal({
             {canEdit ? t("channel.cancel") : t("channelSettings.close")}
           </button>
           {canEdit && (
-            <button className="modal-btn-submit" onClick={handleSave} disabled={topic === channel.topic}>
+            <button className="modal-btn-submit" onClick={handleSave} disabled={!hasChanges}>
               {t("channelSettings.save")}
             </button>
           )}
@@ -241,6 +304,21 @@ export function ChannelSettingsModal({
           font-size: 13px;
           color: var(--text-primary);
           line-height: 1.4;
+        }
+        .chsettings-select {
+          padding: 8px 12px;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius);
+          color: var(--text-primary);
+          font-size: 13px;
+          font-family: inherit;
+          cursor: pointer;
+          outline: none;
+          transition: border-color 0.2s;
+        }
+        .chsettings-select:focus {
+          border-color: var(--accent);
         }
         .chsettings-actions {
           display: flex;
