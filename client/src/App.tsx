@@ -36,6 +36,9 @@ import { useChannelMute } from "./hooks/useChannelMute";
 import { useIdleDetection } from "./hooks/useIdleDetection";
 import { useTabNotification } from "./hooks/useTabNotification";
 import { useCompactMode } from "./hooks/useCompactMode";
+import { useVoiceChat } from "./hooks/useVoiceChat";
+import { useNotifications } from "./hooks/useNotifications";
+import { shouldNotify as checkNotifFilter, loadNotifFilters as loadNotifFilterCfg } from "./components/NotificationFilters";
 import { getFileAuthHeaders, getBoxPublicKeyHex } from "./lib/crypto";
 import { PanelRightClose, PanelRightOpen, Rows3, StretchHorizontal, Palette, TrendingUp, Menu, Users as UsersIcon, Clock, Smile as SmileIcon, Filter } from "lucide-react";
 import { ResizeDivider } from "./components/ResizeDivider";
@@ -104,6 +107,15 @@ export default function App() {
   const { mutedChannels, toggleMute, isMuted } = useChannelMute();
   const { compact, toggleCompact } = useCompactMode();
   const { toasts, addToast, dismissToast } = useToasts();
+
+  const voice = useVoiceChat({
+    wsRef: ws.wsRef,
+    currentUserId: ws.serverInfo?.userId || "",
+  });
+  const { notify, permissionGranted: _notifPermOk, requestPermission: _reqNotifPerm } = useNotifications({
+    enabled: notifPrefs.desktopEnabled,
+    soundEnabled: notifPrefs.soundEnabled,
+  });
 
   // Tab title notifications
   const totalUnread = useMemo(() => {
@@ -250,22 +262,8 @@ export default function App() {
   const notifPrefsRef = useRef(notifPrefs);
   useEffect(() => { notifPrefsRef.current = notifPrefs; }, [notifPrefs]);
 
-  const playNotifSound = useCallback(() => {
-    if (!notifPrefsRef.current.soundEnabled) return;
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      osc.type = "sine";
-      gain.gain.value = 0.08;
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.15);
-    } catch {}
-  }, []);
+  const notifyRef = useRef(notify);
+  useEffect(() => { notifyRef.current = notify; }, [notify]);
 
   useEffect(() => {
     activeChannelRef.current = activeChannel;
@@ -280,56 +278,65 @@ export default function App() {
       const newMsgs = ws.messages.slice(prevMessagesLenRef.current);
       const currentChannel = activeChannelRef.current;
       const currentUserId = ws.serverInfo?.userId;
-      let hasUnread = false;
+      const myNickname = ws.users.find(u => u.userId === currentUserId)?.nickname || "";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cap1 = (window as any).Capacitor;
+      const isNativePlatform = !!cap1 && typeof cap1.isNativePlatform === "function" && cap1.isNativePlatform();
+      const filters = loadNotifFilterCfg();
+
       setUnreadCounts((prev) => {
         const counts = { ...prev };
         for (const msg of newMsgs) {
           if (msg.channel !== currentChannel && msg.userId !== currentUserId) {
             counts[msg.channel] = (counts[msg.channel] || 0) + 1;
-            if (!isMuted(msg.channel)) hasUnread = true;
           }
         }
         return counts;
       });
-      if (hasUnread) {
-        playNotifSound();
-        const last = newMsgs[newMsgs.length - 1];
-        if (last && last.userId !== currentUserId && !isMuted(last.channel)) {
-          showDesktopNotif(last.nickname, last.content);
-        }
+
+      // Send notifications for new messages from others
+      for (const msg of newMsgs) {
+        if (msg.userId === currentUserId) continue;
+        if (isMuted(msg.channel)) continue;
+        if (!checkNotifFilter(filters, msg.channel, msg.userId, msg.content, myNickname)) continue;
+        if (!isNativePlatform && document.hasFocus() && msg.channel === currentChannel) continue;
+
+        const title = `#${msg.channel} - ${msg.nickname}`;
+        const body = msg.content.length > 100 ? msg.content.slice(0, 100) + "..." : msg.content;
+        notifyRef.current(title, body, msg.id);
       }
     }
     prevMessagesLenRef.current = ws.messages.length;
-  }, [ws.messages, isMuted]);
+  }, [ws.messages, isMuted, ws.serverInfo?.userId, ws.users]);
 
   useEffect(() => {
     if (ws.dmMessages.length > prevDmLenRef.current) {
       const newDms = ws.dmMessages.slice(prevDmLenRef.current);
       const currentUserId = ws.serverInfo?.userId;
       const currentDM = activeDMRef.current;
+      const myNickname = ws.users.find(u => u.userId === currentUserId)?.nickname || "";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cap2 = (window as any).Capacitor;
+      const isNativePlatform = !!cap2 && typeof cap2.isNativePlatform === "function" && cap2.isNativePlatform();
+      const filters = loadNotifFilterCfg();
+
       for (const dm of newDms) {
+        if (dm.from === currentUserId) continue;
         const peerId = dm.from === currentUserId ? dm.to : dm.from;
-        if (peerId !== currentDM && dm.from !== currentUserId) {
+        if (peerId !== currentDM) {
           setDmUnreadCounts((prev) => ({ ...prev, [peerId]: (prev[peerId] || 0) + 1 }));
-          playNotifSound();
-          showDesktopNotif(dm.nickname, dm.content);
         }
+        // Check filters (use empty channel for DMs)
+        if (!checkNotifFilter(filters, "", dm.from, dm.content, myNickname)) continue;
+        if (!isNativePlatform && document.hasFocus() && peerId === currentDM) continue;
+
+        const title = dm.nickname;
+        const body = dm.content.length > 100 ? dm.content.slice(0, 100) + "..." : dm.content;
+        notifyRef.current(title, body, dm.id);
       }
     }
     prevDmLenRef.current = ws.dmMessages.length;
-  }, [ws.dmMessages]);
-
-  const showDesktopNotif = useCallback((title: string, body: string) => {
-    if (!notifPrefsRef.current.desktopEnabled) return;
-    if (!("Notification" in window)) return;
-    if (Notification.permission === "default") {
-      Notification.requestPermission();
-      return;
-    }
-    if (Notification.permission === "granted" && document.hidden) {
-      new Notification(title, { body, icon: "/logo.svg" });
-    }
-  }, []);
+  }, [ws.dmMessages, ws.serverInfo?.userId, ws.users]);
 
   const dmConversations = useMemo(() => {
     const currentUserId = ws.serverInfo?.userId;
@@ -635,6 +642,14 @@ export default function App() {
           onAdminPanel={() => setShowAdmin(true)}
           typingChannels={ws.typingUsers.filter(t => t.userId !== ws.serverInfo?.userId).map(t => t.channel).filter(Boolean)}
           onReorderChannels={handleChannelReorder}
+          voiceChannel={voice.voiceChannel}
+          voiceParticipants={voice.participants}
+          voiceIsMuted={voice.isMuted}
+          voiceIsDeafened={voice.isDeafened}
+          onJoinVoice={voice.joinVoice}
+          onLeaveVoice={voice.leaveVoice}
+          onToggleVoiceMute={voice.toggleMute}
+          onToggleVoiceDeafen={voice.toggleDeafen}
         />
         <div className="app-sidebar-bottom">
           <StatusSelector currentStatus={ws.users.find(u => u.userId === ws.serverInfo?.userId)?.status || "available"} onStatusChange={handleStatusChange} />

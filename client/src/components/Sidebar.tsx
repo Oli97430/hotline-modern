@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Hash, Plus, LogOut, MessageSquare, Trash2, Lock, BellOff, Settings } from "lucide-react";
 import { StatusDot } from "./StatusSelector";
+import { VoicePanel } from "./VoicePanel";
+import type { VoiceParticipant } from "../hooks/useVoiceChat";
 
 interface DMConversation {
   peerId: string;
@@ -30,6 +32,14 @@ interface SidebarProps {
   onAdminPanel?: () => void;
   typingChannels?: string[];
   onReorderChannels?: (order: string[]) => void;
+  voiceChannel?: string | null;
+  voiceParticipants?: VoiceParticipant[];
+  voiceIsMuted?: boolean;
+  voiceIsDeafened?: boolean;
+  onJoinVoice?: (channel: string) => void;
+  onLeaveVoice?: () => void;
+  onToggleVoiceMute?: () => void;
+  onToggleVoiceDeafen?: () => void;
 }
 
 export function Sidebar({
@@ -53,6 +63,14 @@ export function Sidebar({
   onAdminPanel,
   typingChannels,
   onReorderChannels,
+  voiceChannel,
+  voiceParticipants,
+  voiceIsMuted,
+  voiceIsDeafened,
+  onJoinVoice,
+  onLeaveVoice,
+  onToggleVoiceMute,
+  onToggleVoiceDeafen,
 }: SidebarProps) {
   const { t } = useTranslation();
 
@@ -143,6 +161,20 @@ export function Sidebar({
             </li>
           ))}
         </ul>
+
+        {onJoinVoice && (
+          <VoicePanel
+            voiceChannel={voiceChannel ?? null}
+            participants={voiceParticipants ?? []}
+            isMuted={voiceIsMuted ?? false}
+            isDeafened={voiceIsDeafened ?? false}
+            onJoin={onJoinVoice}
+            onLeave={onLeaveVoice ?? (() => {})}
+            onToggleMute={onToggleVoiceMute ?? (() => {})}
+            onToggleDeafen={onToggleVoiceDeafen ?? (() => {})}
+            activeChannel={activeChannel}
+          />
+        )}
 
         {dmConversations.length > 0 && (
           <>

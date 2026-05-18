@@ -213,6 +213,9 @@
   "tracker.removeTracker": "Remove",
   "tracker.addTrackerHint": "☝️ Add a tracker (e.g. http://192.168.1.x:9997)",
   "notif.newMessage": "New message from {{name}}",
+  "notif.newDM": "New message from {{name}}",
+  "notif.newMention": "{{name}} mentioned you in #{{channel}}",
+  "notif.permissionNeeded": "Enable notifications to stay updated",
   "agreement.title": "Server Agreement",
   "agreement.accept": "Accept",
   "agreement.decline": "Decline",
@@ -246,5 +249,14 @@
   "admin.permanent": "Permanent",
   "admin.expiresAt": "Expires",
   "profile.mute": "Mute",
-  "tracker.trackerPlaceholderNew": "http://tracker:9998"
+  "tracker.trackerPlaceholderNew": "http://tracker:9998",
+  "voice.joinChannel": "Join Voice",
+  "voice.leaveChannel": "Leave Voice",
+  "voice.mute": "Mute",
+  "voice.unmute": "Unmute",
+  "voice.deafen": "Deafen",
+  "voice.undeafen": "Undeafen",
+  "voice.speaking": "Speaking",
+  "voice.connected": "Voice Connected",
+  "voice.inChannel": "in {{channel}}"
 }

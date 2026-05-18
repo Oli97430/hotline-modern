@@ -121,6 +121,11 @@ export interface ServerCustomEmoji {
   url: string;
 }
 
+export interface VoiceStatePayload {
+  channel: string;
+  participants: { userId: string; nickname: string; muted: boolean; deafened: boolean }[];
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   serverInfo: ServerInfo | null;
@@ -140,6 +145,8 @@ export interface UseWebSocketReturn {
   adminMutes: AdminMute[];
   adminUsers: AdminUser[];
   customEmojis: ServerCustomEmoji[];
+  voiceState: VoiceStatePayload | null;
+  wsRef: React.RefObject<WebSocket | null>;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
   sendChat: (channel: string, content: string, msgType?: string) => void;
@@ -224,6 +231,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [adminMutes, setAdminMutes] = useState<AdminMute[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [customEmojis, setCustomEmojis] = useState<ServerCustomEmoji[]>([]);
+  const [voiceState, setVoiceState] = useState<VoiceStatePayload | null>(null);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -515,6 +523,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           setCustomEmojis(payload.emojis || []);
           break;
         }
+        case "voice.state": {
+          const payload = msg.payload as VoiceStatePayload;
+          setVoiceState(payload);
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -614,6 +627,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setUsers([]);
     setReadReceipts({});
     setCustomEmojis([]);
+    setVoiceState(null);
   }, []);
 
   const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
@@ -881,5 +895,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     requestCustomEmojis,
     addCustomEmoji,
     removeCustomEmoji,
+    voiceState,
+    wsRef,
   };
 }
