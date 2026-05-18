@@ -13,23 +13,46 @@ export interface TrackerServer {
 
 const TRACKER_URLS_KEY = "hotline-tracker-urls";
 const LAST_SERVER_IP_KEY = "hotline-last-server-ip";
+const BOOTSTRAP_CONFIG_KEY = "hotline-bootstrap-config";
 
-/** Check if running inside a native Capacitor app (Android/iOS) */
+/** GitHub-hosted config — always reachable, auto-updated by start-public.ps1 */
+const BOOTSTRAP_URL = "https://raw.githubusercontent.com/Oli97430/hotline-modern/master/public-config.json";
+
 function isNativeApp(): boolean {
   return Capacitor.isNativePlatform();
 }
 
-/**
- * Derive tracker URL from context:
- * - Browser: use window.location.hostname (works from LAN and localhost)
- * - Capacitor native: use last known server IP, or empty (user must configure)
- */
+/** Fetch public-config.json from GitHub to discover tracker URL */
+async function fetchBootstrapConfig(): Promise<string | null> {
+  try {
+    const resp = await fetch(`${BOOTSTRAP_URL}?t=${Date.now()}`, {
+      signal: AbortSignal.timeout(5000),
+      cache: "no-store",
+    });
+    if (!resp.ok) return null;
+    const config = await resp.json();
+    if (config.tracker) {
+      // Cache it locally for offline/fast startup
+      localStorage.setItem(BOOTSTRAP_CONFIG_KEY, JSON.stringify(config));
+      return config.tracker;
+    }
+  } catch {}
+  // Fallback to cached config
+  try {
+    const cached = localStorage.getItem(BOOTSTRAP_CONFIG_KEY);
+    if (cached) {
+      const config = JSON.parse(cached);
+      if (config.tracker) return config.tracker;
+    }
+  } catch {}
+  return null;
+}
+
 function getDefaultTracker(): string {
   if (isNativeApp()) {
-    // In a native app, localhost is the phone itself — useless
     const lastIp = localStorage.getItem(LAST_SERVER_IP_KEY);
     if (lastIp) return `http://${lastIp}:9997`;
-    return ""; // No default — user must add tracker via settings
+    return "";
   }
   const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
   return `http://${host}:9997`;
@@ -44,7 +67,6 @@ function loadTrackerUrls(): string[] {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        // Auto-fix: replace localhost URLs when NOT on localhost (LAN browser or native app)
         if (isRemote || isNativeApp()) {
           const target = isRemote ? currentHost : localStorage.getItem(LAST_SERVER_IP_KEY) || "";
           if (target) {
@@ -57,7 +79,6 @@ function loadTrackerUrls(): string[] {
             return fixed;
           }
         }
-        // Filter out localhost URLs in native apps
         if (isNativeApp()) {
           const valid = parsed.filter(
             (url: string) => !url.includes("//localhost") && !url.includes("//127.0.0.1"),
@@ -82,6 +103,26 @@ export function useTrackerServers() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const bootstrapDone = useRef(false);
+
+  // On mount: fetch bootstrap config from GitHub to discover public tracker
+  useEffect(() => {
+    if (bootstrapDone.current) return;
+    bootstrapDone.current = true;
+
+    fetchBootstrapConfig().then((publicTracker) => {
+      if (!publicTracker) return;
+
+      setTrackerUrls((prev) => {
+        // Add public tracker if not already present
+        const normalized = publicTracker.replace(/\/$/, "");
+        if (prev.some((u) => u === normalized)) return prev;
+        const updated = [...prev, normalized];
+        saveTrackerUrls(updated);
+        return updated;
+      });
+    });
+  }, []);
 
   const fetchServers = useCallback(async () => {
     if (trackerUrls.length === 0) return;
@@ -109,7 +150,7 @@ export function useTrackerServers() {
             }
           }
         } catch {}
-      })
+      }),
     );
 
     if (!anySuccess && trackerUrls.length > 0) {
@@ -121,19 +162,25 @@ export function useTrackerServers() {
     setLoading(false);
   }, [trackerUrls]);
 
-  const addTracker = useCallback((url: string) => {
-    const trimmed = url.trim().replace(/\/$/, "");
-    if (!trimmed || trackerUrls.includes(trimmed)) return;
-    const updated = [...trackerUrls, trimmed];
-    setTrackerUrls(updated);
-    saveTrackerUrls(updated);
-  }, [trackerUrls]);
+  const addTracker = useCallback(
+    (url: string) => {
+      const trimmed = url.trim().replace(/\/$/, "");
+      if (!trimmed || trackerUrls.includes(trimmed)) return;
+      const updated = [...trackerUrls, trimmed];
+      setTrackerUrls(updated);
+      saveTrackerUrls(updated);
+    },
+    [trackerUrls],
+  );
 
-  const removeTracker = useCallback((url: string) => {
-    const updated = trackerUrls.filter((u) => u !== url);
-    setTrackerUrls(updated);
-    saveTrackerUrls(updated);
-  }, [trackerUrls]);
+  const removeTracker = useCallback(
+    (url: string) => {
+      const updated = trackerUrls.filter((u) => u !== url);
+      setTrackerUrls(updated);
+      saveTrackerUrls(updated);
+    },
+    [trackerUrls],
+  );
 
   // Auto-refresh every 30s
   useEffect(() => {
