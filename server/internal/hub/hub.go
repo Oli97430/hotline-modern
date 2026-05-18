@@ -2,6 +2,7 @@ package hub
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hotline-modern/server/internal/auth"
 	"github.com/hotline-modern/server/internal/chat"
+	"github.com/hotline-modern/server/internal/db"
 	"github.com/hotline-modern/server/internal/permissions"
 )
 
@@ -114,6 +116,14 @@ const (
 	MsgVoiceICE              = "voice.ice"
 	MsgVoiceState            = "voice.state"
 	MsgVoiceMute             = "voice.mute"
+	MsgInviteCreate          = "invite.create"
+	MsgInviteList            = "invite.list"
+	MsgInviteDelete          = "invite.delete"
+	MsgProfileGet            = "profile.get"
+	MsgProfileUpdate         = "profile.update"
+	MsgProfileData           = "profile.data"
+	MsgProfileUpdated        = "profile.updated"
+	MsgAuditLog              = "audit.log"
 	MsgError                 = "error"
 )
 
@@ -460,6 +470,12 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleVoiceRelay(client, msg, MsgVoiceICE)
 	case MsgVoiceMute:
 		h.handleVoiceMute(client, msg)
+	case MsgInviteCreate:
+		h.handleInviteCreate(client, msg)
+	case MsgInviteList:
+		h.handleInviteList(client)
+	case MsgInviteDelete:
+		h.handleInviteDelete(client, msg)
 	}
 }
 
@@ -898,7 +914,9 @@ func (h *Hub) handleKick(client *Client, msg Message) {
 	target := h.pubKeyIndex[payload.UserId]
 	h.mu.RUnlock()
 
+	var targetNick string
 	if target != nil {
+		targetNick = target.Nickname
 		h.sendToClient(target, Message{
 			Type:      MsgError,
 			ID:        uuid.New().String(),
@@ -907,6 +925,8 @@ func (h *Hub) handleKick(client *Client, msg Message) {
 		})
 		target.Conn.Close()
 	}
+
+	h.chat.AddAuditLog("kick", client.PublicKey, client.Nickname, payload.UserId, targetNick, "")
 }
 
 func (h *Hub) handleBan(client *Client, msg Message) {
@@ -944,6 +964,8 @@ func (h *Hub) handleBan(client *Client, msg Message) {
 		})
 		target.Conn.Close()
 	}
+
+	h.chat.AddAuditLog("ban", client.PublicKey, client.Nickname, payload.UserId, targetNick, "")
 }
 
 func (h *Hub) handleOp(client *Client, msg Message) {
@@ -966,9 +988,11 @@ func (h *Hub) handleOp(client *Client, msg Message) {
 	}
 
 	// Use write lock since we're mutating c.Role
+	var targetNick string
 	h.mu.Lock()
 	if target := h.pubKeyIndex[payload.UserId]; target != nil {
 		target.Role = payload.Role
+		targetNick = target.Nickname
 	}
 	h.mu.Unlock()
 
@@ -981,6 +1005,8 @@ func (h *Hub) handleOp(client *Client, msg Message) {
 			"role":   payload.Role,
 		}),
 	})
+
+	h.chat.AddAuditLog("set_role", client.PublicKey, client.Nickname, payload.UserId, targetNick, payload.Role)
 }
 
 func (h *Hub) handleTopic(client *Client, msg Message) {
@@ -1166,6 +1192,8 @@ func (h *Hub) handleChannelDelete(client *Client, msg Message) {
 
 	h.chat.DeleteChannel(payload.Name)
 	h.broadcastChannelList()
+
+	h.chat.AddAuditLog("channel_delete", client.PublicKey, client.Nickname, "", "", payload.Name)
 }
 
 func (h *Hub) handleAdminSettings(client *Client, msg Message) {
@@ -1200,6 +1228,8 @@ func (h *Hub) handleAdminSettings(client *Client, msg Message) {
 			"motd":       h.motd,
 		}),
 	})
+
+	h.chat.AddAuditLog("settings_update", client.PublicKey, client.Nickname, "", "", "serverName="+h.serverName)
 }
 
 func (h *Hub) handleBanList(client *Client) {
@@ -1259,6 +1289,8 @@ func (h *Hub) handleUnban(client *Client, msg Message) {
 		Timestamp: time.Now().UnixMilli(),
 		Payload:   mustMarshal(map[string]interface{}{"publicKey": payload.PublicKey}),
 	})
+
+	h.chat.AddAuditLog("unban", client.PublicKey, client.Nickname, payload.PublicKey, "", "")
 }
 
 func (h *Hub) handleChatEdit(client *Client, msg Message) {
@@ -1780,8 +1812,10 @@ func (h *Hub) handleMute(client *Client, msg Message) {
 		return
 	}
 	// Notify the muted user if online
+	var targetNick string
 	h.mu.RLock()
 	if target := h.pubKeyIndex[payload.PublicKey]; target != nil {
+		targetNick = target.Nickname
 		reason := "You have been muted"
 		if payload.Reason != "" {
 			reason += ": " + payload.Reason
@@ -1791,6 +1825,12 @@ func (h *Hub) handleMute(client *Client, msg Message) {
 	h.mu.RUnlock()
 	// Send updated mute list back
 	h.handleMuteList(client)
+
+	muteDetails := payload.Reason
+	if payload.Duration > 0 {
+		muteDetails += fmt.Sprintf(" (%dmin)", payload.Duration)
+	}
+	h.chat.AddAuditLog("mute", client.PublicKey, client.Nickname, payload.PublicKey, targetNick, muteDetails)
 }
 
 func (h *Hub) handleUnmute(client *Client, msg Message) {
@@ -1806,6 +1846,8 @@ func (h *Hub) handleUnmute(client *Client, msg Message) {
 	}
 	h.chat.RemoveMute(payload.PublicKey)
 	h.handleMuteList(client)
+
+	h.chat.AddAuditLog("unmute", client.PublicKey, client.Nickname, payload.PublicKey, "", "")
 }
 
 func (h *Hub) handleMuteList(client *Client) {
@@ -1906,6 +1948,8 @@ func (h *Hub) handleRenameChannel(client *Client, msg Message) {
 	}
 	h.mu.Unlock()
 	h.broadcastChannelList()
+
+	h.chat.AddAuditLog("channel_rename", client.PublicKey, client.Nickname, "", "", payload.OldName+" → "+payload.NewName)
 }
 
 func (h *Hub) sendCustomEmojiList(client *Client) {
@@ -2169,6 +2213,101 @@ func (h *Hub) broadcastVoiceState(channel string) {
 		}
 	}
 	h.mu.RUnlock()
+}
+
+// ── Invite handlers ────────────────────────────────────────────────────
+
+func (h *Hub) handleInviteCreate(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		MaxUses     int `json:"maxUses"`
+		ExpireHours int `json:"expireHours"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	code, err := db.GenerateInviteCode()
+	if err != nil {
+		h.sendError(client, "failed to generate invite code")
+		return
+	}
+
+	var expiresAt *time.Time
+	if payload.ExpireHours > 0 {
+		t := time.Now().Add(time.Duration(payload.ExpireHours) * time.Hour)
+		expiresAt = &t
+	}
+
+	if err := h.chat.CreateInvite(code, client.PublicKey, payload.MaxUses, expiresAt); err != nil {
+		h.sendError(client, "failed to create invite")
+		return
+	}
+
+	h.sendInviteList(client)
+}
+
+func (h *Hub) handleInviteList(client *Client) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+	h.sendInviteList(client)
+}
+
+func (h *Hub) handleInviteDelete(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Code string `json:"code"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.DeleteInvite(payload.Code); err != nil {
+		h.sendError(client, "failed to delete invite")
+		return
+	}
+
+	h.sendInviteList(client)
+}
+
+func (h *Hub) sendInviteList(client *Client) {
+	invites, err := h.chat.GetInvites()
+	if err != nil {
+		h.sendError(client, "failed to get invites")
+		return
+	}
+
+	var list []map[string]interface{}
+	for _, inv := range invites {
+		entry := map[string]interface{}{
+			"code":      inv.Code,
+			"createdBy": inv.CreatedBy,
+			"maxUses":   inv.MaxUses,
+			"uses":      inv.Uses,
+			"createdAt": inv.CreatedAt.UnixMilli(),
+		}
+		if inv.ExpiresAt != nil {
+			entry["expiresAt"] = inv.ExpiresAt.UnixMilli()
+		}
+		list = append(list, entry)
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgInviteList,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload:   mustMarshal(map[string]interface{}{"invites": list}),
+	})
 }
 
 func mustMarshal(v interface{}) json.RawMessage {

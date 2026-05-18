@@ -1,10 +1,12 @@
-import { Copy, Eye, MessageSquare, Shield, Star, User } from "lucide-react";
+import { Copy, Edit3, Eye, Globe, MessageCircle, MessageSquare, Save, Shield, Star, User, X } from "lucide-react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { UserProfile } from "../hooks/useWebSocket";
 import { StatusDot } from "./StatusSelector";
 import { UserAvatar } from "./UserAvatar";
 
 interface UserProfileCardProps {
-  user: { userId: string; nickname: string; role: string; status: string };
+  user: { userId: string; nickname: string; role: string; status: string; customStatus?: string };
   position: { x: number; y: number };
   onClose: () => void;
   onDM: (userId: string) => void;
@@ -14,6 +16,8 @@ interface UserProfileCardProps {
   onDeop?: (userId: string) => void;
   canModerate: boolean;
   isSelf: boolean;
+  profile?: UserProfile | null;
+  onUpdateProfile?: (bio: string, customStatus: string, pronouns: string, timezone: string) => void;
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -43,12 +47,38 @@ export function UserProfileCard({
   onDeop,
   canModerate,
   isSelf,
+  profile,
+  onUpdateProfile,
 }: UserProfileCardProps) {
   const { t } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const [editBio, setEditBio] = useState(profile?.bio || "");
+  const [editStatus, setEditStatus] = useState(profile?.customStatus || "");
+  const [editPronouns, setEditPronouns] = useState(profile?.pronouns || "");
+  const [editTimezone, setEditTimezone] = useState(profile?.timezone || "");
+  const [saved, setSaved] = useState(false);
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(user.userId);
   };
+
+  const handleStartEdit = () => {
+    setEditBio(profile?.bio || "");
+    setEditStatus(profile?.customStatus || "");
+    setEditPronouns(profile?.pronouns || "");
+    setEditTimezone(profile?.timezone || "");
+    setEditing(true);
+    setSaved(false);
+  };
+
+  const handleSave = () => {
+    onUpdateProfile?.(editBio, editStatus, editPronouns, editTimezone);
+    setEditing(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const customStatus = profile?.customStatus || user.customStatus;
 
   return (
     <>
@@ -67,12 +97,36 @@ export function UserProfileCard({
             <span className="profile-nickname" style={{ color: `var(--role-${user.role})` }}>
               {user.nickname}
             </span>
+            {customStatus && (
+              <div className="profile-custom-status">
+                <MessageCircle size={10} />
+                <span>{customStatus}</span>
+              </div>
+            )}
             <div className="profile-status-row">
               <StatusDot status={user.status} />
               <span className="profile-status-text">{t(`status.${user.status}`)}</span>
             </div>
           </div>
         </div>
+
+        {profile?.pronouns && !editing && (
+          <div className="profile-detail-row">
+            <User size={12} />
+            <span>{profile.pronouns}</span>
+          </div>
+        )}
+        {profile?.timezone && !editing && (
+          <div className="profile-detail-row">
+            <Globe size={12} />
+            <span>{profile.timezone}</span>
+          </div>
+        )}
+        {profile?.bio && !editing && (
+          <div className="profile-bio">
+            {profile.bio}
+          </div>
+        )}
 
         <div className="profile-meta">
           <RoleBadge role={user.role} />
@@ -81,6 +135,65 @@ export function UserProfileCard({
             <span>{user.userId.slice(0, 12)}...</span>
           </button>
         </div>
+
+        {editing && isSelf && (
+          <div className="profile-edit-form">
+            <label className="profile-edit-label">{t("profile.customStatus")}</label>
+            <input
+              className="profile-edit-input"
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value)}
+              placeholder={t("profile.statusPlaceholder")}
+              maxLength={50}
+            />
+            <label className="profile-edit-label">{t("profile.bio")}</label>
+            <textarea
+              className="profile-edit-textarea"
+              value={editBio}
+              onChange={(e) => setEditBio(e.target.value)}
+              placeholder={t("profile.bioPlaceholder")}
+              maxLength={200}
+              rows={3}
+            />
+            <label className="profile-edit-label">{t("profile.pronouns")}</label>
+            <input
+              className="profile-edit-input"
+              value={editPronouns}
+              onChange={(e) => setEditPronouns(e.target.value)}
+              placeholder={t("profile.pronounsPlaceholder")}
+              maxLength={30}
+            />
+            <label className="profile-edit-label">{t("profile.timezone")}</label>
+            <input
+              className="profile-edit-input"
+              value={editTimezone}
+              onChange={(e) => setEditTimezone(e.target.value)}
+              placeholder={t("profile.timezonePlaceholder")}
+              maxLength={50}
+            />
+            <div className="profile-edit-buttons">
+              <button className="profile-action-btn" onClick={() => setEditing(false)}>
+                <X size={14} />
+                {t("profile.cancel")}
+              </button>
+              <button className="profile-action-btn primary" onClick={handleSave}>
+                <Save size={14} />
+                {t("profile.save")}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {saved && <div className="profile-saved-msg">{t("profile.saved")}</div>}
+
+        {isSelf && !editing && (
+          <div className="profile-actions">
+            <button className="profile-action-btn primary" onClick={handleStartEdit}>
+              <Edit3 size={14} />
+              {t("profile.edit")}
+            </button>
+          </div>
+        )}
 
         {!isSelf && (
           <div className="profile-actions">
@@ -261,6 +374,95 @@ export function UserProfileCard({
         }
         .profile-action-btn.danger:hover {
           background: var(--danger-dim);
+        }
+        .profile-custom-status {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          margin-top: 2px;
+          font-size: 11px;
+          color: var(--text-muted);
+          font-style: italic;
+        }
+        .profile-custom-status svg {
+          flex-shrink: 0;
+          opacity: 0.6;
+        }
+        .profile-detail-row {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 2px 0;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .profile-detail-row svg {
+          color: var(--text-muted);
+          flex-shrink: 0;
+        }
+        .profile-bio {
+          font-size: 12px;
+          color: var(--text-secondary);
+          padding: 8px 0;
+          line-height: 1.5;
+          border-bottom: 1px solid var(--border);
+          margin-bottom: 8px;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+        .profile-edit-form {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-bottom: 8px;
+        }
+        .profile-edit-label {
+          font-size: 10px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+          color: var(--text-muted);
+          margin-top: 4px;
+        }
+        .profile-edit-input {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          padding: 6px 8px;
+          font-size: 12px;
+          color: var(--text-primary);
+          outline: none;
+          transition: border-color var(--transition-fast);
+        }
+        .profile-edit-input:focus {
+          border-color: var(--accent);
+        }
+        .profile-edit-textarea {
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-sm);
+          padding: 6px 8px;
+          font-size: 12px;
+          color: var(--text-primary);
+          outline: none;
+          resize: vertical;
+          font-family: inherit;
+          transition: border-color var(--transition-fast);
+        }
+        .profile-edit-textarea:focus {
+          border-color: var(--accent);
+        }
+        .profile-edit-buttons {
+          display: flex;
+          gap: 4px;
+          margin-top: 4px;
+        }
+        .profile-saved-msg {
+          font-size: 11px;
+          color: var(--success, #4caf50);
+          padding: 4px 0;
+          text-align: center;
+          font-weight: 500;
         }
       `}</style>
     </>

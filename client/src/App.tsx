@@ -1,6 +1,7 @@
 import {
   Clock,
   Filter,
+  Link as LinkIcon,
   Menu,
   Palette,
   PanelRightClose,
@@ -33,6 +34,7 @@ import { CustomEmojiUpload } from "./components/CustomEmojiUpload";
 import { DragDropOverlay } from "./components/DragDropOverlay";
 import { FileBrowser } from "./components/FileBrowser";
 import { ImageLightbox } from "./components/ImageLightbox";
+import { InvitePanel } from "./components/InvitePanel";
 import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { MessageForwardDialog } from "./components/MessageForwardDialog";
@@ -96,6 +98,7 @@ export default function App() {
   const [forwardMsg, setForwardMsg] = useState<{ content: string; author: string } | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showCustomEmoji, setShowCustomEmoji] = useState(false);
+  const [showInvites, setShowInvites] = useState(false);
   const [showNotifFilters, setShowNotifFilters] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
@@ -813,6 +816,19 @@ export default function App() {
           >
             <SmileIcon size={14} />
           </button>
+          {canCreateChannel && (
+            <button
+              className="compact-toggle"
+              onClick={() => {
+                setShowInvites(true);
+                ws.requestInviteList();
+              }}
+              title={t("invite.title")}
+              aria-label={t("invite.title")}
+            >
+              <LinkIcon size={14} />
+            </button>
+          )}
           <button
             className="compact-toggle"
             onClick={() => setShowNotifFilters(true)}
@@ -1037,6 +1053,8 @@ export default function App() {
           onKickUser={ws.kickUser}
           onBanUser={ws.banUser}
           onSetUserRole={ws.setUserRole}
+          auditLog={ws.auditLog}
+          onRequestAuditLog={ws.requestAuditLog}
         />
       )}
 
@@ -1080,6 +1098,16 @@ export default function App() {
           onUploadToServer={handleEmojiUpload}
           onDelete={handleEmojiDelete}
           onClose={() => setShowCustomEmoji(false)}
+        />
+      )}
+
+      {showInvites && (
+        <InvitePanel
+          invites={ws.invites}
+          serverAddress={serverAddress}
+          onCreateInvite={ws.createInvite}
+          onDeleteInvite={ws.deleteInvite}
+          onClose={() => setShowInvites(false)}
         />
       )}
 

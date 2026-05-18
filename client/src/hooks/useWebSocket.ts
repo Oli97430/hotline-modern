@@ -121,6 +121,38 @@ export interface ServerCustomEmoji {
   url: string;
 }
 
+export interface AuditEntry {
+  id: number;
+  action: string;
+  actorKey: string;
+  actorName: string;
+  targetKey: string;
+  targetName: string;
+  details: string;
+  createdAt: string;
+}
+
+export interface InviteData {
+  code: string;
+  createdBy: string;
+  maxUses: number;
+  uses: number;
+  expiresAt?: number;
+  createdAt: number;
+}
+
+export interface UserProfile {
+  userId: string;
+  bio: string;
+  customStatus: string;
+  pronouns: string;
+  timezone: string;
+  nickname?: string;
+  role?: string;
+  status?: string;
+  online?: boolean;
+}
+
 export interface VoiceStatePayload {
   channel: string;
   participants: { userId: string; nickname: string; muted: boolean; deafened: boolean }[];
@@ -140,6 +172,7 @@ export interface UseWebSocketReturn {
     status: string;
     boxPublicKey?: string;
     connectedAt?: number;
+    customStatus?: string;
   }[];
   searchResults: SearchResult[];
   pinnedMessages: PinnedMessage[];
@@ -152,6 +185,9 @@ export interface UseWebSocketReturn {
   adminMutes: AdminMute[];
   adminUsers: AdminUser[];
   customEmojis: ServerCustomEmoji[];
+  invites: InviteData[];
+  auditLog: { entries: AuditEntry[]; total: number };
+  profileCache: Record<string, UserProfile>;
   voiceState: VoiceStatePayload | null;
   wsRef: React.RefObject<WebSocket | null>;
   connect: (address: string, nickname: string) => void;
@@ -195,6 +231,12 @@ export interface UseWebSocketReturn {
   requestCustomEmojis: () => void;
   addCustomEmoji: (name: string, filename: string) => void;
   removeCustomEmoji: (name: string) => void;
+  createInvite: (maxUses: number, expireHours: number) => void;
+  deleteInvite: (code: string) => void;
+  requestInviteList: () => void;
+  requestProfile: (userId: string) => void;
+  updateProfile: (bio: string, customStatus: string, pronouns: string, timezone: string) => void;
+  requestAuditLog: (limit?: number, offset?: number) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -223,10 +265,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     [],
   );
   const [users, setUsers] = useState<
-    { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number }[]
+    { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number; customStatus?: string }[]
   >([]);
   const usersRef = useRef(users);
   usersRef.current = users;
+  const [profileCache, setProfileCache] = useState<Record<string, UserProfile>>({});
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
   const [channelMembers, setChannelMembers] = useState<ChannelMember[]>([]);
@@ -238,6 +281,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [adminMutes, setAdminMutes] = useState<AdminMute[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [customEmojis, setCustomEmojis] = useState<ServerCustomEmoji[]>([]);
+  const [invites, setInvites] = useState<InviteData[]>([]);
+  const [auditLog, setAuditLog] = useState<{ entries: AuditEntry[]; total: number }>({ entries: [], total: 0 });
   const [voiceState, setVoiceState] = useState<VoiceStatePayload | null>(null);
 
   const handleMessage = useCallback(
@@ -317,7 +362,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             const filtered = prev.filter((u) => u.userId !== payload.userId);
             return [
               ...filtered,
-              { ...payload, status: "online", boxPublicKey: payload.boxPublicKey, connectedAt: payload.connectedAt },
+              { ...payload, status: "online", boxPublicKey: payload.boxPublicKey, connectedAt: payload.connectedAt, customStatus: payload.customStatus },
             ];
           });
           setMessages((prev) =>
@@ -562,9 +607,38 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           setCustomEmojis(payload.emojis || []);
           break;
         }
+        case "invite.list": {
+          const payload = msg.payload as { invites: InviteData[] };
+          setInvites(payload.invites || []);
+          break;
+        }
         case "voice.state": {
           const payload = msg.payload as VoiceStatePayload;
           setVoiceState(payload);
+          break;
+        }
+        case "profile.data": {
+          const payload = msg.payload as UserProfile;
+          setProfileCache((prev) => ({ ...prev, [payload.userId]: payload }));
+          break;
+        }
+        case "profile.updated": {
+          const payload = msg.payload as { userId: string; customStatus: string };
+          setUsers((prev) => prev.map((u) => (u.userId === payload.userId ? { ...u, customStatus: payload.customStatus } : u)));
+          setProfileCache((prev) => {
+            if (prev[payload.userId]) {
+              return { ...prev, [payload.userId]: { ...prev[payload.userId], customStatus: payload.customStatus } };
+            }
+            return prev;
+          });
+          break;
+        }
+        case "audit.log": {
+          const payload = msg.payload as { entries: AuditEntry[]; total: number };
+          setAuditLog((prev) => ({
+            entries: [...prev.entries, ...(payload.entries || [])],
+            total: payload.total || 0,
+          }));
           break;
         }
         case "error": {
@@ -669,6 +743,8 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setUsers([]);
     setReadReceipts({});
     setCustomEmojis([]);
+    setInvites([]);
+    setProfileCache({});
     setVoiceState(null);
   }, []);
 
@@ -955,6 +1031,49 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     [wsSend],
   );
 
+  const createInvite = useCallback(
+    (maxUses: number, expireHours: number) => {
+      wsSend("invite.create", { maxUses, expireHours });
+    },
+    [wsSend],
+  );
+
+  const deleteInvite = useCallback(
+    (code: string) => {
+      wsSend("invite.delete", { code });
+    },
+    [wsSend],
+  );
+
+  const requestInviteList = useCallback(() => {
+    wsSend("invite.list", {});
+  }, [wsSend]);
+
+  const requestAuditLog = useCallback(
+    (limit?: number, offset?: number) => {
+      const off = offset ?? 0;
+      if (off === 0) {
+        setAuditLog({ entries: [], total: 0 });
+      }
+      wsSend("audit.log", { limit: limit ?? 50, offset: off });
+    },
+    [wsSend],
+  );
+
+  const requestProfile = useCallback(
+    (userId: string) => {
+      wsSend("profile.get", { userId });
+    },
+    [wsSend],
+  );
+
+  const updateProfile = useCallback(
+    (bio: string, customStatus: string, pronouns: string, timezone: string) => {
+      wsSend("profile.update", { bio, customStatus, pronouns, timezone });
+    },
+    [wsSend],
+  );
+
   useEffect(() => {
     const interval = setInterval(() => {
       setTypingUsers((prev) => prev.filter((t) => t.expiry > Date.now()));
@@ -1025,6 +1144,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     adminMutes,
     adminUsers,
     customEmojis,
+    invites,
     muteUser,
     unmuteUser,
     requestMuteList,
@@ -1033,6 +1153,14 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     requestCustomEmojis,
     addCustomEmoji,
     removeCustomEmoji,
+    createInvite,
+    deleteInvite,
+    requestInviteList,
+    auditLog,
+    requestAuditLog,
+    profileCache,
+    requestProfile,
+    updateProfile,
     voiceState,
     wsRef,
   };

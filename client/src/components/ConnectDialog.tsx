@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import { Loader, Star, X, Zap } from "lucide-react";
+import { Link, Loader, Star, X, Zap } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type ServerFavorite, useServerFavorites } from "../hooks/useServerFavorites";
@@ -24,6 +24,9 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
   const { t } = useTranslation();
   const [address, setAddress] = useState(getDefaultAddress);
   const [nickname, setNickname] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [inviteValidating, setInviteValidating] = useState(false);
   const { favorites, addFavorite, removeFavorite } = useServerFavorites();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -31,6 +34,27 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
     if (address && nickname.trim()) {
       addFavorite(address, nickname.trim());
       onConnect(address, nickname.trim());
+    }
+  };
+
+  const handleInviteValidate = async () => {
+    if (!inviteCode.trim() || !address.trim()) return;
+    setInviteError("");
+    setInviteValidating(true);
+    try {
+      const protocol = address.startsWith("wss://") ? "https://" : "http://";
+      const base = address.replace(/^wss?:\/\//, "").replace(/\/ws$/, "");
+      const resp = await fetch(`${protocol}${base}/invite/${inviteCode.trim()}`);
+      const data = await resp.json();
+      if (data.valid) {
+        setInviteError("");
+      } else {
+        setInviteError("Invalid or expired invite");
+      }
+    } catch {
+      setInviteError("Could not validate invite");
+    } finally {
+      setInviteValidating(false);
     }
   };
 
@@ -82,6 +106,35 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
             maxLength={32}
             autoFocus
           />
+        </div>
+
+        <div className="connect-invite-field">
+          <label htmlFor="invite-code">
+            <Link size={12} />
+            {t("invite.code")}
+          </label>
+          <div className="connect-invite-row">
+            <input
+              id="invite-code"
+              type="text"
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
+              placeholder="AbCd1234"
+              disabled={isConnecting}
+              maxLength={8}
+            />
+            {inviteCode.trim() && (
+              <button
+                type="button"
+                className="connect-invite-check"
+                onClick={handleInviteValidate}
+                disabled={inviteValidating || !address.trim()}
+              >
+                {inviteValidating ? <Loader size={12} className="connect-spinner" /> : "Check"}
+              </button>
+            )}
+          </div>
+          {inviteError && <span className="connect-invite-error">{inviteError}</span>}
         </div>
 
         <button type="submit" className="connect-btn" disabled={isConnecting || !nickname.trim()}>
@@ -330,6 +383,54 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
         .connect-fav-remove:hover {
           color: var(--danger);
           background: var(--danger-dim);
+        }
+        .connect-invite-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .connect-invite-field label {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-secondary);
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+        .connect-invite-row {
+          display: flex;
+          gap: 6px;
+        }
+        .connect-invite-row input {
+          flex: 1;
+          padding: 10px 14px;
+          font-size: 14px;
+          font-family: monospace;
+          letter-spacing: 1px;
+        }
+        .connect-invite-check {
+          padding: 8px 12px;
+          font-size: 12px;
+          font-weight: 600;
+          border-radius: var(--radius);
+          background: var(--bg-tertiary);
+          color: var(--text-primary);
+          border: 1px solid var(--border);
+          transition: background var(--transition-fast);
+          white-space: nowrap;
+        }
+        .connect-invite-check:hover:not(:disabled) {
+          background: var(--accent-dim);
+        }
+        .connect-invite-check:disabled {
+          opacity: 0.5;
+        }
+        .connect-invite-error {
+          font-size: 11px;
+          color: var(--danger);
+          font-weight: 500;
         }
       `}</style>
     </div>

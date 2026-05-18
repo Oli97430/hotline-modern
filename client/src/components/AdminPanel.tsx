@@ -1,9 +1,22 @@
-import { Check, Hash, Pencil, Save, Settings, Shield, Trash2, Users, UserX, VolumeX, X } from "lucide-react";
+import {
+  Check,
+  ClipboardList,
+  Hash,
+  Pencil,
+  Save,
+  Settings,
+  Shield,
+  Trash2,
+  Users,
+  UserX,
+  VolumeX,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AdminBan, AdminMute, AdminUser } from "../hooks/useWebSocket";
+import type { AdminBan, AdminMute, AdminUser, AuditEntry } from "../hooks/useWebSocket";
 
-type Tab = "settings" | "users" | "channels" | "bans";
+type Tab = "settings" | "users" | "channels" | "bans" | "audit";
 
 interface AdminPanelProps {
   serverName: string;
@@ -27,6 +40,31 @@ interface AdminPanelProps {
   onKickUser: (userId: string) => void;
   onBanUser: (userId: string) => void;
   onSetUserRole: (userId: string, role: string) => void;
+  auditLog: { entries: AuditEntry[]; total: number };
+  onRequestAuditLog: (limit?: number, offset?: number) => void;
+}
+
+function auditActionIcon(action: string) {
+  switch (action) {
+    case "kick":
+      return UserX;
+    case "ban":
+    case "unban":
+      return Shield;
+    case "mute":
+    case "unmute":
+      return VolumeX;
+    case "set_role":
+      return Users;
+    case "settings_update":
+      return Settings;
+    case "channel_delete":
+      return Trash2;
+    case "channel_rename":
+      return Pencil;
+    default:
+      return ClipboardList;
+  }
 }
 
 export function AdminPanel({
@@ -50,6 +88,8 @@ export function AdminPanel({
   onKickUser,
   onBanUser,
   onSetUserRole,
+  auditLog,
+  onRequestAuditLog,
 }: AdminPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("settings");
@@ -146,6 +186,16 @@ export function AdminPanel({
           >
             <UserX size={14} />
             {t("admin.bans")}
+          </button>
+          <button
+            className={`admin-tab ${tab === "audit" ? "active" : ""}`}
+            onClick={() => {
+              setTab("audit");
+              onRequestAuditLog();
+            }}
+          >
+            <ClipboardList size={14} />
+            {t("admin.auditLog")}
           </button>
         </div>
 
@@ -382,6 +432,61 @@ export function AdminPanel({
               )}
             </>
           )}
+
+          {/* === AUDIT LOG TAB === */}
+          {tab === "audit" && (
+            <>
+              {auditLog.entries.length === 0 ? (
+                <div className="admin-empty">{t("admin.noAuditEntries")}</div>
+              ) : (
+                <ul className="admin-list">
+                  {auditLog.entries.map((entry) => {
+                    const ActionIcon = auditActionIcon(entry.action);
+                    return (
+                      <li key={entry.id} className="admin-list-item audit-entry">
+                        <div className="audit-icon">
+                          <ActionIcon size={14} />
+                        </div>
+                        <div className="audit-body">
+                          <div className="audit-summary">
+                            <span className="admin-user-nick">{entry.actorName || entry.actorKey.slice(0, 12)}</span>
+                            {" "}
+                            <span className="admin-text-muted">{t(`audit.${entry.action}`, entry.action)}</span>
+                            {entry.targetName || entry.targetKey ? (
+                              <>
+                                {" "}
+                                <span className="admin-user-nick">
+                                  {entry.targetName || entry.targetKey.slice(0, 12)}
+                                </span>
+                              </>
+                            ) : null}
+                          </div>
+                          {entry.details && <div className="audit-details">{entry.details}</div>}
+                          <div className="audit-time">
+                            {new Date(entry.createdAt).toLocaleString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {auditLog.entries.length < auditLog.total && (
+                <button
+                  className="admin-btn-sm accent"
+                  style={{ alignSelf: "center" }}
+                  onClick={() => onRequestAuditLog(50, auditLog.entries.length)}
+                >
+                  {t("admin.loadMore")}
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
 
@@ -615,6 +720,33 @@ export function AdminPanel({
         }
         .admin-mute-select { flex: 1; min-width: 120px; }
         .admin-mute-form input { flex: 1; min-width: 80px; }
+
+        /* Audit log styles */
+        .audit-entry { align-items: flex-start; gap: 10px; flex-wrap: nowrap; }
+        .audit-icon {
+          flex-shrink: 0;
+          width: 28px;
+          height: 28px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: var(--radius-sm);
+          background: var(--bg-secondary);
+          color: var(--text-muted);
+        }
+        .audit-body { flex: 1; min-width: 0; }
+        .audit-summary { font-size: 13px; line-height: 1.4; }
+        .audit-details {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-top: 2px;
+          font-style: italic;
+        }
+        .audit-time {
+          font-size: 10px;
+          color: var(--text-muted);
+          margin-top: 2px;
+        }
       `}</style>
     </div>
   );

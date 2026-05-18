@@ -1,6 +1,7 @@
 package db
 
 import (
+	"crypto/rand"
 	"database/sql"
 	"time"
 
@@ -146,6 +147,39 @@ func migrate(conn *sql.DB) error {
 		filename TEXT NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	)`)
+
+	// Migration: invites table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS invites (
+		code TEXT PRIMARY KEY,
+		created_by TEXT NOT NULL,
+		max_uses INTEGER DEFAULT 0,
+		uses INTEGER DEFAULT 0,
+		expires_at DATETIME,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Migration: user_profiles table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS user_profiles (
+		public_key TEXT PRIMARY KEY,
+		bio TEXT NOT NULL DEFAULT '',
+		custom_status TEXT NOT NULL DEFAULT '',
+		pronouns TEXT NOT NULL DEFAULT '',
+		timezone TEXT NOT NULL DEFAULT '',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	// Migration: audit_log table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS audit_log (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		action TEXT NOT NULL,
+		actor_key TEXT NOT NULL,
+		actor_name TEXT NOT NULL DEFAULT '',
+		target_key TEXT NOT NULL DEFAULT '',
+		target_name TEXT NOT NULL DEFAULT '',
+		details TEXT NOT NULL DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	conn.Exec(`CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at DESC)`)
 
 	return nil
 }
@@ -648,6 +682,15 @@ type CustomEmoji struct {
 	CreatedAt  time.Time
 }
 
+type Invite struct {
+	Code      string
+	CreatedBy string
+	MaxUses   int
+	Uses      int
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+}
+
 func (d *DB) AddCustomEmoji(name, uploadedBy, filename string) error {
 	_, err := d.conn.Exec(
 		"INSERT OR REPLACE INTO custom_emojis (name, uploaded_by, filename) VALUES (?, ?, ?)",
@@ -697,4 +740,166 @@ func (d *DB) GetMessagesBefore(channel string, before time.Time, limit int) ([]M
 		messages = append(messages, m)
 	}
 	return messages, nil
+}
+
+// Invite management
+
+const inviteAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func GenerateInviteCode() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	for i := range b {
+		b[i] = inviteAlphabet[int(b[i])%len(inviteAlphabet)]
+	}
+	return string(b), nil
+}
+
+func (d *DB) CreateInvite(code, createdBy string, maxUses int, expiresAt *time.Time) error {
+	_, err := d.conn.Exec(
+		"INSERT INTO invites (code, created_by, max_uses, expires_at) VALUES (?, ?, ?, ?)",
+		code, createdBy, maxUses, expiresAt,
+	)
+	return err
+}
+
+func (d *DB) UseInvite(code string) (bool, error) {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	var uses, maxUses int
+	var expiresAt *time.Time
+	err = tx.QueryRow(
+		"SELECT uses, max_uses, expires_at FROM invites WHERE code = ?", code,
+	).Scan(&uses, &maxUses, &expiresAt)
+	if err != nil {
+		return false, nil // not found = invalid
+	}
+
+	// Check expiry
+	if expiresAt != nil && time.Now().After(*expiresAt) {
+		return false, nil
+	}
+
+	// Check uses (0 = unlimited)
+	if maxUses > 0 && uses >= maxUses {
+		return false, nil
+	}
+
+	_, err = tx.Exec("UPDATE invites SET uses = uses + 1 WHERE code = ?", code)
+	if err != nil {
+		return false, err
+	}
+
+	return true, tx.Commit()
+}
+
+func (d *DB) GetInvites() ([]Invite, error) {
+	rows, err := d.conn.Query("SELECT code, created_by, max_uses, uses, expires_at, created_at FROM invites ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var invites []Invite
+	for rows.Next() {
+		var inv Invite
+		if err := rows.Scan(&inv.Code, &inv.CreatedBy, &inv.MaxUses, &inv.Uses, &inv.ExpiresAt, &inv.CreatedAt); err != nil {
+			return nil, err
+		}
+		invites = append(invites, inv)
+	}
+	return invites, nil
+}
+
+func (d *DB) DeleteInvite(code string) error {
+	_, err := d.conn.Exec("DELETE FROM invites WHERE code = ?", code)
+	return err
+}
+
+// User profile management
+
+type UserProfile struct {
+	PublicKey    string
+	Bio          string
+	CustomStatus string
+	Pronouns     string
+	Timezone     string
+}
+
+func (d *DB) GetUserProfile(publicKey string) (*UserProfile, error) {
+	var p UserProfile
+	err := d.conn.QueryRow(
+		"SELECT public_key, bio, custom_status, pronouns, timezone FROM user_profiles WHERE public_key = ?",
+		publicKey,
+	).Scan(&p.PublicKey, &p.Bio, &p.CustomStatus, &p.Pronouns, &p.Timezone)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (d *DB) SetUserProfile(profile UserProfile) error {
+	_, err := d.conn.Exec(
+		`INSERT OR REPLACE INTO user_profiles (public_key, bio, custom_status, pronouns, timezone, updated_at)
+		 VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+		profile.PublicKey, profile.Bio, profile.CustomStatus, profile.Pronouns, profile.Timezone,
+	)
+	return err
+}
+
+// Audit log management
+
+type AuditEntry struct {
+	ID         int
+	Action     string
+	ActorKey   string
+	ActorName  string
+	TargetKey  string
+	TargetName string
+	Details    string
+	CreatedAt  string
+}
+
+func (d *DB) AddAuditLog(action, actorKey, actorName, targetKey, targetName, details string) error {
+	_, err := d.conn.Exec(
+		"INSERT INTO audit_log (action, actor_key, actor_name, target_key, target_name, details) VALUES (?, ?, ?, ?, ?, ?)",
+		action, actorKey, actorName, targetKey, targetName, details,
+	)
+	return err
+}
+
+func (d *DB) GetAuditLog(limit, offset int) ([]AuditEntry, error) {
+	rows, err := d.conn.Query(
+		"SELECT id, action, actor_key, actor_name, target_key, target_name, details, created_at FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?",
+		limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		if err := rows.Scan(&e.ID, &e.Action, &e.ActorKey, &e.ActorName, &e.TargetKey, &e.TargetName, &e.Details, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+	return entries, nil
+}
+
+func (d *DB) GetAuditLogCount() (int, error) {
+	var count int
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM audit_log").Scan(&count)
+	return count, err
 }

@@ -101,6 +101,35 @@ func main() {
 	mux.HandleFunc("/ws", h.HandleWebSocket)
 	fileServer.RegisterRoutes(mux)
 
+	// Invite validation endpoint
+	mux.HandleFunc("/invite/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodGet {
+			http.Error(w, "GET only", http.StatusMethodNotAllowed)
+			return
+		}
+		code := strings.TrimPrefix(r.URL.Path, "/invite/")
+		if code == "" {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"valid": false})
+			return
+		}
+		valid, err := chatManager.UseInvite(code)
+		if err != nil || !valid {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]interface{}{"valid": false})
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"valid": true, "serverName": *serverName})
+	})
+
 	// Tracker: POST /register
 	mux.HandleFunc("/register", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

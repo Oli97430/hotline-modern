@@ -168,3 +168,30 @@ func (m *Manager) GetHistoryBefore(channel string, before time.Time, limit int) 
 	limit = clampLimit(limit, 1, 200)
 	return m.db.GetMessagesBefore(channel, before, limit)
 }
+
+// Invite management
+func (m *Manager) CreateInvite(code, createdBy string, maxUses int, expiresAt *time.Time) error {
+	return m.db.CreateInvite(code, createdBy, maxUses, expiresAt)
+}
+func (m *Manager) UseInvite(code string) (bool, error) { return m.db.UseInvite(code) }
+func (m *Manager) GetInvites() ([]db.Invite, error)    { return m.db.GetInvites() }
+func (m *Manager) DeleteInvite(code string) error       { return m.db.DeleteInvite(code) }
+
+// User profile management
+func (m *Manager) GetUserProfile(publicKey string) (*db.UserProfile, error) {
+	return m.db.GetUserProfile(publicKey)
+}
+func (m *Manager) SetUserProfile(profile db.UserProfile) error {
+	return m.db.SetUserProfile(profile)
+}
+
+// Audit log management
+func (m *Manager) AddAuditLog(action, actorKey, actorName, targetKey, targetName, details string) error {
+	return m.db.AddAuditLog(action, actorKey, actorName, targetKey, targetName, details)
+}
+func (m *Manager) GetAuditLog(limit, offset int) ([]db.AuditEntry, error) {
+	return m.db.GetAuditLog(limit, offset)
+}
+func (m *Manager) GetAuditLogCount() (int, error) {
+	return m.db.GetAuditLogCount()
+}

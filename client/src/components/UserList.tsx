@@ -1,4 +1,4 @@
-import { Clock, Eye, Shield, Star, User } from "lucide-react";
+import { Clock, Eye, MessageCircle, Shield, Star, User } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { StatusDot } from "./StatusSelector";
@@ -19,7 +19,7 @@ function formatDuration(connectedAt?: number): string {
 }
 
 interface UserListProps {
-  users: { userId: string; nickname: string; role: string; status: string; connectedAt?: number }[];
+  users: { userId: string; nickname: string; role: string; status: string; connectedAt?: number; customStatus?: string }[];
   currentUserId?: string;
   currentRole?: string;
   onKick?: (userId: string) => void;
@@ -27,6 +27,7 @@ interface UserListProps {
   onOp?: (userId: string) => void;
   onDeop?: (userId: string) => void;
   onDM?: (userId: string) => void;
+  onProfileClick?: (userId: string, position: { x: number; y: number }) => void;
 }
 
 function RoleIcon({ role }: { role: string }) {
@@ -42,7 +43,7 @@ function RoleIcon({ role }: { role: string }) {
   }
 }
 
-export function UserList({ users, currentUserId, currentRole, onKick, onBan, onOp, onDeop, onDM }: UserListProps) {
+export function UserList({ users, currentUserId, currentRole, onKick, onBan, onOp, onDeop, onDM, onProfileClick }: UserListProps) {
   const { t } = useTranslation();
   const [menuUser, setMenuUser] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
@@ -74,8 +75,12 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
   }, [menuUser]);
 
   const handleUserClick = (userId: string, e: React.MouseEvent) => {
-    if (userId === currentUserId) return;
     const rect = (e.target as HTMLElement).getBoundingClientRect();
+    if (onProfileClick) {
+      onProfileClick(userId, { x: rect.left, y: rect.bottom + 4 });
+      return;
+    }
+    if (userId === currentUserId) return;
     setMenuPos({ x: rect.left, y: rect.bottom + 4 });
     setMenuUser(userId === menuUser ? null : userId);
   };
@@ -116,9 +121,17 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
               <StatusDot status={user.status} />
             </div>
             <RoleIcon role={user.role} />
-            <span className="user-nick" style={{ color: `var(--role-${user.role})` }}>
-              {user.nickname}
-            </span>
+            <div className="user-nick-wrap">
+              <span className="user-nick" style={{ color: `var(--role-${user.role})` }}>
+                {user.nickname}
+              </span>
+              {user.customStatus && (
+                <span className="user-custom-status">
+                  <MessageCircle size={9} />
+                  {user.customStatus}
+                </span>
+              )}
+            </div>
           </li>
         ))}
       </ul>
@@ -260,11 +273,33 @@ export function UserList({ users, currentUserId, currentRole, onKick, onBan, onO
           border: 1.5px solid var(--bg-secondary);
           border-radius: 50%;
         }
+        .user-nick-wrap {
+          flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+        }
         .user-nick {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           font-weight: 450;
+        }
+        .user-custom-status {
+          display: flex;
+          align-items: center;
+          gap: 3px;
+          font-size: 10px;
+          color: var(--text-muted);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-style: italic;
+          line-height: 1.3;
+        }
+        .user-custom-status svg {
+          flex-shrink: 0;
+          opacity: 0.6;
         }
         .user-entry.clickable {
           cursor: pointer;

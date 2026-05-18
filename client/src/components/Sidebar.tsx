@@ -40,6 +40,7 @@ interface SidebarProps {
   onLeaveVoice?: () => void;
   onToggleVoiceMute?: () => void;
   onToggleVoiceDeafen?: () => void;
+  customStatus?: string;
 }
 
 export function Sidebar({
@@ -71,6 +72,7 @@ export function Sidebar({
   onLeaveVoice,
   onToggleVoiceMute,
   onToggleVoiceDeafen,
+  customStatus,
 }: SidebarProps) {
   const { t } = useTranslation();
 
@@ -246,7 +248,10 @@ export function Sidebar({
       {nickname && (
         <div className="sidebar-footer">
           <StatusDot status={userStatus || "available"} />
-          <span className="sidebar-nick">{nickname}</span>
+          <div className="sidebar-footer-info">
+            <span className="sidebar-nick">{nickname}</span>
+            {customStatus && <span className="sidebar-custom-status">{customStatus}</span>}
+          </div>
           <span className="sidebar-role" data-role={role}>
             {role}
           </span>
@@ -458,12 +463,26 @@ export function Sidebar({
           gap: 8px;
           font-size: 13px;
         }
-        .sidebar-nick {
+        .sidebar-footer-info {
           flex: 1;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+        }
+        .sidebar-nick {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
           font-weight: 500;
+        }
+        .sidebar-custom-status {
+          font-size: 10px;
+          color: var(--text-muted);
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-style: italic;
+          line-height: 1.3;
         }
         .sidebar-role {
           font-size: 10px;
