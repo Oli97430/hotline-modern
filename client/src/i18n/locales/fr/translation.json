@@ -81,6 +81,8 @@
   "emoji.gestures": "Gestes",
   "emoji.symbols": "Symboles",
   "emoji.objects": "Objets",
+  "emoji.standard": "Standard",
+  "emoji.custom": "Personnalisés",
   "pins.title": "Messages épinglés",
   "pins.empty": "Aucun message épinglé",
   "pins.unpin": "Désépingler",
