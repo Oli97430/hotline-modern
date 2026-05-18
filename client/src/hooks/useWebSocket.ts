@@ -12,6 +12,7 @@ import {
   createMessage,
 } from "../lib/protocol";
 import { Identity, getPublicKeyHex, getBoxPublicKeyHex, signMessage, encryptDM, decryptDM } from "../lib/crypto";
+import { LAST_SERVER_IP_KEY } from "./useTrackerServers";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "authenticating" | "connected" | "reconnecting";
 
@@ -469,10 +470,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
       try {
         const host = address.replace(/^wss?:\/\//, "").split(":")[0];
         if (host && host !== "localhost" && host !== "127.0.0.1") {
-          localStorage.setItem("hotline-last-server-ip", host);
+          localStorage.setItem(LAST_SERVER_IP_KEY, host);
         }
       } catch {}
-
 
       // Build WebSocket URL — support ws://, wss://, or bare address:port
       let url: string;

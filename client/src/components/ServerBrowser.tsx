@@ -282,6 +282,12 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
           color: var(--text-muted);
           font-style: italic;
         }
+        .sb-hint {
+          padding: 8px 16px;
+          text-align: center;
+          font-size: 11px;
+          color: var(--text-secondary);
+        }
         .sb-error {
           color: var(--danger);
           font-style: normal;

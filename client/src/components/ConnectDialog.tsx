@@ -3,12 +3,12 @@ import { useTranslation } from "react-i18next";
 import { Capacitor } from "@capacitor/core";
 import { Loader, Star, X, Zap } from "lucide-react";
 import { useServerFavorites, ServerFavorite } from "../hooks/useServerFavorites";
+import { LAST_SERVER_IP_KEY } from "../hooks/useTrackerServers";
 import { ServerBrowser } from "./ServerBrowser";
 
 function getDefaultAddress(): string {
   if (Capacitor.isNativePlatform()) {
-    // On native app, use last known IP or show placeholder
-    const lastIp = localStorage.getItem("hotline-last-server-ip");
+    const lastIp = localStorage.getItem(LAST_SERVER_IP_KEY);
     return lastIp ? `${lastIp}:9998` : "";
   }
   const host = window.location.hostname || "localhost";

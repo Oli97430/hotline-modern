@@ -78,7 +78,13 @@ Write-Host "  Server tunnel:  $wssUrl" -ForegroundColor Green
 Write-Host "`n[3/5] Starting Hotline server..." -ForegroundColor Yellow
 $serverArgs = "-data `"$dataDir`" -name `"Hotline Server`" -agreement `"$agreementFile`" -tracker `"$trackerUrl`" -public-addr `"$wsHost`" -public-port 443"
 $server = Start-Process -FilePath "$ROOT\hotline-server.exe" -ArgumentList $serverArgs -PassThru
-Start-Sleep -Seconds 2
+Start-Sleep -Seconds 3
+
+# Verify server is alive
+if ($server.HasExited) {
+    Write-Host "  ERROR: Server failed to start (exit code: $($server.ExitCode))" -ForegroundColor Red
+    exit 1
+}
 Write-Host "  Server PID: $($server.Id)" -ForegroundColor Green
 
 # --- Update public-config.json ---

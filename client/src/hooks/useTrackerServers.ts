@@ -12,7 +12,7 @@ export interface TrackerServer {
 }
 
 const TRACKER_URLS_KEY = "hotline-tracker-urls";
-const LAST_SERVER_IP_KEY = "hotline-last-server-ip";
+export const LAST_SERVER_IP_KEY = "hotline-last-server-ip";
 const BOOTSTRAP_CONFIG_KEY = "hotline-bootstrap-config";
 
 /** GitHub-hosted config — always reachable, auto-updated by start-public.ps1 */
@@ -114,10 +114,11 @@ export function useTrackerServers() {
       if (!publicTracker) return;
 
       setTrackerUrls((prev) => {
-        // Add public tracker if not already present
         const normalized = publicTracker.replace(/\/$/, "");
         if (prev.some((u) => u === normalized)) return prev;
-        const updated = [...prev, normalized];
+        // Replace any existing trycloudflare URLs (stale tunnel) instead of accumulating
+        const withoutOldTunnels = prev.filter((u) => !u.includes("trycloudflare.com"));
+        const updated = [...withoutOldTunnels, normalized];
         saveTrackerUrls(updated);
         return updated;
       });
