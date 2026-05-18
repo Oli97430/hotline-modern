@@ -24,7 +24,7 @@ import { ThreadPanel } from "./components/ThreadPanel";
 import { ThemeEditor, loadSavedTheme } from "./components/ThemeEditor";
 import { ServerStats } from "./components/ServerStats";
 import { MessageForwardDialog } from "./components/MessageForwardDialog";
-import { CustomEmojiUpload, loadCustomEmojis, saveCustomEmojis } from "./components/CustomEmojiUpload";
+import { CustomEmojiUpload } from "./components/CustomEmojiUpload";
 import { NotificationFilters as NotifFiltersPanel, loadNotifFilters as loadNotifFiltersFull, saveNotifFilters as _saveNF } from "./components/NotificationFilters";
 import { MessageScheduler, ScheduledMessage, loadScheduledMessages, saveScheduledMessages } from "./components/MessageScheduler";
 import { applyChannelOrder, loadChannelOrder, saveChannelOrder } from "./components/ChannelDragReorder";
@@ -66,7 +66,6 @@ export default function App() {
   const [showCustomEmoji, setShowCustomEmoji] = useState(false);
   const [showNotifFilters, setShowNotifFilters] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
-  const [customEmojis, setCustomEmojis] = useState(loadCustomEmojis);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
   const [channelOrder, setChannelOrder] = useState<string[]>(loadChannelOrder);
 
@@ -760,6 +759,8 @@ export default function App() {
             onForward={handleForwardMessage}
             readReceipts={ws.readReceipts}
             onSendReadReceipt={ws.sendReadReceipt}
+            customEmojis={ws.customEmojis}
+            serverBaseUrl={serverBaseUrl}
           />
 
           {threadRootId && (() => {

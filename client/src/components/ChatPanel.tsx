@@ -485,7 +485,7 @@ export function ChatPanel({ messages, activeChannel, channelTopic, currentUserId
             <Smile size={18} />
           </button>
           {showEmoji && (
-            <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} />
+            <EmojiPicker onSelect={handleEmojiSelect} onClose={() => setShowEmoji(false)} customEmojis={customEmojis} serverBaseUrl={serverBaseUrl} />
           )}
         </div>
         {!input.trim() && canUpload ? (
