@@ -33,6 +33,7 @@ func main() {
 	agreementFile := flag.String("agreement", "", "Path to a text file containing a server agreement shown to users on connect")
 	trackerURLs := flag.String("tracker", "", "Comma-separated tracker URLs (e.g. http://tracker.example.com:9997)")
 	publicAddr := flag.String("public-addr", "", "Public address for tracker registration (e.g. myserver.com)")
+	publicPort := flag.Int("public-port", 0, "Public port for tracker registration (0 = use listen port, 443 for tunnels)")
 	serverDesc := flag.String("desc", "", "Server description for tracker listing")
 	flag.Parse()
 
@@ -115,11 +116,14 @@ func main() {
 		if regAddr == "" {
 			regAddr = "localhost"
 		}
-		// Parse port from addr flag (e.g. ":9998" -> 9998)
-		port := 9998
-		if a := *addr; len(a) > 1 && a[0] == ':' {
-			if p, err := strconv.Atoi(a[1:]); err == nil && p > 0 {
-				port = p
+		// Determine registration port: use -public-port if set, else parse from -addr
+		port := *publicPort
+		if port == 0 {
+			port = 9998
+			if a := *addr; len(a) > 1 && a[0] == ':' {
+				if p, err := strconv.Atoi(a[1:]); err == nil && p > 0 {
+					port = p
+				}
 			}
 		}
 		reg := tracker.NewRegistrar(urls, *serverName, *serverDesc, regAddr, port, h)

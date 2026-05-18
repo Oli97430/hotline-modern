@@ -14,7 +14,14 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
   const [newTrackerUrl, setNewTrackerUrl] = useState("");
 
   const handleConnect = (srv: TrackerServer) => {
-    onConnect(`${srv.address}:${srv.port}`);
+    // Detect tunnel/cloud addresses — use wss:// without port
+    const isPublicDomain =
+      srv.address.includes(".") && !srv.address.match(/^\d+\.\d+\.\d+\.\d+$/) && srv.port === 443;
+    if (isPublicDomain) {
+      onConnect(`wss://${srv.address}`);
+    } else {
+      onConnect(`${srv.address}:${srv.port}`);
+    }
   };
 
   const handleAddTracker = () => {

@@ -474,8 +474,13 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
       } catch {}
 
 
-      const protocol = address.startsWith("wss://") ? "" : "ws://";
-      const url = address.includes("://") ? address : `${protocol}${address}/ws`;
+      // Build WebSocket URL — support ws://, wss://, or bare address:port
+      let url: string;
+      if (address.includes("://")) {
+        url = address.endsWith("/ws") ? address : `${address}/ws`;
+      } else {
+        url = `ws://${address}/ws`;
+      }
 
       const ws = new WebSocket(url);
       wsRef.current = ws;
