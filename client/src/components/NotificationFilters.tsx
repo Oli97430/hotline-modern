@@ -120,12 +120,12 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="notif-filters" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="notif-filters" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="notif-filters-header">
           <Filter size={16} />
           <h3>{t("notifFilters.title")}</h3>
-          <button className="notif-filters-close" onClick={onClose}>
+          <button type="button" className="notif-filters-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
@@ -140,7 +140,7 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
                 <span className="nf-toggle-desc">{t("notifFilters.onlyMentionsDesc")}</span>
               </div>
             </div>
-            <button
+            <button type="button"
               className={`nf-switch ${local.onlyMentions ? "on" : ""}`}
               onClick={() => setLocal((prev) => ({ ...prev, onlyMentions: !prev.onlyMentions }))}
             >
@@ -157,7 +157,7 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
                 <span className="nf-toggle-desc">{t("notifFilters.quietHoursDesc")}</span>
               </div>
             </div>
-            <button
+            <button type="button"
               className={`nf-switch ${local.quietHoursEnabled ? "on" : ""}`}
               onClick={() => setLocal((prev) => ({ ...prev, quietHoursEnabled: !prev.quietHoursEnabled }))}
             >
@@ -197,14 +197,14 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
                 placeholder={t("notifFilters.keywordPlaceholder")}
                 className="nf-keyword-input"
               />
-              <button className="nf-keyword-add" onClick={addKeyword}>
+              <button type="button" className="nf-keyword-add" onClick={addKeyword}>
                 +
               </button>
             </div>
             {local.keywords.length > 0 && (
               <div className="nf-keyword-list">
                 {local.keywords.map((kw) => (
-                  <span key={kw} className="nf-keyword-tag" onClick={() => removeKeyword(kw)}>
+                  <span key={kw} className="nf-keyword-tag" onClick={() => removeKeyword(kw)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => removeKeyword(kw); } }} role="button" tabIndex={0}>
                     {kw} <X size={10} />
                   </span>
                 ))}
@@ -219,7 +219,7 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
             </span>
             <div className="nf-chip-list">
               {channels.map((ch) => (
-                <button
+                <button type="button"
                   key={ch}
                   className={`nf-chip ${local.mutedChannels.includes(ch) ? "muted" : ""}`}
                   onClick={() => toggleMutedChannel(ch)}
@@ -238,7 +238,7 @@ export function NotificationFilters({ filters, channels, users, onChange, onClos
             </span>
             <div className="nf-chip-list">
               {users.slice(0, 20).map((u) => (
-                <button
+                <button type="button"
                   key={u.userId}
                   className={`nf-chip ${local.mutedUsers.includes(u.userId) ? "muted" : ""}`}
                   onClick={() => toggleMutedUser(u.userId)}

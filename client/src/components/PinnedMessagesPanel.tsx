@@ -40,7 +40,7 @@ export function PinnedMessagesPanel({
         <Pin size={14} />
         <span>{t("pins.title")}</span>
         <span className="pinned-count">{messages.length}</span>
-        <button className="pinned-close" onClick={onClose}>
+        <button type="button" className="pinned-close" onClick={onClose}>
           <X size={16} />
         </button>
       </div>
@@ -58,7 +58,7 @@ export function PinnedMessagesPanel({
               <span className="pinned-nick">{msg.nickname}</span>
               <span className="pinned-time">{formatTime(msg.timestamp)}</span>
               {canModerate && onUnpin && (
-                <button className="pinned-unpin" onClick={() => onUnpin(msg.id, activeChannel)} title={t("pins.unpin")}>
+                <button type="button" className="pinned-unpin" onClick={() => onUnpin(msg.id, activeChannel)} title={t("pins.unpin")}>
                   <Trash2 size={12} />
                 </button>
               )}

@@ -37,18 +37,18 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
   };
 
   return (
-    <div className="lightbox-overlay" onClick={onClose}>
-      <div className="lightbox-toolbar" onClick={(e) => e.stopPropagation()}>
-        <button onClick={() => setScale((s) => Math.min(s + 0.25, 4))} title="Zoom in">
+    <div className="lightbox-overlay" onClick={onClose} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { onClose; } }} role="button" tabIndex={0}>
+      <div className="lightbox-toolbar" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
+        <button type="button" onClick={() => setScale((s) => Math.min(s + 0.25, 4))} title="Zoom in">
           <ZoomIn size={16} />
         </button>
-        <button onClick={() => setScale((s) => Math.max(s - 0.25, 0.5))} title="Zoom out">
+        <button type="button" onClick={() => setScale((s) => Math.max(s - 0.25, 0.5))} title="Zoom out">
           <ZoomOut size={16} />
         </button>
-        <button onClick={() => setRotation((r) => r + 90)} title="Rotate">
+        <button type="button" onClick={() => setRotation((r) => r + 90)} title="Rotate">
           <RotateCw size={16} />
         </button>
-        <button
+        <button type="button"
           onClick={() => {
             setScale(1);
             setRotation(0);
@@ -61,11 +61,11 @@ export function ImageLightbox({ src, onClose }: ImageLightboxProps) {
         <a href={src} download className="lightbox-download" title="Download" onClick={(e) => e.stopPropagation()}>
           <Download size={16} />
         </a>
-        <button className="lightbox-close-btn" onClick={onClose} title="Close (Esc)">
+        <button type="button" className="lightbox-close-btn" onClick={onClose} title="Close (Esc)">
           <X size={18} />
         </button>
       </div>
-      <div className="lightbox-content" onClick={(e) => e.stopPropagation()} onWheel={handleWheel}>
+      <div className="lightbox-content" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.stopPropagation(); } }} role="button" tabIndex={0} onWheel={handleWheel}>
         {!loaded && (
           <div className="lightbox-loading">
             <div className="lightbox-spinner" />

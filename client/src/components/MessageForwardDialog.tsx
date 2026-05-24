@@ -32,12 +32,12 @@ export function MessageForwardDialog({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="forward-dialog" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="forward-dialog" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="forward-header">
           <Forward size={16} />
           <h3>{t("forward.title")}</h3>
-          <button className="forward-close" onClick={onClose}>
+          <button type="button" className="forward-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
@@ -54,7 +54,7 @@ export function MessageForwardDialog({
             <label className="forward-label">{t("forward.sendTo")}</label>
             <div className="forward-channel-list">
               {availableChannels.map((ch) => (
-                <button
+                <button type="button"
                   key={ch.name}
                   className={`forward-channel-btn ${selectedChannel === ch.name ? "selected" : ""}`}
                   onClick={() => setSelectedChannel(ch.name)}
@@ -81,10 +81,10 @@ export function MessageForwardDialog({
         </div>
 
         <div className="forward-footer">
-          <button className="forward-cancel" onClick={onClose}>
+          <button type="button" className="forward-cancel" onClick={onClose}>
             {t("forward.cancel")}
           </button>
-          <button className="forward-submit" onClick={handleForward} disabled={!selectedChannel}>
+          <button type="button" className="forward-submit" onClick={handleForward} disabled={!selectedChannel}>
             <Send size={13} />
             <span>{t("forward.send")}</span>
           </button>

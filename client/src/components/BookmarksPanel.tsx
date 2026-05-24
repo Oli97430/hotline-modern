@@ -65,7 +65,7 @@ export function BookmarksPanel({ bookmarks, onRemove, onClose }: BookmarksPanelP
         <Bookmark size={14} />
         <span>{t("bookmarks.title")}</span>
         <span className="bookmarks-count">{bookmarks.length}</span>
-        <button className="bookmarks-close" onClick={onClose}>
+        <button type="button" className="bookmarks-close" onClick={onClose}>
           <X size={16} />
         </button>
       </div>
@@ -83,7 +83,7 @@ export function BookmarksPanel({ bookmarks, onRemove, onClose }: BookmarksPanelP
               <span className="bookmark-nick">{bm.nickname}</span>
               <span className="bookmark-channel">#{bm.channel}</span>
               <span className="bookmark-time">{formatTime(bm.timestamp)}</span>
-              <button className="bookmark-remove" onClick={() => onRemove(bm.id)} title={t("bookmarks.remove")}>
+              <button type="button" className="bookmark-remove" onClick={() => onRemove(bm.id)} title={t("bookmarks.remove")}>
                 <Trash2 size={12} />
               </button>
             </div>

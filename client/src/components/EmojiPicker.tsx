@@ -61,10 +61,10 @@ export function EmojiPicker({ onSelect, onClose, customEmojis, serverBaseUrl }: 
       />
       {hasCustom && (
         <div className="emoji-tabs">
-          <button className={`emoji-tab ${tab === "standard" ? "active" : ""}`} onClick={() => setTab("standard")}>
+          <button type="button" className={`emoji-tab ${tab === "standard" ? "active" : ""}`} onClick={() => setTab("standard")}>
             {t("emoji.standard") || "Standard"}
           </button>
-          <button className={`emoji-tab ${tab === "custom" ? "active" : ""}`} onClick={() => setTab("custom")}>
+          <button type="button" className={`emoji-tab ${tab === "custom" ? "active" : ""}`} onClick={() => setTab("custom")}>
             {t("emoji.custom") || "Custom"}
           </button>
         </div>
@@ -77,7 +77,7 @@ export function EmojiPicker({ onSelect, onClose, customEmojis, serverBaseUrl }: 
                 {!filter && <div className="emoji-cat-label">{t(`emoji.${cat.key}`) || cat.key}</div>}
                 <div className="emoji-grid">
                   {cat.emojis.map((emoji) => (
-                    <button key={emoji} className="emoji-item" onClick={() => onSelect(emoji)}>
+                    <button type="button" key={emoji} className="emoji-item" onClick={() => onSelect(emoji)}>
                       {emoji}
                     </button>
                   ))}
@@ -96,7 +96,7 @@ export function EmojiPicker({ onSelect, onClose, customEmojis, serverBaseUrl }: 
               {filteredCustom.map((emoji) => {
                 const imgUrl = serverBaseUrl ? `${serverBaseUrl}${emoji.url}` : emoji.url;
                 return (
-                  <button
+                  <button type="button"
                     key={emoji.name}
                     className="emoji-item emoji-item-custom"
                     onClick={() => onSelect(`:${emoji.name}:`)}

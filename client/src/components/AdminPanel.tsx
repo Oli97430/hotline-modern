@@ -255,22 +255,23 @@ export function AdminPanel({
     new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="admin-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: panel stops event propagation from modal overlay */}
+      <div className="admin-panel" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="admin-header">
           <Shield size={18} />
           <h3>{t("admin.title")}</h3>
-          <button className="admin-close" onClick={onClose}>
+          <button type="button" className="admin-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
 
         <div className="admin-tabs">
-          <button className={`admin-tab ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
+          <button type="button" className={`admin-tab ${tab === "settings" ? "active" : ""}`} onClick={() => setTab("settings")}>
             <Settings size={14} />
             {t("admin.settings")}
           </button>
-          <button
+          <button type="button"
             className={`admin-tab ${tab === "users" ? "active" : ""}`}
             onClick={() => {
               setTab("users");
@@ -280,11 +281,11 @@ export function AdminPanel({
             <Users size={14} />
             {t("admin.users")}
           </button>
-          <button className={`admin-tab ${tab === "channels" ? "active" : ""}`} onClick={() => setTab("channels")}>
+          <button type="button" className={`admin-tab ${tab === "channels" ? "active" : ""}`} onClick={() => setTab("channels")}>
             <Hash size={14} />
             {t("admin.channels")}
           </button>
-          <button
+          <button type="button"
             className={`admin-tab ${tab === "bans" ? "active" : ""}`}
             onClick={() => {
               setTab("bans");
@@ -295,7 +296,7 @@ export function AdminPanel({
             <UserX size={14} />
             {t("admin.bans")}
           </button>
-          <button
+          <button type="button"
             className={`admin-tab ${tab === "audit" ? "active" : ""}`}
             onClick={() => {
               setTab("audit");
@@ -305,7 +306,7 @@ export function AdminPanel({
             <ClipboardList size={14} />
             {t("admin.auditLog")}
           </button>
-          <button
+          <button type="button"
             className={`admin-tab ${tab === "retention" ? "active" : ""}`}
             onClick={() => {
               setTab("retention");
@@ -315,7 +316,7 @@ export function AdminPanel({
             <Database size={14} />
             {t("retention.title")}
           </button>
-          <button
+          <button type="button"
             className={`admin-tab ${tab === "automod" ? "active" : ""}`}
             onClick={() => {
               setTab("automod");
@@ -332,14 +333,14 @@ export function AdminPanel({
           {tab === "settings" && (
             <>
               <div className="admin-field">
-                <label>{t("admin.serverName")}</label>
-                <input type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
+                <label htmlFor="field-AdminPanel-334">{t("admin.serverName")}</label>
+                <input id="field-AdminPanel-334" type="text" value={name} onChange={(e) => setName(e.target.value)} maxLength={64} />
               </div>
               <div className="admin-field">
-                <label>{t("admin.motd")}</label>
-                <textarea value={motdValue} onChange={(e) => setMotdValue(e.target.value)} rows={4} maxLength={512} />
+                <label htmlFor="field-AdminPanel-338">{t("admin.motd")}</label>
+                <textarea id="field-AdminPanel-338" value={motdValue} onChange={(e) => setMotdValue(e.target.value)} rows={4} maxLength={512} />
               </div>
-              <button className={`admin-save ${saved ? "saved" : ""}`} onClick={handleSave}>
+              <button type="button" className={`admin-save ${saved ? "saved" : ""}`} onClick={handleSave}>
                 {saved ? <Check size={14} /> : <Save size={14} />}
                 {saved ? t("admin.saved") : t("admin.save")}
               </button>
@@ -349,7 +350,7 @@ export function AdminPanel({
                 <Database size={13} /> {t("backup.title")}
               </div>
               <div className="backup-section">
-                <button className="admin-btn-sm accent" onClick={handleDownloadBackup} disabled={backupLoading}>
+                <button type="button" className="admin-btn-sm accent" onClick={handleDownloadBackup} disabled={backupLoading}>
                   <Download size={12} />
                   {backupLoading ? t("backup.downloading") : t("backup.download")}
                 </button>
@@ -371,7 +372,7 @@ export function AdminPanel({
                       className="backup-file-input"
                     />
                     {restoreFile && !showRestoreConfirm && (
-                      <button
+                      <button type="button"
                         className="admin-btn-sm danger"
                         onClick={() => setShowRestoreConfirm(true)}
                         disabled={restoreLoading}
@@ -384,11 +385,11 @@ export function AdminPanel({
                       <div className="retention-confirm">
                         <p className="retention-confirm-text">{t("backup.confirmRestore")}</p>
                         <div className="retention-confirm-actions">
-                          <button className="admin-btn-sm danger" onClick={handleRestore} disabled={restoreLoading}>
+                          <button type="button" className="admin-btn-sm danger" onClick={handleRestore} disabled={restoreLoading}>
                             <Upload size={12} />
                             {restoreLoading ? t("backup.restoring") : t("backup.restoreBtn")}
                           </button>
-                          <button className="admin-btn-sm" onClick={() => setShowRestoreConfirm(false)}>
+                          <button type="button" className="admin-btn-sm" onClick={() => setShowRestoreConfirm(false)}>
                             {t("channel.cancel")}
                           </button>
                         </div>
@@ -436,11 +437,11 @@ export function AdminPanel({
                       </div>
                       <div className="admin-list-actions">
                         {u.online && (
-                          <button className="admin-btn-sm" onClick={() => onKickUser(u.publicKey)}>
+                          <button type="button" className="admin-btn-sm" onClick={() => onKickUser(u.publicKey)}>
                             {t("admin.kick")}
                           </button>
                         )}
-                        <button className="admin-btn-sm danger" onClick={() => onBanUser(u.publicKey)}>
+                        <button type="button" className="admin-btn-sm danger" onClick={() => onBanUser(u.publicKey)}>
                           {t("profile.ban")}
                         </button>
                       </div>
@@ -462,7 +463,7 @@ export function AdminPanel({
                   placeholder={t("channel.name")}
                   onKeyDown={(e) => e.key === "Enter" && handleCreateChannel()}
                 />
-                <button className="admin-btn-sm accent" onClick={handleCreateChannel}>
+                <button type="button" className="admin-btn-sm accent" onClick={handleCreateChannel}>
                   {t("admin.createChannel")}
                 </button>
               </div>
@@ -495,7 +496,7 @@ export function AdminPanel({
                     <div className="admin-list-actions">
                       {ch.name !== "lobby" && (
                         <>
-                          <button
+                          <button type="button"
                             className="admin-btn-sm"
                             onClick={() => {
                               setRenaming(ch.name);
@@ -505,7 +506,7 @@ export function AdminPanel({
                           >
                             <Pencil size={12} />
                           </button>
-                          <button
+                          <button type="button"
                             className="admin-btn-sm danger"
                             onClick={() => onDeleteChannel(ch.name)}
                             title={t("admin.deleteChannel")}
@@ -515,7 +516,7 @@ export function AdminPanel({
                         </>
                       )}
                       {ch.name === "lobby" && <span className="admin-text-muted">{t("admin.cannotDeleteLobby")}</span>}
-                      <button
+                      <button type="button"
                         className="admin-btn-sm"
                         onClick={() => {
                           if (welcomeExpanded === ch.name) {
@@ -573,7 +574,7 @@ export function AdminPanel({
                             />
                             {t("welcome.enabled")}
                           </label>
-                          <button
+                          <button type="button"
                             className="admin-btn-sm accent"
                             onClick={() => {
                               onSetWelcomeMessage(ch.name, welcomeEditMsg, welcomeEditEnabled);
@@ -649,7 +650,7 @@ export function AdminPanel({
                   onChange={(e) => setMuteDuration(Number(e.target.value))}
                   style={{ width: 80 }}
                 />
-                <button className="admin-btn-sm accent" onClick={handleMute}>
+                <button type="button" className="admin-btn-sm accent" onClick={handleMute}>
                   {t("admin.mute")}
                 </button>
               </div>
@@ -670,7 +671,7 @@ export function AdminPanel({
                         )}
                       </div>
                       <div className="admin-list-actions">
-                        <button className="admin-btn-sm" onClick={() => onUnmuteUser(m.publicKey)}>
+                        <button type="button" className="admin-btn-sm" onClick={() => onUnmuteUser(m.publicKey)}>
                           {t("admin.unmute")}
                         </button>
                       </div>
@@ -694,7 +695,7 @@ export function AdminPanel({
                         <span className="admin-text-muted">{formatDate(b.bannedAt)}</span>
                       </div>
                       <div className="admin-list-actions">
-                        <button className="admin-btn-sm" onClick={() => onUnban(b.publicKey)}>
+                        <button type="button" className="admin-btn-sm" onClick={() => onUnban(b.publicKey)}>
                           {t("admin.unmute")}
                         </button>
                       </div>
@@ -750,7 +751,7 @@ export function AdminPanel({
                 </ul>
               )}
               {auditLog.entries.length < auditLog.total && (
-                <button
+                <button type="button"
                   className="admin-btn-sm accent"
                   style={{ alignSelf: "center" }}
                   onClick={() => onRequestAuditLog(50, auditLog.entries.length)}
@@ -803,8 +804,9 @@ export function AdminPanel({
               </div>
               <div className="retention-purge-form">
                 <div className="admin-field">
-                  <label>{t("retention.purgeChannel")}</label>
+                  <label htmlFor="purge-channel-select">{t("retention.purgeChannel")}</label>
                   <select
+                    id="purge-channel-select"
                     value={purgeChannel}
                     onChange={(e) => setPurgeChannel(e.target.value)}
                     className="admin-mute-select"
@@ -818,8 +820,9 @@ export function AdminPanel({
                   </select>
                 </div>
                 <div className="admin-field">
-                  <label>{t("retention.olderThan")}</label>
+                  <label htmlFor="purge-older-select">{t("retention.olderThan")}</label>
                   <select
+                    id="purge-older-select"
                     value={purgeOlderThan}
                     onChange={(e) => setPurgeOlderThan(Number(e.target.value))}
                     className="admin-mute-select"
@@ -831,7 +834,7 @@ export function AdminPanel({
                   </select>
                 </div>
                 {!showPurgeConfirm ? (
-                  <button className="admin-btn-sm danger retention-purge-btn" onClick={() => setShowPurgeConfirm(true)}>
+                  <button type="button" className="admin-btn-sm danger retention-purge-btn" onClick={() => setShowPurgeConfirm(true)}>
                     <Trash2 size={12} />
                     {t("retention.purgeBtn")}
                   </button>
@@ -844,7 +847,7 @@ export function AdminPanel({
                       })}
                     </p>
                     <div className="retention-confirm-actions">
-                      <button
+                      <button type="button"
                         className="admin-btn-sm danger"
                         onClick={() => {
                           onPurgeMessages(purgeChannel, purgeOlderThan);
@@ -854,7 +857,7 @@ export function AdminPanel({
                         <Trash2 size={12} />
                         {t("retention.purgeBtn")}
                       </button>
-                      <button className="admin-btn-sm" onClick={() => setShowPurgeConfirm(false)}>
+                      <button type="button" className="admin-btn-sm" onClick={() => setShowPurgeConfirm(false)}>
                         {t("channel.cancel")}
                       </button>
                     </div>
@@ -868,8 +871,9 @@ export function AdminPanel({
               </div>
               <div className="retention-export-form">
                 <div className="admin-field">
-                  <label>{t("retention.purgeChannel")}</label>
+                  <label htmlFor="export-channel-select">{t("retention.purgeChannel")}</label>
                   <select
+                    id="export-channel-select"
                     value={exportChannel}
                     onChange={(e) => setExportChannel(e.target.value)}
                     className="admin-mute-select"
@@ -882,7 +886,7 @@ export function AdminPanel({
                     ))}
                   </select>
                 </div>
-                <button className="admin-btn-sm accent" onClick={() => onExportMessages(exportChannel, 10000)}>
+                <button type="button" className="admin-btn-sm accent" onClick={() => onExportMessages(exportChannel, 10000)}>
                   <Download size={12} />
                   {t("retention.exportBtn")}
                 </button>
@@ -899,8 +903,9 @@ export function AdminPanel({
               </div>
               <div className="automod-form">
                 <div className="admin-field">
-                  <label>{t("automod.ruleType")}</label>
+                  <label htmlFor="automod-type-select">{t("automod.ruleType")}</label>
                   <select
+                    id="automod-type-select"
                     value={automodType}
                     onChange={(e) => setAutomodType(e.target.value)}
                     className="admin-mute-select"
@@ -914,8 +919,9 @@ export function AdminPanel({
                 </div>
                 {automodType !== "spam" && automodType !== "caps" && automodType !== "links" && (
                   <div className="admin-field">
-                    <label>{t("automod.pattern")}</label>
+                    <label htmlFor="automod-pattern-input">{t("automod.pattern")}</label>
                     <input
+                      id="automod-pattern-input"
                       type="text"
                       value={automodPattern}
                       onChange={(e) => setAutomodPattern(e.target.value)}
@@ -925,8 +931,9 @@ export function AdminPanel({
                   </div>
                 )}
                 <div className="admin-field">
-                  <label>{t("automod.action")}</label>
+                  <label htmlFor="automod-action-select">{t("automod.action")}</label>
                   <select
+                    id="automod-action-select"
                     value={automodAction}
                     onChange={(e) => setAutomodAction(e.target.value)}
                     className="admin-mute-select"
@@ -946,7 +953,7 @@ export function AdminPanel({
                     style={{ padding: "8px 12px", fontSize: "13px" }}
                   />
                 </div>
-                <button
+                <button type="button"
                   className="admin-btn-sm accent"
                   onClick={() => {
                     const pat =
@@ -969,22 +976,22 @@ export function AdminPanel({
                 <Zap size={13} /> {t("automod.presets")}
               </div>
               <div className="automod-presets">
-                <button
+                <button type="button"
                   className="admin-btn-sm"
                   onClick={() => onAddAutomodRule("word", "badword", "block", "Profanity filter")}
                 >
                   {t("automod.presetProfanity")}
                 </button>
-                <button className="admin-btn-sm" onClick={() => onAddAutomodRule("spam", "spam", "mute", "Anti-spam")}>
+                <button type="button" className="admin-btn-sm" onClick={() => onAddAutomodRule("spam", "spam", "mute", "Anti-spam")}>
                   {t("automod.presetSpam")}
                 </button>
-                <button
+                <button type="button"
                   className="admin-btn-sm"
                   onClick={() => onAddAutomodRule("caps", "caps", "warn", "No caps lock")}
                 >
                   {t("automod.presetCaps")}
                 </button>
-                <button
+                <button type="button"
                   className="admin-btn-sm"
                   onClick={() => onAddAutomodRule("links", "links", "block", "No links")}
                 >
@@ -1020,14 +1027,14 @@ export function AdminPanel({
                         </span>
                       </div>
                       <div className="admin-list-actions">
-                        <button
+                        <button type="button"
                           className="admin-btn-sm"
                           onClick={() => onToggleAutomodRule(rule.id, !rule.enabled)}
                           title={rule.enabled ? t("automod.disable") : t("automod.enable")}
                         >
                           {rule.enabled ? t("automod.disable") : t("automod.enable")}
                         </button>
-                        <button className="admin-btn-sm danger" onClick={() => onDeleteAutomodRule(rule.id)}>
+                        <button type="button" className="admin-btn-sm danger" onClick={() => onDeleteAutomodRule(rule.id)}>
                           <Trash2 size={12} />
                         </button>
                       </div>

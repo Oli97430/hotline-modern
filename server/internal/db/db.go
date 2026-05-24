@@ -629,18 +629,24 @@ func (d *DB) GetMessageById(id string) (*Message, error) {
 	return &m, nil
 }
 
-func (d *DB) SearchMessages(query string, channel string, limit int) ([]Message, error) {
+func (d *DB) SearchMessages(query string, channel string, limit int, offset int) ([]Message, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	var rows *sql.Rows
 	var err error
 	if channel != "" {
 		rows, err = d.conn.Query(
-			"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?",
-			channel, "%"+query+"%", limit,
+			"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE channel = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+			channel, "%"+query+"%", limit, offset,
 		)
 	} else {
 		rows, err = d.conn.Query(
-			"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?",
-			"%"+query+"%", limit,
+			"SELECT id, channel, user_key, nickname, content, reply_to, msg_type, timestamp FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+			"%"+query+"%", limit, offset,
 		)
 	}
 	if err != nil {

@@ -121,7 +121,7 @@ export function UserProfileCard({
 
   return (
     <>
-      <div className="profile-backdrop" onClick={onClose} />
+      <div className="profile-backdrop" onClick={onClose} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { onClose; } }} role="button" tabIndex={0} />
       <div className="profile-card" style={{ position: "fixed", left: position.x, top: position.y }}>
         <div className="profile-card-header">
           <div className="profile-avatar-wrap">
@@ -165,7 +165,7 @@ export function UserProfileCard({
 
         <div className="profile-meta">
           <RoleBadge role={user.role} />
-          <button className="profile-copy-id" onClick={handleCopyId} title={t("profile.copyId")}>
+          <button type="button" className="profile-copy-id" onClick={handleCopyId} title={t("profile.copyId")}>
             <Copy size={11} />
             <span>{user.userId.slice(0, 12)}...</span>
           </button>
@@ -207,11 +207,11 @@ export function UserProfileCard({
               maxLength={50}
             />
             <div className="profile-edit-buttons">
-              <button className="profile-action-btn" onClick={() => setEditing(false)}>
+              <button type="button" className="profile-action-btn" onClick={() => setEditing(false)}>
                 <X size={14} />
                 {t("profile.cancel")}
               </button>
-              <button className="profile-action-btn primary" onClick={handleSave}>
+              <button type="button" className="profile-action-btn primary" onClick={handleSave}>
                 <Save size={14} />
                 {t("profile.save")}
               </button>
@@ -223,7 +223,7 @@ export function UserProfileCard({
 
         {isSelf && !editing && (
           <div className="profile-actions">
-            <button className="profile-action-btn primary" onClick={handleStartEdit}>
+            <button type="button" className="profile-action-btn primary" onClick={handleStartEdit}>
               <Edit3 size={14} />
               {t("profile.edit")}
             </button>
@@ -232,7 +232,7 @@ export function UserProfileCard({
 
         {!isSelf && (
           <div className="profile-actions">
-            <button
+            <button type="button"
               className="profile-action-btn primary"
               onClick={() => {
                 onDM(user.userId);
@@ -243,7 +243,7 @@ export function UserProfileCard({
               {t("users.sendDM")}
             </button>
             {canModerate && user.role !== "operator" && user.role !== "admin" && (
-              <button
+              <button type="button"
                 className="profile-action-btn"
                 onClick={() => {
                   onOp?.(user.userId);
@@ -255,7 +255,7 @@ export function UserProfileCard({
               </button>
             )}
             {canModerate && user.role === "operator" && (
-              <button
+              <button type="button"
                 className="profile-action-btn"
                 onClick={() => {
                   onDeop?.(user.userId);
@@ -268,7 +268,7 @@ export function UserProfileCard({
             )}
             {canModerate && (
               <>
-                <button
+                <button type="button"
                   className="profile-action-btn danger"
                   onClick={() => {
                     onKick?.(user.userId);
@@ -277,7 +277,7 @@ export function UserProfileCard({
                 >
                   {t("profile.kick")}
                 </button>
-                <button
+                <button type="button"
                   className="profile-action-btn danger"
                   onClick={() => {
                     onBan?.(user.userId);
@@ -290,7 +290,7 @@ export function UserProfileCard({
             )}
             {isUserBlocked
               ? onUnblockUser && (
-                  <button
+                  <button type="button"
                     className="profile-action-btn"
                     onClick={() => {
                       onUnblockUser(user.userId);
@@ -302,7 +302,7 @@ export function UserProfileCard({
                   </button>
                 )
               : onBlockUser && (
-                  <button
+                  <button type="button"
                     className="profile-action-btn danger"
                     onClick={() => {
                       onBlockUser(user.userId);
@@ -330,7 +330,7 @@ export function UserProfileCard({
                     <div className="profile-note-meta">
                       <span className="profile-note-author">{t("notes.by", { name: note.authorName })}</span>
                       <span className="profile-note-date">{new Date(note.createdAt).toLocaleDateString()}</span>
-                      <button
+                      <button type="button"
                         className="profile-note-delete"
                         title={t("notes.delete")}
                         onClick={() => onDeleteNote?.(note.id, user.userId)}
@@ -352,7 +352,7 @@ export function UserProfileCard({
                 maxLength={500}
                 rows={2}
               />
-              <button
+              <button type="button"
                 className="profile-action-btn primary profile-note-submit"
                 disabled={!noteText.trim()}
                 onClick={() => {

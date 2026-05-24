@@ -65,12 +65,12 @@ export function InvitePanel({ invites, serverAddress, onCreateInvite, onDeleteIn
   };
 
   return (
-    <div className="invite-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="invite-overlay" onClick={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { if (e.target === e.currentTarget) onClose(); } }} role="button" tabIndex={0}>
       <div className="invite-panel">
         <div className="invite-header">
           <Link size={16} />
           <h3>{t("invite.title")}</h3>
-          <button className="invite-close" onClick={onClose}>
+          <button type="button" className="invite-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
@@ -87,8 +87,8 @@ export function InvitePanel({ invites, serverAddress, onCreateInvite, onDeleteIn
               />
             </div>
             <div className="invite-field">
-              <label>{t("invite.expiry")}</label>
-              <select value={expiryIdx} onChange={(e) => setExpiryIdx(Number(e.target.value))}>
+              <label htmlFor="field-InvitePanel-89">{t("invite.expiry")}</label>
+              <select id="field-InvitePanel-89" value={expiryIdx} onChange={(e) => setExpiryIdx(Number(e.target.value))}>
                 {EXPIRY_OPTIONS.map((opt, i) => (
                   <option key={opt.hours} value={i}>
                     {opt.label === "never" ? t("invite.never") : opt.label}
@@ -97,7 +97,7 @@ export function InvitePanel({ invites, serverAddress, onCreateInvite, onDeleteIn
               </select>
             </div>
           </div>
-          <button className="invite-create-btn" onClick={handleCreate}>
+          <button type="button" className="invite-create-btn" onClick={handleCreate}>
             <Plus size={14} />
             {t("invite.create")}
           </button>
@@ -117,11 +117,11 @@ export function InvitePanel({ invites, serverAddress, onCreateInvite, onDeleteIn
                   </span>
                 </div>
                 <div className="invite-item-actions">
-                  <button className="invite-action-btn" onClick={() => handleCopy(inv.code)} title={t("invite.copy")}>
+                  <button type="button" className="invite-action-btn" onClick={() => handleCopy(inv.code)} title={t("invite.copy")}>
                     {copiedCode === inv.code ? <Check size={13} /> : <Copy size={13} />}
                     <span>{copiedCode === inv.code ? t("invite.copied") : t("invite.copy")}</span>
                   </button>
-                  <button
+                  <button type="button"
                     className="invite-action-btn invite-delete-btn"
                     onClick={() => onDeleteInvite(inv.code)}
                     title={t("invite.delete")}

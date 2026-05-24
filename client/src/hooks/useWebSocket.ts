@@ -16,6 +16,8 @@ import { LAST_SERVER_IP_KEY } from "./useTrackerServers";
 
 export type ConnectionStatus = "disconnected" | "connecting" | "authenticating" | "connected" | "reconnecting";
 
+export type MessageStatus = "sending" | "sent" | "failed" | "read";
+
 export interface ChatMessage {
   id: string;
   channel: string;
@@ -29,6 +31,7 @@ export interface ChatMessage {
   replyTo?: string;
   msgType?: string;
   system?: boolean;
+  status?: MessageStatus;
 }
 
 export interface DMMessage {
@@ -283,6 +286,7 @@ export interface UseWebSocketReturn {
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
   sendChat: (channel: string, content: string, msgType?: string) => void;
+  retrySend: (messageId: string) => void;
   sendDM: (targetId: string, content: string) => void;
   sendTyping: (channel: string, targetId?: string) => void;
   joinChannel: (channel: string, password?: string) => void;
@@ -295,7 +299,7 @@ export interface UseWebSocketReturn {
   banUser: (userId: string) => void;
   setUserRole: (userId: string, role: string) => void;
   setTopic: (channel: string, topic: string) => void;
-  search: (query: string, channel?: string) => void;
+  search: (query: string, channel?: string, offset?: number, limit?: number) => void;
   clearSearch: () => void;
   editMessage: (messageId: string, content: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -352,6 +356,10 @@ export interface UseWebSocketReturn {
   scheduleMessage: (channel: string, content: string, sendAt: number) => void;
   requestScheduledMessages: () => void;
   deleteScheduledMessage: (id: number) => void;
+  dmHistoryLoading: boolean;
+  dmHasMoreHistory: boolean;
+  requestDmHistory: (userId: string, before?: number, limit?: number) => void;
+  loadDmHistory: (userId: string, beforeTimestamp: number) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -416,11 +424,30 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [automodRules, setAutomodRules] = useState<AutomodRule[]>([]);
   const [automodWarning, setAutomodWarning] = useState<string | null>(null);
   const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessageData[]>([]);
+  const [dmHistoryLoading, setDmHistoryLoading] = useState(false);
+  const [dmHasMoreHistory, setDmHasMoreHistory] = useState(true);
 
-  // --- Per-channel unread tracking ---
-  const [channelLastReadIds, setChannelLastReadIds] = useState<Record<string, string>>({});
+  // --- Per-channel unread tracking (persisted to localStorage) ---
+  const LAST_READ_STORAGE_KEY = "hotline-last-read-ids";
+  const [channelLastReadIds, setChannelLastReadIds] = useState<Record<string, string>>(() => {
+    try {
+      const stored = localStorage.getItem(LAST_READ_STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
   const [unreadChannels, setUnreadChannels] = useState<Set<string>>(new Set());
   const activeChannelForUnread = useRef<string>("");
+
+  // Persist channelLastReadIds to localStorage whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(LAST_READ_STORAGE_KEY, JSON.stringify(channelLastReadIds));
+    } catch {
+      // Ignore write failures (quota exceeded, etc.)
+    }
+  }, [channelLastReadIds]);
 
   const markChannelRead = useCallback((channel: string) => {
     activeChannelForUnread.current = channel;
@@ -647,8 +674,17 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           break;
         }
         case "chat.search_results": {
-          const payload = msg.payload as { query: string; results: SearchResult[] };
-          setSearchResults(payload.results || []);
+          const payload = msg.payload as { query: string; results: SearchResult[]; offset?: number; limit?: number };
+          if (payload.offset && payload.offset > 0) {
+            // Append results for "Load More"
+            setSearchResults((prev) => {
+              const existingIds = new Set(prev.map((r) => r.id));
+              const newResults = (payload.results || []).filter((r) => !existingIds.has(r.id));
+              return [...prev, ...newResults];
+            });
+          } else {
+            setSearchResults(payload.results || []);
+          }
           break;
         }
         case "chat.edited": {
@@ -926,6 +962,33 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           setScheduledMessages(payload.scheduledMessages || []);
           break;
         }
+        case "dm.history": {
+          const payload = msg.payload as {
+            userId: string;
+            messages: { id: string; from: string; to: string; nickname: string; content: string; timestamp: number }[];
+            hasMore: boolean;
+          };
+          setDmHistoryLoading(false);
+          setDmHasMoreHistory(payload.hasMore);
+          if (payload.messages && payload.messages.length > 0) {
+            setDmMessages((prev) => {
+              const existingIds = new Set(prev.map((m) => m.id));
+              const newMsgs: DMMessage[] = payload.messages
+                .filter((m) => !existingIds.has(m.id))
+                .map((m) => ({
+                  id: m.id,
+                  from: m.from,
+                  to: m.to,
+                  nickname: m.nickname,
+                  content: m.content,
+                  role: "",
+                  timestamp: m.timestamp,
+                }));
+              return [...newMsgs, ...prev].sort((a, b) => a.timestamp - b.timestamp);
+            });
+          }
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -1038,7 +1101,10 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setAutomodRules([]);
     setAutomodWarning(null);
     setScheduledMessages([]);
-    setChannelLastReadIds({});
+    setDmHistoryLoading(false);
+    setDmHasMoreHistory(true);
+    // Keep channelLastReadIds in localStorage for cross-reload persistence;
+    // only clear the transient unread set and active channel tracker.
     setUnreadChannels(new Set());
     activeChannelForUnread.current = "";
   }, []);
@@ -1139,6 +1205,27 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
       }
     },
     [identity, wsSend],
+  );
+
+  const requestDmHistory = useCallback(
+    (userId: string, before?: number, limit?: number) => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+      setDmHistoryLoading(true);
+      const payload: Record<string, unknown> = { userId };
+      if (before !== undefined) payload.before = before;
+      if (limit !== undefined) payload.limit = limit;
+      wsSend("dm.history", payload);
+    },
+    [wsSend],
+  );
+
+  const loadDmHistory = useCallback(
+    (userId: string, beforeTimestamp: number) => {
+      if (wsRef.current?.readyState !== WebSocket.OPEN) return;
+      setDmHistoryLoading(true);
+      wsSend("dm.history", { userId, before: beforeTimestamp, limit: 50 });
+    },
+    [wsSend],
   );
 
   const sendTyping = useCallback(
@@ -1664,6 +1751,11 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     scheduleMessage,
     requestScheduledMessages,
     deleteScheduledMessage,
+    dmHistoryLoading,
+    dmHasMoreHistory,
+    requestDmHistory,
+    loadDmHistory,
+    retrySend: (_messageId: string) => { /* TODO: implement retry logic */ },
     channelLastReadIds,
     unreadChannels,
     markChannelRead,

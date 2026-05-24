@@ -101,8 +101,8 @@ export function ChannelSettingsModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="chsettings-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="chsettings-modal" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="chsettings-header">
           <div className="chsettings-icon">{channel.hasPassword ? <Lock size={18} /> : <Hash size={18} />}</div>
           <div>
@@ -219,11 +219,11 @@ export function ChannelSettingsModal({
         )}
 
         <div className="chsettings-actions">
-          <button className="modal-btn-cancel" onClick={onClose}>
+          <button type="button" className="modal-btn-cancel" onClick={onClose}>
             {canEdit ? t("channel.cancel") : t("channelSettings.close")}
           </button>
           {canEdit && (
-            <button className="modal-btn-submit" onClick={handleSave} disabled={!hasChanges}>
+            <button type="button" className="modal-btn-submit" onClick={handleSave} disabled={!hasChanges}>
               {t("channelSettings.save")}
             </button>
           )}

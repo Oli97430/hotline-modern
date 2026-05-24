@@ -122,7 +122,7 @@ function ChannelItem({
         {ch.userCount}
       </span>
       {onToggleMute && (
-        <button
+        <button type="button"
           className="channel-mute-btn"
           onClick={(e) => {
             e.stopPropagation();
@@ -134,7 +134,7 @@ function ChannelItem({
         </button>
       )}
       {canCreateChannel && ch.name !== "lobby" && (
-        <button
+        <button type="button"
           className="channel-delete"
           onClick={(e) => {
             e.stopPropagation();
@@ -239,7 +239,7 @@ export function Sidebar({
         <h2>{serverName}</h2>
         <div className="sidebar-header-actions">
           {onAdminPanel && role === "admin" && (
-            <button
+            <button type="button"
               className="sidebar-admin"
               onClick={onAdminPanel}
               title={t("admin.title")}
@@ -248,7 +248,7 @@ export function Sidebar({
               <Settings size={15} />
             </button>
           )}
-          <button
+          <button type="button"
             className="sidebar-disconnect"
             onClick={onDisconnect}
             title={t("sidebar.disconnect")}
@@ -263,7 +263,7 @@ export function Sidebar({
         <div className="sidebar-section-header">
           <span>{t("sidebar.channels")}</span>
           {canCreateChannel && (
-            <button
+            <button type="button"
               className="sidebar-add"
               onClick={onCreateChannel}
               title={t("sidebar.createChannel")}
@@ -280,7 +280,7 @@ export function Sidebar({
         {(hasCategories ? uncategorized : channels).length > 0 && (
           <>
             {hasCategories && uncategorized.length > 0 && (
-              <div className="category-header" onClick={() => toggleCollapse(0)}>
+              <div className="category-header" onClick={() => toggleCollapse(0)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => toggleCollapse(0); } }} role="button" tabIndex={0}>
                 {collapsed.has(0) ? (
                   <ChevronRight size={12} className="category-chevron" />
                 ) : (
@@ -319,7 +319,7 @@ export function Sidebar({
           <div key={category.id} className="category-group">
             <div
               className="category-header"
-              onClick={() => toggleCollapse(category.id)}
+              onClick={() => toggleCollapse(category.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => toggleCollapse(category.id); } }} role="button" tabIndex={0}
               onContextMenu={(e) => {
                 if (role === "admin") {
                   e.preventDefault();
@@ -386,7 +386,7 @@ export function Sidebar({
         {/* Category context menu (admin only) */}
         {contextMenu && (
           <div className="category-context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
-            <button
+            <button type="button"
               onClick={() => {
                 const cat = categories.find((c) => c.id === contextMenu.catId);
                 if (cat) {
@@ -398,7 +398,7 @@ export function Sidebar({
             >
               {t("category.rename", "Rename")}
             </button>
-            <button
+            <button type="button"
               className="danger"
               onClick={() => {
                 onDeleteCategory?.(contextMenu.catId);

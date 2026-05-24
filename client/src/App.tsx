@@ -119,7 +119,14 @@ export default function App() {
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; nickname: string; content: string } | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
-  const [lastReadIds, setLastReadIds] = useState<Record<string, string>>({});
+  const [lastReadIds, setLastReadIds] = useState<Record<string, string>>(() => {
+    try {
+      const stored = localStorage.getItem("hotline-last-read-ids");
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
   const [dmUnreadCounts, setDmUnreadCounts] = useState<Record<string, number>>({});
   const [notifPrefs, setNotifPrefs] = useState<NotifPrefs>(loadNotifPrefs);
   const [statusBeforeIdle, setStatusBeforeIdle] = useState<string | null>(null);
@@ -132,6 +139,19 @@ export default function App() {
   useEffect(() => {
     loadSavedTheme();
   }, []);
+
+  // Persist App-level lastReadIds to localStorage whenever they change
+  useEffect(() => {
+    try {
+      // Merge with existing storage (useWebSocket also writes to the same key)
+      const stored = localStorage.getItem("hotline-last-read-ids");
+      const existing = stored ? JSON.parse(stored) : {};
+      const merged = { ...existing, ...lastReadIds };
+      localStorage.setItem("hotline-last-read-ids", JSON.stringify(merged));
+    } catch {
+      // Ignore write failures
+    }
+  }, [lastReadIds]);
 
   const handleError = useCallback((msg: string) => {
     setError(msg);
@@ -737,7 +757,8 @@ export default function App() {
 
   return (
     <div className="app-layout">
-      {mobileSidebarOpen && <div className="mobile-sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} />}
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: overlay dismisses sidebar on click */}
+      {mobileSidebarOpen && <div className="mobile-sidebar-overlay" onClick={() => setMobileSidebarOpen(false)} onKeyDown={(e) => { if (e.key === "Escape") setMobileSidebarOpen(false); }} role="presentation" />}
       <nav
         className={`app-sidebar-col ${mobileSidebarOpen ? "mobile-open" : ""}`}
         style={{ width: sidebarWidth, minWidth: sidebarWidth }}
@@ -790,7 +811,7 @@ export default function App() {
             onStatusChange={handleStatusChange}
           />
           <NotificationSettings prefs={notifPrefs} onChange={setNotifPrefs} />
-          <button
+          <button type="button"
             className="compact-toggle"
             onClick={toggleCompact}
             title={compact ? "Comfortable view" : "Compact view"}
@@ -798,7 +819,7 @@ export default function App() {
           >
             {compact ? <StretchHorizontal size={14} /> : <Rows3 size={14} />}
           </button>
-          <button
+          <button type="button"
             className="compact-toggle"
             onClick={() => setShowThemeEditor(true)}
             title={t("theme.title")}
@@ -806,7 +827,7 @@ export default function App() {
           >
             <Palette size={14} />
           </button>
-          <button
+          <button type="button"
             className="compact-toggle"
             onClick={() => setShowStats(true)}
             title={t("stats.title")}
@@ -814,7 +835,7 @@ export default function App() {
           >
             <TrendingUp size={14} />
           </button>
-          <button
+          <button type="button"
             className="compact-toggle"
             onClick={() => {
               ws.requestScheduledMessages();
@@ -825,7 +846,7 @@ export default function App() {
           >
             <Clock size={14} />
           </button>
-          <button
+          <button type="button"
             className="compact-toggle"
             onClick={() => setShowCustomEmoji(true)}
             title={t("customEmoji.title")}
@@ -834,7 +855,7 @@ export default function App() {
             <SmileIcon size={14} />
           </button>
           {canCreateChannel && (
-            <button
+            <button type="button"
               className="compact-toggle"
               onClick={() => {
                 setShowInvites(true);
@@ -846,7 +867,7 @@ export default function App() {
               <LinkIcon size={14} />
             </button>
           )}
-          <button
+          <button type="button"
             className="compact-toggle"
             onClick={() => setShowNotifFilters(true)}
             title={t("notifFilters.title")}
@@ -862,7 +883,7 @@ export default function App() {
 
       <main className="app-main">
         <div className="mobile-header">
-          <button
+          <button type="button"
             className="mobile-header-btn"
             onClick={() => setMobileSidebarOpen(true)}
             aria-label={t("sidebar.openMenu")}
@@ -872,7 +893,7 @@ export default function App() {
           <span className="mobile-header-channel">
             {activeDM ? dmConversations.find((d) => d.peerId === activeDM)?.peerNick || "DM" : `#${activeChannel}`}
           </span>
-          <button
+          <button type="button"
             className="mobile-header-btn"
             onClick={() => setRightPanelOpen((v) => !v)}
             aria-label={t("users.togglePanel")}
@@ -1001,7 +1022,7 @@ export default function App() {
               );
             })()}
 
-          <button
+          <button type="button"
             className="panel-toggle"
             onClick={() => setRightPanelOpen((v) => !v)}
             title={rightPanelOpen ? "Hide panel" : "Show panel"}

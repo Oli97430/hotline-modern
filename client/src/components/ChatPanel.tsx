@@ -30,16 +30,16 @@ function BlockedMessagePlaceholder({
         <div className="blocked-message-revealed">
           <span className="blocked-message-nick">{msg.nickname}</span>
           <span className="message-content">{msg.content}</span>
-          <button className="blocked-message-hide" onClick={() => setRevealed(false)}>
+          <button type="button" className="blocked-message-hide" onClick={() => setRevealed(false)}>
             {t("chat.blockedMessage")}
           </button>
         </div>
       ) : (
-        <div className="blocked-message-collapsed" onClick={() => setRevealed(true)}>
+        <div className="blocked-message-collapsed" onClick={() => setRevealed(true)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => setRevealed(true); } }} role="button" tabIndex={0}>
           <span className="blocked-message-label">[{t("chat.blockedMessage")}]</span>
           <span className="blocked-message-hint">{t("chat.clickToReveal")}</span>
           {onUnblock && (
-            <button
+            <button type="button"
               className="blocked-message-unblock"
               onClick={(e) => {
                 e.stopPropagation();
@@ -224,9 +224,9 @@ export function ChatPanel({
   const [cooldownLeft, setCooldownLeft] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const prevScrollHeightRef = useRef(0);
   const typingThrottleRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const prevScrollHeightRef = useRef(0);
   const isLoadingHistoryRef = useRef(false);
   const prevMsgCountRef = useRef(0);
   const lastSentReceiptRef = useRef<string>("");
@@ -372,13 +372,9 @@ export function ChatPanel({
   const handleScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-
-    // Check if user has scrolled up
     const distFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
     setIsScrolledUp(distFromBottom > 80);
     if (distFromBottom <= 80) setNewMsgCount(0);
-
-    // Sticky date header: find the topmost visible date separator
     const separators = container.querySelectorAll(".chat-date-separator");
     let activeDateStr: string | null = null;
     for (let i = separators.length - 1; i >= 0; i--) {
@@ -390,7 +386,6 @@ export function ChatPanel({
       }
     }
     setStickyDate(distFromBottom > 80 ? activeDateStr : null);
-
     if (historyLoading || !hasMoreHistory || !onLoadHistory || isLoadingHistoryRef.current) return;
     if (container.scrollTop < 100 && channelMessages.length > 0) {
       isLoadingHistoryRef.current = true;
@@ -426,25 +421,44 @@ export function ChatPanel({
     [onFileUpload],
   );
 
+  type VirtualItem =
+    | (ChatMessage & { _kind: "message"; _isGrouped: boolean; _showUnread: boolean })
+    | { _kind: "separator"; date: string; key: string };
+
   const messagesWithDates = useMemo(() => {
-    const result: (ChatMessage | { type: "separator"; date: string; key: string })[] = [];
+    const result: VirtualItem[] = [];
     let lastDate = "";
-    for (const msg of channelMessages) {
+    for (let i = 0; i < channelMessages.length; i++) {
+      const msg = channelMessages[i];
       const dayKey = new Date(msg.timestamp).toDateString();
       if (dayKey !== lastDate) {
         lastDate = dayKey;
-        result.push({ type: "separator", date: formatDateSeparator(msg.timestamp, t), key: `sep-${dayKey}` });
+        result.push({ _kind: "separator", date: formatDateSeparator(msg.timestamp, t), key: `sep-${dayKey}` });
       }
-      result.push(msg);
+      const prev = i > 0 ? channelMessages[i - 1] : undefined;
+      const isGrouped =
+        prev !== undefined &&
+        prev.userId === msg.userId &&
+        msg.timestamp - prev.timestamp < 120000 &&
+        !msg.replyTo &&
+        !msg.system &&
+        !prev.system;
+      const showUnread =
+        !!effectiveLastReadId && prev?.id === effectiveLastReadId && msg.userId !== currentUserId;
+      result.push({ ...msg, _kind: "message", _isGrouped: isGrouped, _showUnread: showUnread });
     }
     return result;
-  }, [channelMessages, t]);
+  }, [channelMessages, t, effectiveLastReadId, currentUserId]);
 
+  // Reset scroll tracking when channel changes
+  useEffect(() => {
+    prevMsgCountRef.current = 0;
+  }, [activeChannel]);
+
+  // Track new-message badge count when scrolled up
   useEffect(() => {
     if (channelMessages.length > prevMsgCountRef.current) {
-      if (!isScrolledUp) {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-      } else {
+      if (isScrolledUp) {
         setNewMsgCount((c) => c + (channelMessages.length - prevMsgCountRef.current));
       }
     }
@@ -575,13 +589,13 @@ export function ChatPanel({
       <div className="chat-header">
         <span
           className="chat-channel-name"
-          onClick={!dmMode ? onChannelSettings : undefined}
+          onClick={!dmMode ? onChannelSettings : undefined} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { !dmMode ? onChannelSettings : undefined; } }} role="button" tabIndex={0}
           style={!dmMode ? { cursor: "pointer" } : undefined}
         >
           {dmMode ? `@ ${dmMode.peerNick}` : `# ${activeChannel}`}
         </span>
         {!dmMode && channelTopic && (
-          <span className="chat-topic" onClick={onChannelSettings} style={{ cursor: "pointer" }}>
+          <span className="chat-topic" onClick={onChannelSettings} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { onChannelSettings; } }} role="button" tabIndex={0} style={{ cursor: "pointer" }}>
             {channelTopic}
           </span>
         )}
@@ -599,7 +613,7 @@ export function ChatPanel({
         )}
         <div className="chat-header-actions">
           {onPinsOpen && (
-            <button
+            <button type="button"
               className="chat-header-btn"
               onClick={onPinsOpen}
               title={t("pins.title")}
@@ -609,7 +623,7 @@ export function ChatPanel({
             </button>
           )}
           {onBookmarksOpen && (
-            <button
+            <button type="button"
               className="chat-header-btn"
               onClick={onBookmarksOpen}
               title={t("bookmarks.title")}
@@ -619,7 +633,7 @@ export function ChatPanel({
             </button>
           )}
           {onSearchOpen && (
-            <button
+            <button type="button"
               className="chat-header-btn"
               onClick={onSearchOpen}
               title={t("search.title")}
@@ -692,14 +706,14 @@ export function ChatPanel({
           </div>
         )}
         {messagesWithDates.map((item) => {
-          if ("type" in item && item.type === "separator") {
+          if (item._kind === "separator") {
             return (
               <div key={item.key} className="chat-date-separator">
                 <span>{item.date}</span>
               </div>
             );
           }
-          const msg = item as ChatMessage;
+          const msg = item as ChatMessage & { _isGrouped: boolean; _showUnread: boolean };
           const canMod = currentRole === "admin" || currentRole === "operator";
           const replyMsg = msg.replyTo ? channelMessages.find((m) => m.id === msg.replyTo) : undefined;
           const msgIdx = channelMessages.indexOf(msg);
@@ -798,7 +812,7 @@ export function ChatPanel({
       </div>
 
       {isScrolledUp && (
-        <button
+        <button type="button"
           className="scroll-to-bottom"
           onClick={() => {
             messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -830,7 +844,7 @@ export function ChatPanel({
             {t("chat.replyingTo")} <strong>{replyTo.nickname}</strong>
           </span>
           <span className="reply-content">{replyTo.content.slice(0, 80)}</span>
-          <button className="reply-cancel" onClick={onCancelReply} title="Cancel">
+          <button type="button" className="reply-cancel" onClick={onCancelReply} title="Cancel">
             <span>×</span>
           </button>
         </div>
@@ -854,7 +868,7 @@ export function ChatPanel({
           <span>
             {t("automod.warningPrefix")}: {automodWarning}
           </span>
-          <button className="automod-warning-dismiss" onClick={onDismissAutomodWarning}>
+          <button type="button" className="automod-warning-dismiss" onClick={onDismissAutomodWarning}>
             <X size={14} />
           </button>
         </div>
@@ -863,7 +877,7 @@ export function ChatPanel({
       <div className="chat-input-area">
         {canUpload && onFileUpload && (
           <>
-            <button className="chat-upload-btn" onClick={handleFileSelect} title={t("files.upload")}>
+            <button type="button" className="chat-upload-btn" onClick={handleFileSelect} title={t("files.upload")}>
               <Upload size={18} />
             </button>
             <input ref={fileInputRef} type="file" style={{ display: "none" }} onChange={handleFileInputChange} />
@@ -887,7 +901,7 @@ export function ChatPanel({
             rows={1}
             aria-label={dmMode ? t("chat.dmPlaceholder", { name: dmMode.peerNick }) : t("chat.placeholder")}
           />
-          <button className="emoji-btn" onClick={() => setShowEmoji((v) => !v)} title="Emoji" aria-label="Emoji">
+          <button type="button" className="emoji-btn" onClick={() => setShowEmoji((v) => !v)} title="Emoji" aria-label="Emoji">
             <Smile size={18} />
           </button>
           {showEmoji && (
@@ -903,7 +917,7 @@ export function ChatPanel({
           <span className="chat-cooldown-badge">{t("slowmode.wait", { seconds: cooldownLeft })}</span>
         )}
         {!input.trim() && canUpload ? (
-          <button
+          <button type="button"
             className="chat-mic-btn"
             onClick={() => setShowVoiceRecorder(true)}
             title={t("voice.record")}
@@ -912,7 +926,7 @@ export function ChatPanel({
             <Mic size={18} />
           </button>
         ) : (
-          <button
+          <button type="button"
             className="chat-send-btn"
             onClick={handleSend}
             disabled={!input.trim() || cooldownLeft > 0}

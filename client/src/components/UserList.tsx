@@ -179,7 +179,7 @@ export function UserList({
             </div>
           )}
           <div className="user-menu-actions">
-            <button
+            <button type="button"
               onClick={() => {
                 onDM?.(menuUser);
                 setMenuUser(null);
@@ -188,7 +188,7 @@ export function UserList({
               {t("users.sendDM")}
             </button>
             {canModerate && menuTarget.role !== "operator" && (
-              <button
+              <button type="button"
                 onClick={() => {
                   onOp?.(menuUser);
                   setMenuUser(null);
@@ -198,7 +198,7 @@ export function UserList({
               </button>
             )}
             {canModerate && menuTarget.role === "operator" && (
-              <button
+              <button type="button"
                 onClick={() => {
                   onDeop?.(menuUser);
                   setMenuUser(null);
@@ -208,7 +208,7 @@ export function UserList({
               </button>
             )}
             {canModerate && (
-              <button
+              <button type="button"
                 onClick={() => {
                   onKick?.(menuUser);
                   setMenuUser(null);
@@ -218,7 +218,7 @@ export function UserList({
               </button>
             )}
             {canModerate && (
-              <button
+              <button type="button"
                 className="danger"
                 onClick={() => {
                   onBan?.(menuUser);

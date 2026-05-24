@@ -48,7 +48,7 @@ export function E2EIndicator({ enabled, peerFingerprint, ownFingerprint }: E2EIn
 
   return (
     <>
-      <button className="e2e-indicator encrypted" onClick={() => setShowDetails((v) => !v)} title={t("e2e.encrypted")}>
+      <button type="button" className="e2e-indicator encrypted" onClick={() => setShowDetails((v) => !v)} title={t("e2e.encrypted")}>
         <ShieldCheck size={13} />
         <span>{t("e2e.label")}</span>
       </button>
@@ -70,7 +70,7 @@ export function E2EIndicator({ enabled, peerFingerprint, ownFingerprint }: E2EIn
             <div className="e2e-fingerprint">
               <span className="e2e-fp-label">{t("e2e.peerKey")}</span>
               <code className="e2e-fp-value">{peerFingerprint.slice(0, 16)}...</code>
-              <button className="e2e-fp-copy" onClick={handleCopy}>
+              <button type="button" className="e2e-fp-copy" onClick={handleCopy}>
                 {copied ? <Check size={11} /> : <Copy size={11} />}
               </button>
             </div>

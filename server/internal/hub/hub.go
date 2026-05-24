@@ -81,6 +81,7 @@ const (
 	MsgUserRoleChanged      = "user.role_changed"
 	MsgDMSend               = "dm.send"
 	MsgDMMessage            = "dm.message"
+	MsgDMHistory            = "dm.history"
 	MsgTyping               = "typing"
 	MsgReactionAdd          = "reaction.add"
 	MsgReactionRemove       = "reaction.remove"
@@ -463,6 +464,8 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleTopic(client, msg)
 	case MsgDMSend:
 		h.handleDMSend(client, msg)
+	case MsgDMHistory:
+		h.handleDMHistory(client, msg)
 	case MsgTyping:
 		h.handleTyping(client, msg)
 	case MsgChannelDelete:
@@ -1154,6 +1157,67 @@ func (h *Hub) handleDMSend(client *Client, msg Message) {
 	h.mu.RUnlock()
 }
 
+func (h *Hub) handleDMHistory(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		UserId string `json:"userId"`
+		Before int64  `json:"before"` // timestamp in ms
+		Limit  int    `json:"limit"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.UserId == "" {
+		h.sendError(client, "userId required")
+		return
+	}
+
+	if payload.Limit <= 0 || payload.Limit > 50 {
+		payload.Limit = 50
+	}
+
+	var beforeTime time.Time
+	if payload.Before > 0 {
+		beforeTime = time.UnixMilli(payload.Before)
+	} else {
+		beforeTime = time.Now()
+	}
+
+	dmCh := dmChannelKey(client.PublicKey, payload.UserId)
+	messages, err := h.chat.GetHistoryBefore(dmCh, beforeTime, payload.Limit)
+	if err != nil {
+		return
+	}
+
+	var msgs []map[string]interface{}
+	for _, m := range messages {
+		msgs = append(msgs, map[string]interface{}{
+			"id":        m.ID,
+			"from":      m.UserKey,
+			"to":        payload.UserId,
+			"nickname":  m.Nickname,
+			"content":   m.Content,
+			"timestamp": m.Timestamp.UnixMilli(),
+		})
+	}
+
+	h.sendToClient(client, Message{
+		Type:      MsgDMHistory,
+		ID:        uuid.New().String(),
+		Timestamp: time.Now().UnixMilli(),
+		Payload: mustMarshal(map[string]interface{}{
+			"userId":   payload.UserId,
+			"messages": msgs,
+			"hasMore":  len(messages) >= payload.Limit,
+		}),
+	})
+}
+
 func (h *Hub) handleTyping(client *Client, msg Message) {
 	if client.PublicKey == "" {
 		return
@@ -1508,6 +1572,8 @@ func (h *Hub) handleSearch(client *Client, msg Message) {
 	var payload struct {
 		Query   string `json:"query"`
 		Channel string `json:"channel"`
+		Offset  int    `json:"offset"`
+		Limit   int    `json:"limit"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		return
@@ -1518,7 +1584,11 @@ func (h *Hub) handleSearch(client *Client, msg Message) {
 		return
 	}
 
-	results, err := h.chat.SearchMessages(payload.Query, payload.Channel, 30)
+	if payload.Limit <= 0 {
+		payload.Limit = 20
+	}
+
+	results, err := h.chat.SearchMessages(payload.Query, payload.Channel, payload.Limit, payload.Offset)
 	if err != nil {
 		h.sendError(client, "search failed")
 		return
@@ -1540,7 +1610,7 @@ func (h *Hub) handleSearch(client *Client, msg Message) {
 		Type:      MsgChatSearchResults,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"query": payload.Query, "results": msgs}),
+		Payload:   mustMarshal(map[string]interface{}{"query": payload.Query, "results": msgs, "offset": payload.Offset, "limit": payload.Limit}),
 	})
 }
 

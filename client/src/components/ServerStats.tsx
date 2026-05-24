@@ -107,14 +107,14 @@ export function ServerStats({
   const maxHourly = Math.max(...stats.hourly, 1);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="stats-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="stats-panel" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="stats-header">
           <TrendingUp size={18} />
           <h3>
             {serverName} — {t("stats.title")}
           </h3>
-          <button className="stats-close" onClick={onClose}>
+          <button type="button" className="stats-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>

@@ -108,7 +108,7 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
           <input type="checkbox" checked={searchAll} onChange={(e) => setSearchAll(e.target.checked)} />
           <span>{t("search.allChannels")}</span>
         </label>
-        <button className="search-close" onClick={onClose}>
+        <button type="button" className="search-close" onClick={onClose}>
           <X size={16} />
         </button>
       </div>
@@ -117,7 +117,7 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
         <ul className="search-history">
           {searchHistory.map((h) => (
             <li key={h} className="search-history-item">
-              <button
+              <button type="button"
                 className="search-history-btn"
                 onClick={() => {
                   setQuery(h);
@@ -127,7 +127,7 @@ export function SearchPanel({ onSearch, onClose, results, activeChannel }: Searc
                 <Search size={12} />
                 <span>{h}</span>
               </button>
-              <button className="search-history-remove" onClick={() => removeFromHistory(h)}>
+              <button type="button" className="search-history-remove" onClick={() => removeFromHistory(h)}>
                 <X size={12} />
               </button>
             </li>

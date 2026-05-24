@@ -177,12 +177,12 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="theme-editor" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="theme-editor" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="theme-editor-header">
           <Palette size={18} />
           <h3>{t("theme.title")}</h3>
-          <button className="theme-editor-close" onClick={onClose}>
+          <button type="button" className="theme-editor-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
@@ -219,7 +219,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               onChange={(e) => setThemeName(e.target.value)}
               className="theme-name-input"
             />
-            <button
+            <button type="button"
               className={`theme-save-btn ${saved ? "saved" : ""}`}
               onClick={handleSave}
               disabled={!themeName.trim()}
@@ -227,17 +227,17 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               {saved ? <Check size={14} /> : <Save size={14} />}
               <span>{saved ? t("theme.saved") : t("theme.save")}</span>
             </button>
-            <button className="theme-reset-btn" onClick={handleReset} title={t("theme.reset")}>
+            <button type="button" className="theme-reset-btn" onClick={handleReset} title={t("theme.reset")}>
               <RotateCcw size={14} />
             </button>
           </div>
 
           <div className="theme-share-row">
-            <button className={`theme-export-btn ${exported ? "exported" : ""}`} onClick={handleExport}>
+            <button type="button" className={`theme-export-btn ${exported ? "exported" : ""}`} onClick={handleExport}>
               {exported ? <Check size={14} /> : <Download size={14} />}
               <span>{exported ? t("theme.exported") : t("theme.export")}</span>
             </button>
-            <button
+            <button type="button"
               className={`theme-import-btn ${showImport ? "active" : ""}`}
               onClick={() => {
                 setShowImport(!showImport);
@@ -264,7 +264,7 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
               />
               {importError && <span className="theme-import-msg error">{t("theme.importError")}</span>}
               {importSuccess && <span className="theme-import-msg success">{t("theme.importSuccess")}</span>}
-              <button className="theme-import-apply-btn" onClick={handleImport} disabled={!importText.trim()}>
+              <button type="button" className="theme-import-apply-btn" onClick={handleImport} disabled={!importText.trim()}>
                 <ClipboardPaste size={14} />
                 <span>{t("theme.importApply")}</span>
               </button>
@@ -283,10 +283,10 @@ export function ThemeEditor({ onClose }: ThemeEditorProps) {
                         <span key={i} className="theme-swatch" style={{ background: c }} />
                       ))}
                   </div>
-                  <span className="theme-list-name" onClick={() => handleLoadTheme(theme)}>
+                  <span className="theme-list-name" onClick={() => handleLoadTheme(theme)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => handleLoadTheme(theme); } }} role="button" tabIndex={0}>
                     {theme.name}
                   </span>
-                  <button className="theme-list-delete" onClick={() => handleDeleteTheme(theme.id)}>
+                  <button type="button" className="theme-list-delete" onClick={() => handleDeleteTheme(theme.id)}>
                     <X size={12} />
                   </button>
                 </div>

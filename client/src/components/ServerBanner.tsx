@@ -23,7 +23,7 @@ export function ServerBanner({ motd }: ServerBannerProps) {
         <span className="banner-text">{expanded || !isLong ? motd : motd.slice(0, 120) + "…"}</span>
         <div className="banner-actions">
           {isLong && (
-            <button
+            <button type="button"
               className="banner-expand"
               onClick={() => setExpanded((v) => !v)}
               title={expanded ? "Collapse" : "Expand"}
@@ -31,7 +31,7 @@ export function ServerBanner({ motd }: ServerBannerProps) {
               {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
             </button>
           )}
-          <button className="banner-dismiss" onClick={() => setDismissed(true)} title="Dismiss">
+          <button type="button" className="banner-dismiss" onClick={() => setDismissed(true)} title="Dismiss">
             <X size={14} />
           </button>
         </div>

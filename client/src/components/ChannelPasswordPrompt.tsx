@@ -23,8 +23,8 @@ export function ChannelPasswordPrompt({ channelName, onSubmit, onCancel }: Chann
   };
 
   return (
-    <div className="modal-overlay" onClick={onCancel}>
-      <div className={`channel-pw-modal ${shake ? "shake" : ""}`} onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onCancel} onKeyDown={(e) => e.key === "Escape" && onCancel()} role="dialog" tabIndex={-1}>
+      <div className={`channel-pw-modal ${shake ? "shake" : ""}`} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="channel-pw-icon">
           <Lock size={24} />
         </div>
@@ -43,11 +43,11 @@ export function ChannelPasswordPrompt({ channelName, onSubmit, onCancel }: Chann
             placeholder={t("channel.passwordPlaceholderJoin")}
             autoFocus
           />
-          <button className="channel-pw-submit" onClick={handleSubmit} disabled={!password.trim()}>
+          <button type="button" className="channel-pw-submit" onClick={handleSubmit} disabled={!password.trim()}>
             <ArrowRight size={16} />
           </button>
         </div>
-        <button className="channel-pw-cancel" onClick={onCancel}>
+        <button type="button" className="channel-pw-cancel" onClick={onCancel}>
           {t("channel.cancel")}
         </button>
       </div>

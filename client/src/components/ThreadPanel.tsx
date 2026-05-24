@@ -43,7 +43,7 @@ export function ThreadPanel({
         <span className="thread-panel-count">
           {replies.length} {replies.length === 1 ? t("thread.reply") : t("thread.replies")}
         </span>
-        <button className="thread-panel-close" onClick={onClose}>
+        <button type="button" className="thread-panel-close" onClick={onClose}>
           <X size={16} />
         </button>
       </div>

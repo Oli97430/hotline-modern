@@ -418,7 +418,7 @@ export function MessageBubble({
       {replyContext && (
         <div
           className="message-reply-context"
-          onClick={() => onThreadOpen?.(id)}
+          onClick={() => onThreadOpen?.(id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => onThreadOpen?.(id); } }} role="button" tabIndex={0}
           style={onThreadOpen ? { cursor: "pointer" } : undefined}
         >
           <Reply size={10} className="reply-icon" />
@@ -459,10 +459,10 @@ export function MessageBubble({
             }}
             autoFocus
           />
-          <button className="message-edit-save" onClick={handleEditSubmit}>
+          <button type="button" className="message-edit-save" onClick={handleEditSubmit}>
             OK
           </button>
-          <button className="message-edit-cancel" onClick={() => setEditing(false)}>
+          <button type="button" className="message-edit-cancel" onClick={() => setEditing(false)}>
             ESC
           </button>
         </div>
@@ -520,7 +520,7 @@ export function MessageBubble({
       {reactions && reactions.length > 0 && (
         <div className="message-reactions">
           {reactions.map((r) => (
-            <button
+            <button type="button"
               key={r.emoji}
               className={`reaction-chip ${r.users.includes(currentUserId) ? "own" : ""}`}
               onClick={() => handleReactionClick(r.emoji)}
@@ -535,19 +535,19 @@ export function MessageBubble({
 
       {showActions && !editing && (
         <div className="message-actions">
-          <button onClick={() => onReply?.(id)} title="Reply">
+          <button type="button" onClick={() => onReply?.(id)} title="Reply">
             <Reply size={13} />
           </button>
-          <button onClick={() => setShowReactPicker((v) => !v)} title="React">
+          <button type="button" onClick={() => setShowReactPicker((v) => !v)} title="React">
             <Smile size={13} />
           </button>
           {onBookmark && (
-            <button className={isBookmarked ? "action-bookmarked" : ""} onClick={() => onBookmark(id)} title="Bookmark">
+            <button type="button" className={isBookmarked ? "action-bookmarked" : ""} onClick={() => onBookmark(id)} title="Bookmark">
               <Bookmark size={13} />
             </button>
           )}
           {isOwn && (
-            <button
+            <button type="button"
               onClick={() => {
                 setEditing(true);
                 setEditContent(content);
@@ -558,12 +558,12 @@ export function MessageBubble({
             </button>
           )}
           {(isOwn || canModerate) && (
-            <button className="action-danger" onClick={() => onDelete?.(id)} title="Delete">
+            <button type="button" className="action-danger" onClick={() => onDelete?.(id)} title="Delete">
               <Trash2 size={13} />
             </button>
           )}
           {canModerate && (
-            <button onClick={() => onPin?.(id)} title="Pin">
+            <button type="button" onClick={() => onPin?.(id)} title="Pin">
               <Pin size={13} />
             </button>
           )}
@@ -573,7 +573,7 @@ export function MessageBubble({
       {showReactPicker && (
         <div className="message-react-picker">
           {QUICK_REACTIONS.map((e) => (
-            <button key={e} onClick={() => handleReactionClick(e)}>
+            <button type="button" key={e} onClick={() => handleReactionClick(e)}>
               {e}
             </button>
           ))}

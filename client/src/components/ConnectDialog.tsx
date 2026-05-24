@@ -162,18 +162,18 @@ export function ConnectDialog({ onConnect, isConnecting }: ConnectDialogProps) {
             <ul className="connect-favorites-list">
               {favorites.slice(0, 5).map((fav) => (
                 <li key={fav.id} className="connect-fav-item">
-                  <button className="connect-fav-btn" onClick={() => handleFavoriteClick(fav)} title={fav.address}>
+                  <button type="button" className="connect-fav-btn" onClick={() => handleFavoriteClick(fav)} title={fav.address}>
                     <span className="connect-fav-addr">{fav.address}</span>
                     <span className="connect-fav-nick">{fav.nickname}</span>
                   </button>
-                  <button
+                  <button type="button"
                     className="connect-fav-quick"
                     onClick={() => handleFavoriteConnect(fav)}
                     title={t("connect.quickConnect")}
                   >
                     <Zap size={11} />
                   </button>
-                  <button
+                  <button type="button"
                     className="connect-fav-remove"
                     onClick={() => removeFavorite(fav.id)}
                     title={t("connect.removeFavorite")}

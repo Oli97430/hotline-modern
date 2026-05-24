@@ -24,7 +24,7 @@ export function LanguageSelector() {
 
   return (
     <div className="lang-selector">
-      <button className="theme-toggle" onClick={toggleTheme} title={t("settings.theme")}>
+      <button type="button" className="theme-toggle" onClick={toggleTheme} title={t("settings.theme")}>
         {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
       </button>
       <Globe size={12} className="lang-icon" />

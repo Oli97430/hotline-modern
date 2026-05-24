@@ -81,12 +81,12 @@ export function MessageScheduler({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="scheduler-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="scheduler-panel" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="scheduler-header">
           <Clock size={16} />
           <h3>{t("scheduler.title")}</h3>
-          <button className="scheduler-close" onClick={onClose}>
+          <button type="button" className="scheduler-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
@@ -112,7 +112,7 @@ export function MessageScheduler({
                 className="scheduler-datetime"
                 min={new Date().toISOString().slice(0, 16)}
               />
-              <button className="scheduler-submit" onClick={handleSchedule} disabled={!content.trim() || !dateTime}>
+              <button type="button" className="scheduler-submit" onClick={handleSchedule} disabled={!content.trim() || !dateTime}>
                 <Send size={12} />
                 <span>{t("scheduler.schedule")}</span>
               </button>
@@ -130,7 +130,7 @@ export function MessageScheduler({
                     <span className="scheduler-item-time">{formatTime(msg.scheduledTime)}</span>
                     <span className="scheduler-item-content">{msg.content}</span>
                   </div>
-                  <button className="scheduler-item-delete" onClick={() => onDelete(msg.id)}>
+                  <button type="button" className="scheduler-item-delete" onClick={() => onDelete(msg.id)}>
                     <Trash2 size={12} />
                   </button>
                 </div>
@@ -148,7 +148,7 @@ export function MessageScheduler({
                     <span className="scheduler-item-time">{formatTime(msg.scheduledTime)}</span>
                     <span className="scheduler-item-content">{msg.content}</span>
                   </div>
-                  <button className="scheduler-item-delete" onClick={() => onDelete(msg.id)}>
+                  <button type="button" className="scheduler-item-delete" onClick={() => onDelete(msg.id)}>
                     <Trash2 size={12} />
                   </button>
                 </div>

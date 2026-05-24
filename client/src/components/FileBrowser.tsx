@@ -105,13 +105,13 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
 
       {breadcrumbs.length > 0 && (
         <div className="file-breadcrumb">
-          <button className="breadcrumb-item" onClick={() => fetchFiles("")}>
+          <button type="button" className="breadcrumb-item" onClick={() => fetchFiles("")}>
             ~
           </button>
           {breadcrumbs.map((part, i) => (
             <span key={i} className="breadcrumb-item">
               <span className="breadcrumb-sep">/</span>
-              <button onClick={() => fetchFiles(breadcrumbs.slice(0, i + 1).join("/"))}>{part}</button>
+              <button type="button" onClick={() => fetchFiles(breadcrumbs.slice(0, i + 1).join("/"))}>{part}</button>
             </span>
           ))}
         </div>
@@ -126,7 +126,7 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
           </div>
         )}
         {!loading && path && (
-          <div className="file-entry" onClick={handleGoUp}>
+          <div className="file-entry" onClick={handleGoUp} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { handleGoUp; } }} role="button" tabIndex={0}>
             <ArrowUp size={14} className="file-icon up" />
             <span className="file-name">..</span>
           </div>
@@ -136,7 +136,7 @@ export function FileBrowser({ serverAddress, identity, canUpload, canDownload }:
             <div
               key={entry.name}
               className={`file-entry ${entry.isDir ? "dir" : ""}`}
-              onClick={() => handleNavigate(entry)}
+              onClick={() => handleNavigate(entry)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => handleNavigate(entry); } }} role="button" tabIndex={0}
             >
               {entry.isDir ? (
                 <Folder size={14} className="file-icon folder" />

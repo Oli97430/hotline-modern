@@ -30,7 +30,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
     <div className={`toast-item toast-${toast.type} ${exiting ? "exiting" : ""}`}>
       {icon && <span className="toast-icon">{icon}</span>}
       <span className="toast-text">{toast.message}</span>
-      <button
+      <button type="button"
         className="toast-close"
         onClick={() => {
           setExiting(true);

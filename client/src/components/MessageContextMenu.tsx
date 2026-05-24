@@ -87,7 +87,7 @@ export function MessageContextMenu({
 
   return (
     <div className="ctx-menu" ref={menuRef} style={style}>
-      <button
+      <button type="button"
         className="ctx-item"
         onClick={() => {
           onReply?.(messageId);
@@ -97,7 +97,7 @@ export function MessageContextMenu({
         <Reply size={14} />
         <span>{t("ctx.reply")}</span>
       </button>
-      <button
+      <button type="button"
         className="ctx-item"
         onClick={() => {
           onReact?.();
@@ -107,16 +107,16 @@ export function MessageContextMenu({
         <Smile size={14} />
         <span>{t("ctx.react")}</span>
       </button>
-      <button className="ctx-item" onClick={handleCopy}>
+      <button type="button" className="ctx-item" onClick={handleCopy}>
         <Copy size={14} />
         <span>{t("ctx.copy")}</span>
       </button>
-      <button className="ctx-item" onClick={handleQuote}>
+      <button type="button" className="ctx-item" onClick={handleQuote}>
         <Quote size={14} />
         <span>{t("ctx.quote")}</span>
       </button>
       {onForward && (
-        <button
+        <button type="button"
           className="ctx-item"
           onClick={() => {
             onForward(messageId);
@@ -128,7 +128,7 @@ export function MessageContextMenu({
         </button>
       )}
       {onBookmark && (
-        <button
+        <button type="button"
           className={`ctx-item ${isBookmarked ? "active" : ""}`}
           onClick={() => {
             onBookmark(messageId);
@@ -142,7 +142,7 @@ export function MessageContextMenu({
       {isOwn && onEdit && (
         <>
           <div className="ctx-sep" />
-          <button
+          <button type="button"
             className="ctx-item"
             onClick={() => {
               onEdit(messageId);
@@ -155,7 +155,7 @@ export function MessageContextMenu({
         </>
       )}
       {canModerate && onPin && (
-        <button
+        <button type="button"
           className="ctx-item"
           onClick={() => {
             onPin(messageId);
@@ -167,7 +167,7 @@ export function MessageContextMenu({
         </button>
       )}
       {(isOwn || canModerate) && onDelete && (
-        <button
+        <button type="button"
           className="ctx-item danger"
           onClick={() => {
             onDelete(messageId);
@@ -182,7 +182,7 @@ export function MessageContextMenu({
         <>
           <div className="ctx-sep" />
           {userIsBlocked && onUnblockUser ? (
-            <button
+            <button type="button"
               className="ctx-item"
               onClick={() => {
                 onUnblockUser(userId);
@@ -193,7 +193,7 @@ export function MessageContextMenu({
               <span>{t("user.unblock")}</span>
             </button>
           ) : onBlockUser ? (
-            <button
+            <button type="button"
               className="ctx-item danger"
               onClick={() => {
                 onBlockUser(userId);

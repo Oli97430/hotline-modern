@@ -86,12 +86,15 @@ func (m *Manager) DeleteChannel(name string) error {
 	return m.db.DeleteChannel(name)
 }
 
-func (m *Manager) SearchMessages(query string, channel string, limit int) ([]db.Message, error) {
+func (m *Manager) SearchMessages(query string, channel string, limit int, offset int) ([]db.Message, error) {
 	if limit <= 0 {
-		limit = 30
+		limit = 20
 	}
 	limit = clampLimit(limit, 1, 100)
-	return m.db.SearchMessages(query, channel, limit)
+	if offset < 0 {
+		offset = 0
+	}
+	return m.db.SearchMessages(query, channel, limit, offset)
 }
 
 func (m *Manager) EditMessage(id, userKey, content string) error {

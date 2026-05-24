@@ -36,7 +36,7 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
         <Globe size={14} />
         <span>{t("tracker.browseServers")}</span>
         <div className="sb-header-actions">
-          <button
+          <button type="button"
             className="sb-settings-btn"
             onClick={() => setShowSettings(!showSettings)}
             title={t("tracker.settings")}
@@ -44,7 +44,7 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
             <Settings size={12} />
             {showSettings ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
           </button>
-          <button className="sb-refresh" onClick={refresh} disabled={loading} title={t("tracker.refresh")}>
+          <button type="button" className="sb-refresh" onClick={refresh} disabled={loading} title={t("tracker.refresh")}>
             <RefreshCw size={12} className={loading ? "sb-spin" : ""} />
           </button>
         </div>
@@ -57,7 +57,7 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
               <div key={url} className="sb-tracker-item">
                 <Wifi size={10} />
                 <span className="sb-tracker-url">{url}</span>
-                <button
+                <button type="button"
                   className="sb-tracker-remove"
                   onClick={() => removeTracker(url)}
                   title={t("tracker.removeTracker")}
@@ -75,7 +75,7 @@ export function ServerBrowser({ onConnect }: ServerBrowserProps) {
               placeholder={t("tracker.trackerPlaceholder")}
               onKeyDown={(e) => e.key === "Enter" && handleAddTracker()}
             />
-            <button className="sb-add-btn" onClick={handleAddTracker} disabled={!newTrackerUrl.trim()}>
+            <button type="button" className="sb-add-btn" onClick={handleAddTracker} disabled={!newTrackerUrl.trim()}>
               <Plus size={12} />
             </button>
           </div>

@@ -68,10 +68,10 @@ export function ServerAgreement({ agreement, serverAddress, onAccept, onDecline 
           <pre className="agreement-text">{agreement}</pre>
         </div>
         <div className="agreement-actions">
-          <button className="agreement-decline" onClick={handleDecline}>
+          <button type="button" className="agreement-decline" onClick={handleDecline}>
             {t("agreement.decline")}
           </button>
-          <button className="agreement-accept" onClick={handleAccept}>
+          <button type="button" className="agreement-accept" onClick={handleAccept}>
             {t("agreement.accept")}
           </button>
         </div>

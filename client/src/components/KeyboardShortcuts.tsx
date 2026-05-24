@@ -20,12 +20,12 @@ export function KeyboardShortcuts({ onClose }: KeyboardShortcutsProps) {
   const { t } = useTranslation();
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="shortcuts-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="shortcuts-modal" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="shortcuts-header">
           <Keyboard size={18} />
           <h3>{t("shortcuts.title")}</h3>
-          <button className="shortcuts-close" onClick={onClose}>
+          <button type="button" className="shortcuts-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>

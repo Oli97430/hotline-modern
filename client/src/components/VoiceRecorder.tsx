@@ -94,17 +94,17 @@ export function VoiceRecorder({ onSend, onCancel }: VoiceRecorderProps) {
 
       <div className="voice-recorder-actions">
         {recording ? (
-          <button className="voice-btn voice-stop" onClick={stopRecording} title={t("voice.stop")}>
+          <button type="button" className="voice-btn voice-stop" onClick={stopRecording} title={t("voice.stop")}>
             <Square size={14} />
           </button>
         ) : audioBlob ? (
-          <button className="voice-btn voice-send" onClick={handleSend} title={t("voice.send")}>
+          <button type="button" className="voice-btn voice-send" onClick={handleSend} title={t("voice.send")}>
             <Send size={14} />
           </button>
         ) : (
           <Loader size={14} className="voice-loading" />
         )}
-        <button className="voice-btn voice-cancel" onClick={onCancel} title={t("voice.cancel")}>
+        <button type="button" className="voice-btn voice-cancel" onClick={onCancel} title={t("voice.cancel")}>
           <X size={14} />
         </button>
       </div>
@@ -264,9 +264,9 @@ export function AudioMessage({ src, duration }: AudioMessageProps) {
   };
 
   return (
-    <div className="audio-message" onClick={toggle}>
+    <div className="audio-message" onClick={toggle} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { toggle; } }} role="button" tabIndex={0}>
       <audio ref={audioRef} src={src} preload="metadata" />
-      <button className="audio-play-btn">{playing ? <Square size={10} /> : <Mic size={12} />}</button>
+      <button type="button" className="audio-play-btn">{playing ? <Square size={10} /> : <Mic size={12} />}</button>
       <div className="audio-progress-bar">
         <div className="audio-progress-fill" style={{ width: `${progress * 100}%` }} />
       </div>

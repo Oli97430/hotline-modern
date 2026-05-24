@@ -36,14 +36,14 @@ export function NotificationSettings({ prefs, onChange }: NotificationSettingsPr
 
   return (
     <div className="notif-settings">
-      <button
+      <button type="button"
         className={`notif-toggle ${prefs.soundEnabled ? "active" : "muted"}`}
         onClick={() => toggle("soundEnabled")}
         title={prefs.soundEnabled ? t("notif.muteSound") : t("notif.unmuteSound")}
       >
         {prefs.soundEnabled ? <Volume2 size={15} /> : <VolumeX size={15} />}
       </button>
-      <button
+      <button type="button"
         className={`notif-toggle ${prefs.desktopEnabled ? "active" : "muted"}`}
         onClick={() => toggle("desktopEnabled")}
         title={prefs.desktopEnabled ? t("notif.muteDesktop") : t("notif.unmuteDesktop")}

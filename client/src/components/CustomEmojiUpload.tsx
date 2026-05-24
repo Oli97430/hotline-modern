@@ -68,19 +68,19 @@ export function CustomEmojiUpload({
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="custom-emoji-panel" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onClick={onClose} onKeyDown={(e) => e.key === "Escape" && onClose()} role="dialog" tabIndex={-1}>
+      <div className="custom-emoji-panel" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
         <div className="custom-emoji-header">
           <Upload size={16} />
           <h3>{t("customEmoji.title")}</h3>
-          <button className="custom-emoji-close" onClick={onClose}>
+          <button type="button" className="custom-emoji-close" onClick={onClose}>
             <X size={16} />
           </button>
         </div>
 
         <div className="custom-emoji-body">
           <div className="custom-emoji-upload-area">
-            <div className="custom-emoji-preview-zone" onClick={() => fileInputRef.current?.click()}>
+            <div className="custom-emoji-preview-zone" onClick={() => fileInputRef.current?.click()} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { () => fileInputRef.current?.click(); } }} role="button" tabIndex={0}>
               {preview ? (
                 <img src={preview} alt="preview" className="custom-emoji-preview-img" />
               ) : (
@@ -106,7 +106,7 @@ export function CustomEmojiUpload({
                 className="custom-emoji-name-input"
                 maxLength={20}
               />
-              <button
+              <button type="button"
                 className="custom-emoji-upload-btn"
                 onClick={handleUpload}
                 disabled={!selectedFile || !emojiName.trim() || uploading}
@@ -126,7 +126,7 @@ export function CustomEmojiUpload({
                   <div key={emoji.name} className="custom-emoji-item">
                     <img src={`${serverBaseUrl}${emoji.url}`} alt={emoji.name} className="custom-emoji-img" />
                     <span className="custom-emoji-item-name">:{emoji.name}:</span>
-                    <button className="custom-emoji-delete" onClick={() => onDelete(emoji.name)}>
+                    <button type="button" className="custom-emoji-delete" onClick={() => onDelete(emoji.name)}>
                       <Trash2 size={11} />
                     </button>
                   </div>

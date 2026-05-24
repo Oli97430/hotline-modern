@@ -181,7 +181,7 @@ export function FileUploadButton({ onFileSelect }: FileUploadButtonProps) {
 
   return (
     <>
-      <button className="file-upload-btn" onClick={() => inputRef.current?.click()} title={t("files.upload")}>
+      <button type="button" className="file-upload-btn" onClick={() => inputRef.current?.click()} title={t("files.upload")}>
         <Upload size={16} />
       </button>
       <input

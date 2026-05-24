@@ -8,22 +8,22 @@ export function FormatToolbar({ onFormat }: FormatToolbarProps) {
   return (
     <div className="format-toolbar">
       <div className="format-group">
-        <button className="format-btn" onClick={() => onFormat("**")} title="Bold (Ctrl+B)">
+        <button type="button" className="format-btn" onClick={() => onFormat("**")} title="Bold (Ctrl+B)">
           <Bold size={14} />
         </button>
-        <button className="format-btn" onClick={() => onFormat("*")} title="Italic (Ctrl+I)">
+        <button type="button" className="format-btn" onClick={() => onFormat("*")} title="Italic (Ctrl+I)">
           <Italic size={14} />
         </button>
-        <button className="format-btn" onClick={() => onFormat("~~")} title="Strikethrough">
+        <button type="button" className="format-btn" onClick={() => onFormat("~~")} title="Strikethrough">
           <Strikethrough size={14} />
         </button>
       </div>
       <div className="format-sep" />
       <div className="format-group">
-        <button className="format-btn" onClick={() => onFormat("`")} title="Code">
+        <button type="button" className="format-btn" onClick={() => onFormat("`")} title="Code">
           <Code size={14} />
         </button>
-        <button className="format-btn" onClick={() => onFormat("[", "[", "](url)")} title="Link">
+        <button type="button" className="format-btn" onClick={() => onFormat("[", "[", "](url)")} title="Link">
           <Link size={14} />
         </button>
       </div>
