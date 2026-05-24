@@ -31,7 +31,14 @@ type Channel struct {
 	Password        string
 	SlowmodeSeconds int
 	Description     string
+	CategoryID      int
 	CreatedAt       time.Time
+}
+
+type ChannelCategory struct {
+	ID       int
+	Name     string
+	Position int
 }
 
 type Message struct {
@@ -255,6 +262,27 @@ func migrate(conn *sql.DB) error {
 		enabled INTEGER NOT NULL DEFAULT 1
 	)`)
 
+	// Migration: channel_categories table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS channel_categories (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		position INTEGER NOT NULL DEFAULT 0
+	)`)
+
+	// Migration: add category_id column to channels
+	conn.Exec("ALTER TABLE channels ADD COLUMN category_id INTEGER NOT NULL DEFAULT 0")
+
+	// Migration: scheduled_messages table
+	conn.Exec(`CREATE TABLE IF NOT EXISTS scheduled_messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		channel TEXT NOT NULL,
+		user_key TEXT NOT NULL,
+		nickname TEXT NOT NULL,
+		content TEXT NOT NULL,
+		send_at DATETIME NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+
 	return nil
 }
 
@@ -290,7 +318,7 @@ func (d *DB) HasAnyUser() (bool, error) {
 }
 
 func (d *DB) GetChannels() ([]Channel, error) {
-	rows, err := d.conn.Query("SELECT name, topic, created_by, password, slowmode_seconds, description, created_at FROM channels")
+	rows, err := d.conn.Query("SELECT name, topic, created_by, password, slowmode_seconds, description, category_id, created_at FROM channels")
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +327,7 @@ func (d *DB) GetChannels() ([]Channel, error) {
 	var channels []Channel
 	for rows.Next() {
 		var c Channel
-		if err := rows.Scan(&c.Name, &c.Topic, &c.CreatedBy, &c.Password, &c.SlowmodeSeconds, &c.Description, &c.CreatedAt); err != nil {
+		if err := rows.Scan(&c.Name, &c.Topic, &c.CreatedBy, &c.Password, &c.SlowmodeSeconds, &c.Description, &c.CategoryID, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		channels = append(channels, c)
@@ -1336,4 +1364,149 @@ func (d *DB) GetAllWelcomeMessages() ([]WelcomeMessage, error) {
 		messages = append(messages, w)
 	}
 	return messages, nil
+}
+
+// Channel category management
+
+func (d *DB) CreateCategory(name string, position int) (int64, error) {
+	res, err := d.conn.Exec(
+		"INSERT INTO channel_categories (name, position) VALUES (?, ?)",
+		name, position,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *DB) GetCategories() ([]ChannelCategory, error) {
+	rows, err := d.conn.Query("SELECT id, name, position FROM channel_categories ORDER BY position ASC, id ASC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var categories []ChannelCategory
+	for rows.Next() {
+		var c ChannelCategory
+		if err := rows.Scan(&c.ID, &c.Name, &c.Position); err != nil {
+			return nil, err
+		}
+		categories = append(categories, c)
+	}
+	return categories, nil
+}
+
+func (d *DB) SetChannelCategory(channelName string, categoryID int) error {
+	_, err := d.conn.Exec("UPDATE channels SET category_id = ? WHERE name = ?", categoryID, channelName)
+	return err
+}
+
+func (d *DB) DeleteCategory(id int) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	// Reset channels in this category to uncategorized (0)
+	tx.Exec("UPDATE channels SET category_id = 0 WHERE category_id = ?", id)
+	tx.Exec("DELETE FROM channel_categories WHERE id = ?", id)
+	return tx.Commit()
+}
+
+func (d *DB) ReorderCategories(ids []int) error {
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for i, id := range ids {
+		tx.Exec("UPDATE channel_categories SET position = ? WHERE id = ?", i, id)
+	}
+	return tx.Commit()
+}
+
+func (d *DB) RenameCategory(id int, name string) error {
+	_, err := d.conn.Exec("UPDATE channel_categories SET name = ? WHERE id = ?", name, id)
+	return err
+}
+
+// Scheduled message management
+
+type ScheduledMessage struct {
+	ID        int
+	Channel   string
+	UserKey   string
+	Nickname  string
+	Content   string
+	SendAt    time.Time
+	CreatedAt time.Time
+}
+
+func (d *DB) AddScheduledMessage(channel, userKey, nickname, content string, sendAt time.Time) (int64, error) {
+	res, err := d.conn.Exec(
+		"INSERT INTO scheduled_messages (channel, user_key, nickname, content, send_at) VALUES (?, ?, ?, ?, ?)",
+		channel, userKey, nickname, content, sendAt,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (d *DB) GetPendingScheduledMessages() ([]ScheduledMessage, error) {
+	rows, err := d.conn.Query(
+		"SELECT id, channel, user_key, nickname, content, send_at, created_at FROM scheduled_messages WHERE send_at <= CURRENT_TIMESTAMP ORDER BY send_at ASC",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []ScheduledMessage
+	for rows.Next() {
+		var m ScheduledMessage
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.SendAt, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, nil
+}
+
+func (d *DB) DeleteScheduledMessage(id int) error {
+	_, err := d.conn.Exec("DELETE FROM scheduled_messages WHERE id = ?", id)
+	return err
+}
+
+func (d *DB) GetUserScheduledMessages(userKey string) ([]ScheduledMessage, error) {
+	rows, err := d.conn.Query(
+		"SELECT id, channel, user_key, nickname, content, send_at, created_at FROM scheduled_messages WHERE user_key = ? ORDER BY send_at ASC",
+		userKey,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var msgs []ScheduledMessage
+	for rows.Next() {
+		var m ScheduledMessage
+		if err := rows.Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.SendAt, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, nil
+}
+
+func (d *DB) GetScheduledMessageById(id int) (*ScheduledMessage, error) {
+	var m ScheduledMessage
+	err := d.conn.QueryRow(
+		"SELECT id, channel, user_key, nickname, content, send_at, created_at FROM scheduled_messages WHERE id = ?", id,
+	).Scan(&m.ID, &m.Channel, &m.UserKey, &m.Nickname, &m.Content, &m.SendAt, &m.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
 }

@@ -273,3 +273,40 @@ func (m *Manager) GetWelcomeMessage(channel string) (*db.WelcomeMessage, error) 
 func (m *Manager) GetAllWelcomeMessages() ([]db.WelcomeMessage, error) {
 	return m.db.GetAllWelcomeMessages()
 }
+
+// Channel category pass-through
+func (m *Manager) CreateCategory(name string, position int) (int64, error) {
+	return m.db.CreateCategory(name, position)
+}
+func (m *Manager) GetCategories() ([]db.ChannelCategory, error) {
+	return m.db.GetCategories()
+}
+func (m *Manager) SetChannelCategory(channelName string, categoryID int) error {
+	return m.db.SetChannelCategory(channelName, categoryID)
+}
+func (m *Manager) DeleteCategory(id int) error {
+	return m.db.DeleteCategory(id)
+}
+func (m *Manager) ReorderCategories(ids []int) error {
+	return m.db.ReorderCategories(ids)
+}
+func (m *Manager) RenameCategory(id int, name string) error {
+	return m.db.RenameCategory(id, name)
+}
+
+// Scheduled message pass-through
+func (m *Manager) AddScheduledMessage(channel, userKey, nickname, content string, sendAt time.Time) (int64, error) {
+	return m.db.AddScheduledMessage(channel, userKey, nickname, content, sendAt)
+}
+func (m *Manager) GetPendingScheduledMessages() ([]db.ScheduledMessage, error) {
+	return m.db.GetPendingScheduledMessages()
+}
+func (m *Manager) DeleteScheduledMessage(id int) error {
+	return m.db.DeleteScheduledMessage(id)
+}
+func (m *Manager) GetUserScheduledMessages(userKey string) ([]db.ScheduledMessage, error) {
+	return m.db.GetUserScheduledMessages(userKey)
+}
+func (m *Manager) GetScheduledMessageById(id int) (*db.ScheduledMessage, error) {
+	return m.db.GetScheduledMessageById(id)
+}

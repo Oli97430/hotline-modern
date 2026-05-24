@@ -1,0 +1,14 @@
+{
+  "name": "Hotline Modern",
+  "short_name": "Hotline",
+  "description": "Self-hosted real-time chat",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a2e",
+  "theme_color": "#6c5ce7",
+  "icons": [
+    { "src": "/favicon.ico", "sizes": "64x64", "type": "image/x-icon" },
+    { "src": "/favicon.ico", "sizes": "192x192", "type": "image/x-icon" },
+    { "src": "/favicon.ico", "sizes": "512x512", "type": "image/x-icon" }
+  ]
+}

@@ -1,6 +1,20 @@
-import { BellOff, Hash, Lock, LogOut, MessageSquare, Plus, Settings, Trash2 } from "lucide-react";
+import {
+  BellOff,
+  ChevronDown,
+  ChevronRight,
+  FolderOpen,
+  Hash,
+  Lock,
+  LogOut,
+  MessageSquare,
+  Plus,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { VoiceParticipant } from "../hooks/useVoiceChat";
+import type { CategoryData } from "../hooks/useWebSocket";
 import { ConnectionQuality } from "./ConnectionQuality";
 import { StatusDot } from "./StatusSelector";
 import { VoicePanel } from "./VoicePanel";
@@ -14,7 +28,7 @@ interface DMConversation {
 
 interface SidebarProps {
   serverName: string;
-  channels: { name: string; topic: string; userCount: number; hasPassword?: boolean }[];
+  channels: { name: string; topic: string; userCount: number; hasPassword?: boolean; categoryId?: number }[];
   activeChannel: string;
   activeDM: string;
   dmConversations: DMConversation[];
@@ -25,6 +39,8 @@ interface SidebarProps {
   onDisconnect: () => void;
   canCreateChannel: boolean;
   unreadCounts: Record<string, number>;
+  /** Channels that have unread messages (shown as a dot when count is 0) */
+  unreadChannelSet?: Set<string>;
   nickname: string;
   role: string;
   userStatus?: string;
@@ -44,6 +60,103 @@ interface SidebarProps {
   customStatus?: string;
   latency?: number | null;
   connectedSince?: number;
+  categories?: CategoryData[];
+  onCreateCategory?: (name: string) => void;
+  onDeleteCategory?: (id: number) => void;
+  onSetChannelCategory?: (channel: string, categoryId: number) => void;
+  onRenameCategory?: (id: number, name: string) => void;
+}
+
+interface ChannelItemProps {
+  ch: { name: string; topic: string; userCount: number; hasPassword?: boolean; categoryId?: number };
+  activeChannel: string;
+  activeDM: string;
+  unreadCounts: Record<string, number>;
+  unreadChannelSet?: Set<string>;
+  mutedChannels?: string[];
+  typingChannels?: string[];
+  canCreateChannel: boolean;
+  onSelectChannel: (channel: string) => void;
+  onDeleteChannel: (name: string) => void;
+  onToggleMute?: (channel: string) => void;
+  t: (key: string) => string;
+}
+
+function ChannelItem({
+  ch,
+  activeChannel,
+  activeDM,
+  unreadCounts,
+  unreadChannelSet,
+  mutedChannels,
+  typingChannels,
+  canCreateChannel,
+  onSelectChannel,
+  onDeleteChannel,
+  onToggleMute,
+  t,
+}: ChannelItemProps) {
+  return (
+    <li
+      role="option"
+      tabIndex={0}
+      aria-selected={ch.name === activeChannel && !activeDM}
+      className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
+      onClick={() => onSelectChannel(ch.name)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelectChannel(ch.name);
+        }
+      }}
+    >
+      {ch.hasPassword ? <Lock size={14} className="channel-icon" /> : <Hash size={14} className="channel-icon" />}
+      <span className="channel-name" title={ch.name}>
+        {ch.name}
+      </span>
+      {typingChannels?.includes(ch.name) && <span className="channel-typing-dot" />}
+      {(unreadCounts[ch.name] || 0) > 0 && <span className="channel-unread">{unreadCounts[ch.name]}</span>}
+      {!(unreadCounts[ch.name] || 0) && unreadChannelSet?.has(ch.name) && <span className="channel-unread-dot" />}
+      {mutedChannels?.includes(ch.name) && <BellOff size={11} className="channel-muted-icon" aria-hidden="true" />}
+      <span className="channel-count" aria-hidden="true">
+        {ch.userCount}
+      </span>
+      {onToggleMute && (
+        <button
+          className="channel-mute-btn"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleMute(ch.name);
+          }}
+          title={mutedChannels?.includes(ch.name) ? t("sidebar.unmute") : t("sidebar.mute")}
+        >
+          <BellOff size={11} />
+        </button>
+      )}
+      {canCreateChannel && ch.name !== "lobby" && (
+        <button
+          className="channel-delete"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeleteChannel(ch.name);
+          }}
+          title={t("sidebar.deleteChannel")}
+        >
+          <Trash2 size={12} />
+        </button>
+      )}
+    </li>
+  );
+}
+
+const COLLAPSED_KEY = "hotline:collapsed-categories";
+
+function loadCollapsed(): Set<number> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set();
 }
 
 export function Sidebar({
@@ -59,6 +172,7 @@ export function Sidebar({
   onDisconnect,
   canCreateChannel,
   unreadCounts,
+  unreadChannelSet,
   nickname,
   role,
   userStatus,
@@ -66,7 +180,6 @@ export function Sidebar({
   onToggleMute,
   onAdminPanel,
   typingChannels,
-  onReorderChannels,
   voiceChannel,
   voiceParticipants,
   voiceIsMuted,
@@ -78,8 +191,47 @@ export function Sidebar({
   customStatus,
   latency,
   connectedSince,
+  categories = [],
+  onDeleteCategory,
+  onRenameCategory,
 }: SidebarProps) {
   const { t } = useTranslation();
+  const [collapsed, setCollapsed] = useState<Set<number>>(loadCollapsed);
+  const [renamingCategory, setRenamingCategory] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [contextMenu, setContextMenu] = useState<{ catId: number; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...collapsed]));
+  }, [collapsed]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [contextMenu]);
+
+  const toggleCollapse = useCallback((catId: number) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(catId)) next.delete(catId);
+      else next.add(catId);
+      return next;
+    });
+  }, []);
+
+  // Group channels by category
+  const sortedCategories = [...categories].sort((a, b) => a.position - b.position);
+  const uncategorized = channels.filter((ch) => !ch.categoryId || ch.categoryId === 0);
+  const grouped = sortedCategories
+    .map((cat) => ({
+      category: cat,
+      channels: channels.filter((ch) => ch.categoryId === cat.id),
+    }))
+    .filter((g) => g.channels.length > 0);
+  const hasCategories = sortedCategories.length > 0;
 
   return (
     <aside className="sidebar">
@@ -122,87 +274,141 @@ export function Sidebar({
           )}
         </div>
 
-        <ul className="channel-list" role="listbox" aria-label={t("sidebar.channels")}>
-          {channels.length === 0 && <li className="channel-empty">{t("sidebar.noChannels")}</li>}
-          {channels.map((ch, idx) => (
-            <li
-              key={ch.name}
-              role="option"
-              tabIndex={0}
-              aria-selected={ch.name === activeChannel && !activeDM}
-              aria-label={`${ch.name}${(unreadCounts[ch.name] || 0) > 0 ? `, ${unreadCounts[ch.name]} non lus` : ""}, ${ch.userCount} utilisateurs`}
-              className={`channel-item ${ch.name === activeChannel && !activeDM ? "active" : ""}`}
-              onClick={() => onSelectChannel(ch.name)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
+        {channels.length === 0 && <div className="channel-empty">{t("sidebar.noChannels")}</div>}
+
+        {/* Uncategorized channels (or all if no categories exist) */}
+        {(hasCategories ? uncategorized : channels).length > 0 && (
+          <>
+            {hasCategories && uncategorized.length > 0 && (
+              <div className="category-header" onClick={() => toggleCollapse(0)}>
+                {collapsed.has(0) ? (
+                  <ChevronRight size={12} className="category-chevron" />
+                ) : (
+                  <ChevronDown size={12} className="category-chevron" />
+                )}
+                <FolderOpen size={12} className="category-icon" />
+                <span className="category-name">{t("category.uncategorized")}</span>
+              </div>
+            )}
+            {!collapsed.has(0) && (
+              <ul className="channel-list" role="listbox" aria-label={t("sidebar.channels")}>
+                {(hasCategories ? uncategorized : channels).map((ch) => (
+                  <ChannelItem
+                    key={ch.name}
+                    ch={ch}
+                    activeChannel={activeChannel}
+                    activeDM={activeDM}
+                    unreadCounts={unreadCounts}
+                    unreadChannelSet={unreadChannelSet}
+                    mutedChannels={mutedChannels}
+                    typingChannels={typingChannels}
+                    canCreateChannel={canCreateChannel}
+                    onSelectChannel={onSelectChannel}
+                    onDeleteChannel={onDeleteChannel}
+                    onToggleMute={onToggleMute}
+                    t={t}
+                  />
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
+        {/* Categorized channel groups */}
+        {grouped.map(({ category, channels: catChannels }) => (
+          <div key={category.id} className="category-group">
+            <div
+              className="category-header"
+              onClick={() => toggleCollapse(category.id)}
+              onContextMenu={(e) => {
+                if (role === "admin") {
                   e.preventDefault();
-                  onSelectChannel(ch.name);
+                  setContextMenu({ catId: category.id, x: e.clientX, y: e.clientY });
                 }
               }}
-              draggable={!!onReorderChannels}
-              onDragStart={(e) => {
-                e.dataTransfer.setData("text/plain", String(idx));
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.currentTarget.classList.add("drag-over");
-              }}
-              onDragLeave={(e) => {
-                e.currentTarget.classList.remove("drag-over");
-              }}
-              onDrop={(e) => {
-                e.currentTarget.classList.remove("drag-over");
-                const fromIdx = parseInt(e.dataTransfer.getData("text/plain"));
-                if (isNaN(fromIdx) || fromIdx === idx || !onReorderChannels) return;
-                const names = channels.map((c) => c.name);
-                const [removed] = names.splice(fromIdx, 1);
-                names.splice(idx, 0, removed);
-                onReorderChannels(names);
+            >
+              {collapsed.has(category.id) ? (
+                <ChevronRight size={12} className="category-chevron" />
+              ) : (
+                <ChevronDown size={12} className="category-chevron" />
+              )}
+              <FolderOpen size={12} className="category-icon" />
+              {renamingCategory === category.id ? (
+                <input
+                  className="category-rename-input"
+                  value={renameValue}
+                  autoFocus
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && renameValue.trim()) {
+                      onRenameCategory?.(category.id, renameValue.trim());
+                      setRenamingCategory(null);
+                    } else if (e.key === "Escape") {
+                      setRenamingCategory(null);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (renameValue.trim() && renameValue.trim() !== category.name) {
+                      onRenameCategory?.(category.id, renameValue.trim());
+                    }
+                    setRenamingCategory(null);
+                  }}
+                />
+              ) : (
+                <span className="category-name">{category.name}</span>
+              )}
+            </div>
+            {!collapsed.has(category.id) && (
+              <ul className="channel-list" role="listbox" aria-label={category.name}>
+                {catChannels.map((ch) => (
+                  <ChannelItem
+                    key={ch.name}
+                    ch={ch}
+                    activeChannel={activeChannel}
+                    activeDM={activeDM}
+                    unreadCounts={unreadCounts}
+                    unreadChannelSet={unreadChannelSet}
+                    mutedChannels={mutedChannels}
+                    typingChannels={typingChannels}
+                    canCreateChannel={canCreateChannel}
+                    onSelectChannel={onSelectChannel}
+                    onDeleteChannel={onDeleteChannel}
+                    onToggleMute={onToggleMute}
+                    t={t}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+
+        {/* Category context menu (admin only) */}
+        {contextMenu && (
+          <div className="category-context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+            <button
+              onClick={() => {
+                const cat = categories.find((c) => c.id === contextMenu.catId);
+                if (cat) {
+                  setRenameValue(cat.name);
+                  setRenamingCategory(contextMenu.catId);
+                }
+                setContextMenu(null);
               }}
             >
-              {ch.hasPassword ? (
-                <Lock size={14} className="channel-icon" />
-              ) : (
-                <Hash size={14} className="channel-icon" />
-              )}
-              <span className="channel-name" title={ch.name}>
-                {ch.name}
-              </span>
-              {typingChannels?.includes(ch.name) && <span className="channel-typing-dot" />}
-              {(unreadCounts[ch.name] || 0) > 0 && <span className="channel-unread">{unreadCounts[ch.name]}</span>}
-              {mutedChannels?.includes(ch.name) && (
-                <BellOff size={11} className="channel-muted-icon" aria-hidden="true" />
-              )}
-              <span className="channel-count" aria-hidden="true">
-                {ch.userCount}
-              </span>
-              {onToggleMute && (
-                <button
-                  className="channel-mute-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onToggleMute(ch.name);
-                  }}
-                  title={mutedChannels?.includes(ch.name) ? t("sidebar.unmute") : t("sidebar.mute")}
-                >
-                  <BellOff size={11} />
-                </button>
-              )}
-              {canCreateChannel && ch.name !== "lobby" && (
-                <button
-                  className="channel-delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteChannel(ch.name);
-                  }}
-                  title={t("sidebar.deleteChannel")}
-                >
-                  <Trash2 size={12} />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
+              {t("category.rename", "Rename")}
+            </button>
+            <button
+              className="danger"
+              onClick={() => {
+                onDeleteCategory?.(contextMenu.catId);
+                setContextMenu(null);
+              }}
+            >
+              {t("category.delete")}
+            </button>
+          </div>
+        )}
 
         {onJoinVoice && (
           <VoicePanel
@@ -461,6 +667,15 @@ export function Sidebar({
           animation: fadeInScale 0.2s ease;
           box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.3);
         }
+        .channel-unread-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          background: var(--accent);
+          flex-shrink: 0;
+          animation: fadeInScale 0.2s ease;
+          box-shadow: 0 0 6px rgba(var(--accent-rgb), 0.4);
+        }
         .sidebar-footer {
           padding: 12px 16px;
           border-top: 1px solid var(--border);
@@ -502,6 +717,89 @@ export function Sidebar({
         }
         .sidebar-role[data-role="admin"] { color: var(--role-admin); }
         .sidebar-role[data-role="operator"] { color: var(--role-operator); }
+        .category-group {
+          margin-top: 4px;
+        }
+        .category-header {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          padding: 4px 12px 4px 12px;
+          margin: 2px 8px;
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          color: var(--text-muted);
+          user-select: none;
+          transition: color var(--transition-fast), background var(--transition-fast);
+        }
+        .category-header:hover {
+          color: var(--text-secondary);
+          background: var(--bg-tertiary);
+        }
+        .category-chevron {
+          flex-shrink: 0;
+          opacity: 0.7;
+        }
+        .category-icon {
+          flex-shrink: 0;
+          opacity: 0.6;
+        }
+        .category-name {
+          flex: 1;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .category-rename-input {
+          flex: 1;
+          min-width: 0;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.4px;
+          background: var(--bg-primary);
+          color: var(--text-primary);
+          border: 1px solid var(--accent);
+          border-radius: var(--radius-sm);
+          padding: 1px 4px;
+          outline: none;
+        }
+        .category-context-menu {
+          position: fixed;
+          z-index: 1000;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: var(--radius-md);
+          padding: 4px;
+          box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+          min-width: 120px;
+        }
+        .category-context-menu button {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 6px 10px;
+          font-size: 12px;
+          border-radius: var(--radius-sm);
+          color: var(--text-primary);
+          background: none;
+          border: none;
+          cursor: pointer;
+          transition: background var(--transition-fast);
+        }
+        .category-context-menu button:hover {
+          background: var(--bg-tertiary);
+        }
+        .category-context-menu button.danger {
+          color: var(--danger);
+        }
+        .category-context-menu button.danger:hover {
+          background: var(--danger-dim);
+        }
       `}</style>
     </aside>
   );

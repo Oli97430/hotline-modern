@@ -1,4 +1,4 @@
-import { Bookmark, Copy, Forward, Pencil, Pin, Quote, Reply, Smile, Trash2 } from "lucide-react";
+import { Ban, Bookmark, Copy, Forward, Pencil, Pin, Quote, Reply, Smile, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -19,6 +19,10 @@ interface MessageContextMenuProps {
   onCopyText?: () => void;
   onQuote?: () => void;
   onForward?: (messageId: string) => void;
+  userId?: string;
+  userIsBlocked?: boolean;
+  onBlockUser?: (userId: string) => void;
+  onUnblockUser?: (userId: string) => void;
 }
 
 export function MessageContextMenu({
@@ -38,6 +42,10 @@ export function MessageContextMenu({
   onCopyText: _onCopyText,
   onQuote,
   onForward,
+  userId,
+  userIsBlocked,
+  onBlockUser,
+  onUnblockUser,
 }: MessageContextMenuProps) {
   const { t } = useTranslation();
   const menuRef = useRef<HTMLDivElement>(null);
@@ -169,6 +177,34 @@ export function MessageContextMenu({
           <Trash2 size={14} />
           <span>{t("ctx.delete")}</span>
         </button>
+      )}
+      {userId && !isOwn && (onBlockUser || onUnblockUser) && (
+        <>
+          <div className="ctx-sep" />
+          {userIsBlocked && onUnblockUser ? (
+            <button
+              className="ctx-item"
+              onClick={() => {
+                onUnblockUser(userId);
+                onClose();
+              }}
+            >
+              <Ban size={14} />
+              <span>{t("user.unblock")}</span>
+            </button>
+          ) : onBlockUser ? (
+            <button
+              className="ctx-item danger"
+              onClick={() => {
+                onBlockUser(userId);
+                onClose();
+              }}
+            >
+              <Ban size={14} />
+              <span>{t("user.block")}</span>
+            </button>
+          ) : null}
+        </>
       )}
 
       <style>{`

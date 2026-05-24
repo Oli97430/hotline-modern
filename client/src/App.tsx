@@ -38,12 +38,7 @@ import { InvitePanel } from "./components/InvitePanel";
 import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
 import { LanguageSelector } from "./components/LanguageSelector";
 import { MessageForwardDialog } from "./components/MessageForwardDialog";
-import {
-  loadScheduledMessages,
-  MessageScheduler,
-  type ScheduledMessage,
-  saveScheduledMessages,
-} from "./components/MessageScheduler";
+import { MessageScheduler, type ScheduledMessage } from "./components/MessageScheduler";
 import {
   saveNotifFilters as _saveNF,
   shouldNotify as checkNotifFilter,
@@ -65,6 +60,7 @@ import { ThreadPanel } from "./components/ThreadPanel";
 import { ToastContainer, useToasts } from "./components/ToastContainer";
 import { UserList } from "./components/UserList";
 import { UserProfileCard } from "./components/UserProfileCard";
+import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { useChannelMute } from "./hooks/useChannelMute";
 import { useCompactMode } from "./hooks/useCompactMode";
 import { useIdentity } from "./hooks/useIdentity";
@@ -102,7 +98,6 @@ export default function App() {
   const [showInvites, setShowInvites] = useState(false);
   const [showNotifFilters, setShowNotifFilters] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
-  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>(loadScheduledMessages);
   const [channelOrder, setChannelOrder] = useState<string[]>(loadChannelOrder);
   const [profileUser, setProfileUser] = useState<{ userId: string; position: { x: number; y: number } } | null>(null);
 
@@ -151,6 +146,7 @@ export default function App() {
   const { mutedChannels, toggleMute, isMuted } = useChannelMute();
   const { compact, toggleCompact } = useCompactMode();
   const { toasts, addToast, dismissToast } = useToasts();
+  const { blockUser, unblockUser, isBlocked } = useBlockedUsers();
 
   const voice = useVoiceChat({
     wsRef: ws.wsRef,
@@ -229,6 +225,8 @@ export default function App() {
       setShowPasswordPrompt(channel);
       return;
     }
+    // Freeze unread marker for the channel we are leaving
+    ws.freezeChannelRead(activeChannel);
     // Mark the last message in the current channel as read
     const currentMsgs = ws.messages.filter((m) => m.channel === activeChannel);
     if (currentMsgs.length > 0) {
@@ -237,6 +235,8 @@ export default function App() {
     setActiveDM("");
     setActiveChannel(channel);
     ws.joinChannel(channel);
+    // Mark the new channel as read after a tick so messages are loaded
+    setTimeout(() => ws.markChannelRead(channel), 50);
   };
 
   const handlePasswordSubmit = (password: string) => {
@@ -320,7 +320,9 @@ export default function App() {
 
   useEffect(() => {
     activeChannelRef.current = activeChannel;
-  }, [activeChannel]);
+    // Keep unread tracking in sync with the currently viewed channel
+    ws.markChannelRead(activeChannel);
+  }, [activeChannel, ws]);
 
   useEffect(() => {
     activeDMRef.current = activeDM;
@@ -351,6 +353,18 @@ export default function App() {
       for (const msg of newMsgs) {
         if (msg.userId === currentUserId) continue;
         if (isMuted(msg.channel)) continue;
+
+        // Check if this message @mentions the current user
+        const isMentioned = myNickname && msg.content.toLowerCase().includes(`@${myNickname.toLowerCase()}`);
+
+        // Always notify on @mention (even if in current channel with focus), otherwise apply normal filters
+        if (isMentioned) {
+          const title = `#${msg.channel} - ${msg.nickname} mentioned you`;
+          const body = msg.content.length > 100 ? msg.content.slice(0, 100) + "..." : msg.content;
+          notifyRef.current(title, body, msg.id);
+          continue;
+        }
+
         if (!checkNotifFilter(filters, msg.channel, msg.userId, msg.content, myNickname)) continue;
         if (!isNativePlatform && document.hasFocus() && msg.channel === currentChannel) continue;
 
@@ -561,40 +575,32 @@ export default function App() {
     [ws],
   );
 
+  // Map backend scheduled messages to component format
+  const scheduledMessages: ScheduledMessage[] = useMemo(
+    () =>
+      ws.scheduledMessages.map((m) => ({
+        id: String(m.id),
+        channel: m.channel,
+        content: m.content,
+        scheduledTime: m.scheduledTime,
+        createdAt: m.createdAt,
+      })),
+    [ws.scheduledMessages],
+  );
+
   const handleScheduleMessage = useCallback(
     (msg: ScheduledMessage) => {
-      const updated = [...scheduledMessages, msg];
-      setScheduledMessages(updated);
-      saveScheduledMessages(updated);
+      ws.scheduleMessage(msg.channel, msg.content, msg.scheduledTime);
     },
-    [scheduledMessages],
+    [ws],
   );
 
   const handleDeleteScheduled = useCallback(
     (id: string) => {
-      const updated = scheduledMessages.filter((m) => m.id !== id);
-      setScheduledMessages(updated);
-      saveScheduledMessages(updated);
+      ws.deleteScheduledMessage(Number(id));
     },
-    [scheduledMessages],
+    [ws],
   );
-
-  // Process scheduled messages every 30s
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now();
-      const due = scheduledMessages.filter((m) => m.scheduledTime <= now);
-      if (due.length === 0) return;
-      for (const msg of due) {
-        ws.sendChat(msg.channel, msg.content);
-        addToast("info", `Scheduled message sent to #${msg.channel}`);
-      }
-      const remaining = scheduledMessages.filter((m) => m.scheduledTime > now);
-      setScheduledMessages(remaining);
-      saveScheduledMessages(remaining);
-    }, 30000);
-    return () => clearInterval(interval);
-  }, [scheduledMessages, ws, addToast]);
 
   const handleChannelReorder = useCallback((newOrder: string[]) => {
     setChannelOrder(newOrder);
@@ -750,6 +756,7 @@ export default function App() {
           onDisconnect={ws.disconnect}
           canCreateChannel={canCreateChannel}
           unreadCounts={unreadCounts}
+          unreadChannelSet={ws.unreadChannels}
           nickname={
             ws.serverInfo?.userId ? ws.users.find((u) => u.userId === ws.serverInfo?.userId)?.nickname || "" : ""
           }
@@ -771,6 +778,11 @@ export default function App() {
           onLeaveVoice={voice.leaveVoice}
           onToggleVoiceMute={voice.toggleMute}
           onToggleVoiceDeafen={voice.toggleDeafen}
+          categories={ws.categories}
+          onCreateCategory={ws.createCategory}
+          onDeleteCategory={ws.deleteCategory}
+          onSetChannelCategory={ws.setChannelCategory}
+          onRenameCategory={ws.renameCategory}
         />
         <div className="app-sidebar-bottom">
           <StatusSelector
@@ -804,7 +816,10 @@ export default function App() {
           </button>
           <button
             className="compact-toggle"
-            onClick={() => setShowScheduler(true)}
+            onClick={() => {
+              ws.requestScheduledMessages();
+              setShowScheduler(true);
+            }}
             title={t("scheduler.title")}
             aria-label={t("scheduler.title")}
           >
@@ -902,6 +917,7 @@ export default function App() {
             channelTopic={activeCh?.topic}
             channelSlowmode={activeCh?.slowmode}
             currentUserId={ws.serverInfo?.userId || ""}
+            currentNickname={ws.users.find((u) => u.userId === ws.serverInfo?.userId)?.nickname}
             currentRole={ws.serverInfo?.role}
             typingUsers={ws.typingUsers}
             dmMode={
@@ -943,7 +959,7 @@ export default function App() {
             isBookmarked={isBookmarked}
             onChannelSettings={() => setShowChannelSettings(true)}
             onImageClick={setLightboxSrc}
-            lastReadMessageId={lastReadIds[activeChannel]}
+            lastReadMessageId={ws.channelLastReadIds[activeChannel] || lastReadIds[activeChannel]}
             pinnedMessageIds={ws.pinnedMessages.map((p) => p.id)}
             onQuote={handleQuote}
             quotedText={quoteText}
@@ -957,6 +973,9 @@ export default function App() {
             automodWarning={ws.automodWarning}
             onDismissAutomodWarning={ws.dismissAutomodWarning}
             motd={ws.serverInfo?.motd || ""}
+            isBlocked={isBlocked}
+            onBlockUser={blockUser}
+            onUnblockUser={unblockUser}
           />
 
           {threadRootId &&
@@ -1026,32 +1045,39 @@ export default function App() {
         />
       </div>
 
-      {profileUser && (() => {
-        const pu = ws.users.find((u) => u.userId === profileUser.userId);
-        if (!pu) return null;
-        const isSelf = pu.userId === ws.serverInfo?.userId;
-        return (
-          <UserProfileCard
-            user={pu}
-            position={profileUser.position}
-            onClose={() => setProfileUser(null)}
-            onDM={(uid) => { handleSelectDM(uid); setProfileUser(null); }}
-            onKick={ws.kickUser}
-            onBan={ws.banUser}
-            onOp={(uid) => ws.setUserRole(uid, "operator")}
-            onDeop={(uid) => ws.setUserRole(uid, "member")}
-            canModerate={canCreateChannel}
-            isSelf={isSelf}
-            profile={ws.profileCache[pu.userId]}
-            onUpdateProfile={ws.updateProfile}
-            viewerRole={ws.serverInfo?.role}
-            userNotes={ws.userNotes[pu.userId]}
-            onAddNote={ws.addUserNote}
-            onDeleteNote={ws.deleteUserNote}
-            onRequestNotes={ws.requestUserNotes}
-          />
-        );
-      })()}
+      {profileUser &&
+        (() => {
+          const pu = ws.users.find((u) => u.userId === profileUser.userId);
+          if (!pu) return null;
+          const isSelf = pu.userId === ws.serverInfo?.userId;
+          return (
+            <UserProfileCard
+              user={pu}
+              position={profileUser.position}
+              onClose={() => setProfileUser(null)}
+              onDM={(uid) => {
+                handleSelectDM(uid);
+                setProfileUser(null);
+              }}
+              onKick={ws.kickUser}
+              onBan={ws.banUser}
+              onOp={(uid) => ws.setUserRole(uid, "operator")}
+              onDeop={(uid) => ws.setUserRole(uid, "member")}
+              canModerate={canCreateChannel}
+              isSelf={isSelf}
+              profile={ws.profileCache[pu.userId]}
+              onUpdateProfile={ws.updateProfile}
+              viewerRole={ws.serverInfo?.role}
+              userNotes={ws.userNotes[pu.userId]}
+              onAddNote={ws.addUserNote}
+              onDeleteNote={ws.deleteUserNote}
+              onRequestNotes={ws.requestUserNotes}
+              isUserBlocked={isBlocked(pu.userId)}
+              onBlockUser={blockUser}
+              onUnblockUser={unblockUser}
+            />
+          );
+        })()}
 
       {showCreateModal && (
         <CreateChannelModal onSubmit={handleCreateChannelSubmit} onClose={() => setShowCreateModal(false)} />

@@ -19,7 +19,14 @@ function formatDuration(connectedAt?: number): string {
 }
 
 interface UserListProps {
-  users: { userId: string; nickname: string; role: string; status: string; connectedAt?: number; customStatus?: string }[];
+  users: {
+    userId: string;
+    nickname: string;
+    role: string;
+    status: string;
+    connectedAt?: number;
+    customStatus?: string;
+  }[];
   currentUserId?: string;
   currentRole?: string;
   onKick?: (userId: string) => void;
@@ -43,7 +50,17 @@ function RoleIcon({ role }: { role: string }) {
   }
 }
 
-export function UserList({ users, currentUserId, currentRole, onKick, onBan, onOp, onDeop, onDM, onProfileClick }: UserListProps) {
+export function UserList({
+  users,
+  currentUserId,
+  currentRole,
+  onKick,
+  onBan,
+  onOp,
+  onDeop,
+  onDM,
+  onProfileClick,
+}: UserListProps) {
   const { t } = useTranslation();
   const [menuUser, setMenuUser] = useState<string | null>(null);
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });

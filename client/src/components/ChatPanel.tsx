@@ -9,6 +9,52 @@ import { MentionSuggestions } from "./MentionSuggestions";
 import { MessageBubble } from "./MessageBubble";
 import { VoiceRecorder } from "./VoiceRecorder";
 
+/** Collapsed placeholder shown for messages from blocked users */
+function BlockedMessagePlaceholder({
+  msg,
+  currentUserId: _currentUserId,
+  isGrouped,
+  onUnblock,
+}: {
+  msg: ChatMessage;
+  currentUserId: string;
+  isGrouped?: boolean;
+  onUnblock?: (userId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const [revealed, setRevealed] = useState(false);
+
+  return (
+    <div className={`message blocked-message ${isGrouped ? "grouped" : ""}`}>
+      {revealed ? (
+        <div className="blocked-message-revealed">
+          <span className="blocked-message-nick">{msg.nickname}</span>
+          <span className="message-content">{msg.content}</span>
+          <button className="blocked-message-hide" onClick={() => setRevealed(false)}>
+            {t("chat.blockedMessage")}
+          </button>
+        </div>
+      ) : (
+        <div className="blocked-message-collapsed" onClick={() => setRevealed(true)}>
+          <span className="blocked-message-label">[{t("chat.blockedMessage")}]</span>
+          <span className="blocked-message-hint">{t("chat.clickToReveal")}</span>
+          {onUnblock && (
+            <button
+              className="blocked-message-unblock"
+              onClick={(e) => {
+                e.stopPropagation();
+                onUnblock(msg.userId);
+              }}
+            >
+              {t("user.unblock")}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatDateSeparator(ts: number, t: (key: string) => string): string {
   const date = new Date(ts);
   const now = new Date();
@@ -27,6 +73,7 @@ interface ChatPanelProps {
   channelTopic?: string;
   channelSlowmode?: number;
   currentUserId: string;
+  currentNickname?: string;
   currentRole?: string;
   typingUsers: TypingUser[];
   dmMode?: { peerId: string; peerNick: string; e2eEnabled: boolean; ownFingerprint?: string; peerFingerprint?: string };
@@ -68,6 +115,9 @@ interface ChatPanelProps {
   motd?: string;
   automodWarning?: string | null;
   onDismissAutomodWarning?: () => void;
+  isBlocked?: (userId: string) => boolean;
+  onBlockUser?: (userId: string) => void;
+  onUnblockUser?: (userId: string) => void;
 }
 
 export function ChatPanel({
@@ -76,6 +126,7 @@ export function ChatPanel({
   channelTopic,
   channelSlowmode,
   currentUserId,
+  currentNickname,
   currentRole,
   typingUsers,
   dmMode,
@@ -117,9 +168,51 @@ export function ChatPanel({
   motd,
   automodWarning,
   onDismissAutomodWarning,
+  isBlocked,
+  onBlockUser,
+  onUnblockUser,
 }: ChatPanelProps) {
   const { t } = useTranslation();
-  const [input, setInput] = useState("");
+  const [input, setInputRaw] = useState("");
+  const draftTimerRef = useRef<number>(0);
+
+  // --- Per-channel draft persistence ---
+  const draftKey = `hotline-draft-${activeChannel}`;
+
+  // Load draft when channel changes
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(`hotline-draft-${activeChannel}`);
+      setInputRaw(saved || "");
+    } catch {
+      setInputRaw("");
+    }
+  }, [activeChannel]);
+
+  // Save draft on input changes (debounced 300ms)
+  const setInput = useCallback(
+    (valueOrUpdater: string | ((prev: string) => string)) => {
+      setInputRaw((prev) => {
+        const newVal = typeof valueOrUpdater === "function" ? valueOrUpdater(prev) : valueOrUpdater;
+        // Debounced save to localStorage
+        window.clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = window.setTimeout(() => {
+          try {
+            if (newVal) {
+              localStorage.setItem(draftKey, newVal);
+            } else {
+              localStorage.removeItem(draftKey);
+            }
+          } catch {
+            /* quota exceeded, ignore */
+          }
+        }, 300);
+        return newVal;
+      });
+    },
+    [draftKey],
+  );
+
   const [showEmoji, setShowEmoji] = useState(false);
   const [mentionFilter, setMentionFilter] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -165,7 +258,9 @@ export function ChatPanel({
     setMotdDismissed(true);
     try {
       localStorage.setItem("hotline-motd-dismissed", motdHash);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   };
 
   // --- localStorage last-read tracking ---
@@ -222,7 +317,9 @@ export function ChatPanel({
       setLocalLastReadId(lastMsg.id);
       try {
         localStorage.setItem(lastReadStorageKey, lastMsg.id);
-      } catch { /* quota exceeded, ignore */ }
+      } catch {
+        /* quota exceeded, ignore */
+      }
     }
   }, [channelMessages, isScrolledUp, lastReadStorageKey, localLastReadId]);
 
@@ -237,7 +334,9 @@ export function ChatPanel({
         setLocalLastReadId(lastMsg.id);
         try {
           localStorage.setItem(lastReadStorageKey, lastMsg.id);
-        } catch { /* quota exceeded, ignore */ }
+        } catch {
+          /* quota exceeded, ignore */
+        }
       }
     };
     window.addEventListener("focus", handleFocus);
@@ -368,6 +467,12 @@ export function ChatPanel({
       }
     }
     setInput("");
+    // Clear the draft for this channel on successful send
+    try {
+      localStorage.removeItem(`hotline-draft-${activeChannel}`);
+    } catch {
+      /* ignore */
+    }
   };
 
   const handleInputChange = (value: string) => {
@@ -447,12 +552,23 @@ export function ChatPanel({
     return t.channel === activeChannel && t.userId !== currentUserId;
   });
 
-  const typingText =
-    activeTyping.length > 0
-      ? activeTyping.length === 1
-        ? t("chat.typing", { name: activeTyping[0].nickname })
-        : t("chat.typingMultiple", { count: activeTyping.length })
-      : null;
+  const typingText = (() => {
+    const count = activeTyping.length;
+    if (count === 0) return null;
+    if (count === 1) return t("chat.typingOne", { name: activeTyping[0].nickname });
+    if (count === 2)
+      return t("chat.typingTwo", {
+        name1: activeTyping[0].nickname,
+        name2: activeTyping[1].nickname,
+      });
+    if (count === 3)
+      return t("chat.typingThree", {
+        name1: activeTyping[0].nickname,
+        name2: activeTyping[1].nickname,
+        name3: activeTyping[2].nickname,
+      });
+    return t("chat.typingMany");
+  })();
 
   return (
     <div className="chat-panel">
@@ -517,13 +633,40 @@ export function ChatPanel({
 
       <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
         {motd && !motdDismissed && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", margin: "8px 12px", borderRadius: 8, background: "var(--accent, #7c5cbf)", color: "#fff", fontSize: 13 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 16px",
+              margin: "8px 12px",
+              borderRadius: 8,
+              background: "var(--accent, #7c5cbf)",
+              color: "#fff",
+              fontSize: 13,
+            }}
+          >
             <Megaphone size={16} style={{ flexShrink: 0 }} />
             <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-              <strong style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>{t("motd.announcement")}</strong>
+              <strong style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: 0.5, opacity: 0.85 }}>
+                {t("motd.announcement")}
+              </strong>
               <span>{motd}</span>
             </div>
-            <button type="button" onClick={handleDismissMotd} title={t("motd.dismiss")} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", padding: 4, borderRadius: 4, opacity: 0.7 }}>
+            <button
+              type="button"
+              onClick={handleDismissMotd}
+              title={t("motd.dismiss")}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#fff",
+                cursor: "pointer",
+                padding: 4,
+                borderRadius: 4,
+                opacity: 0.7,
+              }}
+            >
               <X size={14} />
             </button>
           </div>
@@ -570,9 +713,12 @@ export function ChatPanel({
             !prev.system;
 
           // Unread marker: show before first unread message
-          const showUnreadMarker = effectiveLastReadId && prev?.id === effectiveLastReadId && msg.userId !== currentUserId;
+          const showUnreadMarker =
+            effectiveLastReadId && prev?.id === effectiveLastReadId && msg.userId !== currentUserId;
           // Thread: check if message has replies
           const hasThread = msg.replyTo && onThreadOpen;
+
+          const userIsBlocked = !msg.system && isBlocked?.(msg.userId);
 
           return (
             <div key={msg.id}>
@@ -581,55 +727,70 @@ export function ChatPanel({
                   <span>{t("chat.newMessagesLabel")}</span>
                 </div>
               )}
-              <MessageBubble
-                id={msg.id}
-                userId={msg.userId}
-                nickname={msg.nickname}
-                content={msg.content}
-                role={msg.role}
-                timestamp={msg.timestamp}
-                isOwn={msg.userId === currentUserId}
-                edited={msg.edited}
-                reactions={msg.reactions}
-                currentUserId={currentUserId}
-                canModerate={canMod}
-                system={msg.system}
-                msgType={msg.msgType}
-                onReact={onReact}
-                onRemoveReact={onRemoveReact}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onPin={onPin}
-                onReply={onReply}
-                onBookmark={onBookmark}
-                isBookmarked={isBookmarked?.(msg.id)}
-                isPinned={pinnedMessageIds?.includes(msg.id)}
-                replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
-                isGrouped={isGrouped}
-                onImageClick={onImageClick}
-                onQuote={onQuote}
-                onThreadOpen={hasThread ? () => onThreadOpen!(msg.replyTo!) : undefined}
-                onForward={onForward}
-              />
-              {msg.userId === currentUserId &&
-                !msg.system &&
-                readReceipts &&
-                (() => {
-                  const readers = (readReceipts[msg.id] || []).filter((uid) => uid !== currentUserId);
-                  if (readers.length === 0) return null;
-                  const names = readers
-                    .map((uid) => users?.find((u) => u.userId === uid)?.nickname || uid.slice(0, 6))
-                    .slice(0, 5);
-                  const label =
-                    readers.length <= 5
-                      ? t("chat.seenBy", { names: names.join(", ") })
-                      : t("chat.seenBy", { names: names.join(", ") + ` +${readers.length - 5}` });
-                  return (
-                    <div className="chat-read-receipt">
-                      <span>{label}</span>
-                    </div>
-                  );
-                })()}
+              {userIsBlocked ? (
+                <BlockedMessagePlaceholder
+                  msg={msg}
+                  currentUserId={currentUserId}
+                  isGrouped={isGrouped}
+                  onUnblock={onUnblockUser}
+                />
+              ) : (
+                <>
+                  <MessageBubble
+                    id={msg.id}
+                    userId={msg.userId}
+                    nickname={msg.nickname}
+                    content={msg.content}
+                    role={msg.role}
+                    timestamp={msg.timestamp}
+                    isOwn={msg.userId === currentUserId}
+                    edited={msg.edited}
+                    reactions={msg.reactions}
+                    currentUserId={currentUserId}
+                    currentNickname={currentNickname}
+                    canModerate={canMod}
+                    system={msg.system}
+                    msgType={msg.msgType}
+                    onReact={onReact}
+                    onRemoveReact={onRemoveReact}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onPin={onPin}
+                    onReply={onReply}
+                    onBookmark={onBookmark}
+                    isBookmarked={isBookmarked?.(msg.id)}
+                    isPinned={pinnedMessageIds?.includes(msg.id)}
+                    replyContext={replyMsg ? { nickname: replyMsg.nickname, content: replyMsg.content } : undefined}
+                    isGrouped={isGrouped}
+                    onImageClick={onImageClick}
+                    onQuote={onQuote}
+                    onThreadOpen={hasThread ? () => onThreadOpen!(msg.replyTo!) : undefined}
+                    onForward={onForward}
+                    isBlocked={isBlocked}
+                    onBlockUser={onBlockUser}
+                    onUnblockUser={onUnblockUser}
+                  />
+                  {msg.userId === currentUserId &&
+                    !msg.system &&
+                    readReceipts &&
+                    (() => {
+                      const readers = (readReceipts[msg.id] || []).filter((uid) => uid !== currentUserId);
+                      if (readers.length === 0) return null;
+                      const names = readers
+                        .map((uid) => users?.find((u) => u.userId === uid)?.nickname || uid.slice(0, 6))
+                        .slice(0, 5);
+                      const label =
+                        readers.length <= 5
+                          ? t("chat.seenBy", { names: names.join(", ") })
+                          : t("chat.seenBy", { names: names.join(", ") + ` +${readers.length - 5}` });
+                      return (
+                        <div className="chat-read-receipt">
+                          <span>{label}</span>
+                        </div>
+                      );
+                    })()}
+                </>
+              )}
             </div>
           );
         })}
@@ -690,7 +851,9 @@ export function ChatPanel({
       )}
       {automodWarning && (
         <div className="automod-warning-banner">
-          <span>{t("automod.warningPrefix")}: {automodWarning}</span>
+          <span>
+            {t("automod.warningPrefix")}: {automodWarning}
+          </span>
           <button className="automod-warning-dismiss" onClick={onDismissAutomodWarning}>
             <X size={14} />
           </button>
@@ -749,7 +912,12 @@ export function ChatPanel({
             <Mic size={18} />
           </button>
         ) : (
-          <button className="chat-send-btn" onClick={handleSend} disabled={!input.trim() || cooldownLeft > 0} aria-label={t("chat.send")}>
+          <button
+            className="chat-send-btn"
+            onClick={handleSend}
+            disabled={!input.trim() || cooldownLeft > 0}
+            aria-label={t("chat.send")}
+          >
             <Send size={18} />
           </button>
         )}
@@ -1163,6 +1331,77 @@ export function ChatPanel({
           border: none;
         }
         .automod-warning-dismiss:hover { opacity: 1; }
+        .blocked-message {
+          padding: 4px 16px;
+        }
+        .blocked-message-collapsed {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 12px;
+          background: var(--bg-tertiary);
+          border-radius: var(--radius-sm);
+          cursor: pointer;
+          transition: background var(--transition-fast);
+          font-size: 12px;
+        }
+        .blocked-message-collapsed:hover {
+          background: var(--bg-hover, var(--bg-secondary));
+        }
+        .blocked-message-label {
+          color: var(--text-muted);
+          font-style: italic;
+          font-weight: 500;
+        }
+        .blocked-message-hint {
+          color: var(--text-muted);
+          opacity: 0.6;
+          font-size: 11px;
+        }
+        .blocked-message-unblock {
+          margin-left: auto;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--accent);
+          padding: 2px 8px;
+          border-radius: var(--radius-sm);
+          transition: background var(--transition-fast);
+          background: none;
+          border: none;
+          cursor: pointer;
+        }
+        .blocked-message-unblock:hover {
+          background: var(--accent-dim);
+        }
+        .blocked-message-revealed {
+          padding: 6px 12px;
+          background: var(--bg-tertiary);
+          border-radius: var(--radius-sm);
+          border-left: 3px solid var(--text-muted);
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          opacity: 0.7;
+        }
+        .blocked-message-nick {
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--text-muted);
+        }
+        .blocked-message-revealed .message-content {
+          font-size: 13px;
+          color: var(--text-secondary);
+        }
+        .blocked-message-hide {
+          font-size: 10px;
+          color: var(--text-muted);
+          cursor: pointer;
+          background: none;
+          border: none;
+          padding: 2px 0;
+          text-decoration: underline;
+          align-self: flex-start;
+        }
       `}</style>
     </div>
   );

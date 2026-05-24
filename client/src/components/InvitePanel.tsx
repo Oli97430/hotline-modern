@@ -117,11 +117,7 @@ export function InvitePanel({ invites, serverAddress, onCreateInvite, onDeleteIn
                   </span>
                 </div>
                 <div className="invite-item-actions">
-                  <button
-                    className="invite-action-btn"
-                    onClick={() => handleCopy(inv.code)}
-                    title={t("invite.copy")}
-                  >
+                  <button className="invite-action-btn" onClick={() => handleCopy(inv.code)} title={t("invite.copy")}>
                     {copiedCode === inv.code ? <Check size={13} /> : <Copy size={13} />}
                     <span>{copiedCode === inv.code ? t("invite.copied") : t("invite.copy")}</span>
                   </button>

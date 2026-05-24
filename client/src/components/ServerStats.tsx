@@ -1,4 +1,4 @@
-import { Activity, Clock, Cpu, Hash, HardDrive, MessageCircle, TrendingUp, Users, X } from "lucide-react";
+import { Activity, Clock, Cpu, HardDrive, Hash, MessageCircle, TrendingUp, Users, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../hooks/useWebSocket";
@@ -33,7 +33,14 @@ interface ServerStatsProps {
   onClose: () => void;
 }
 
-export function ServerStats({ messages, userCount, channelCount, serverName, serverAddress, onClose }: ServerStatsProps) {
+export function ServerStats({
+  messages,
+  userCount,
+  channelCount,
+  serverName,
+  serverAddress,
+  onClose,
+}: ServerStatsProps) {
   const { t } = useTranslation();
   const [health, setHealth] = useState<HealthData | null>(null);
 
@@ -46,12 +53,17 @@ export function ServerStats({ messages, userCount, channelCount, serverName, ser
     const fetchHealth = () => {
       fetch(url)
         .then((r) => r.json())
-        .then((data) => { if (!cancelled) setHealth(data); })
+        .then((data) => {
+          if (!cancelled) setHealth(data);
+        })
         .catch(() => {});
     };
     fetchHealth();
     const interval = setInterval(fetchHealth, 30000);
-    return () => { cancelled = true; clearInterval(interval); };
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [serverAddress]);
 
   const stats = useMemo(() => {

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -146,6 +145,15 @@ const (
 	MsgWelcomeSet            = "welcome.set"
 	MsgWelcomeList           = "welcome.list"
 	MsgWelcomeMsg            = "welcome.message"
+	MsgCategoryCreate        = "category.create"
+	MsgCategoryList          = "category.list"
+	MsgCategoryDelete        = "category.delete"
+	MsgCategoryReorder       = "category.reorder"
+	MsgCategoryRename        = "category.rename"
+	MsgChannelSetCategory    = "channel.set_category"
+	MsgScheduleSend          = "schedule.send"
+	MsgScheduleList          = "schedule.list"
+	MsgScheduleDelete        = "schedule.delete"
 	MsgError                 = "error"
 )
 
@@ -162,18 +170,6 @@ func (c *Client) consumeToken() bool {
 	}
 	c.tokens -= rateLimitCost
 	return true
-}
-
-type VoiceParticipant struct {
-	PublicKey string `json:"userId"`
-	Nickname  string `json:"nickname"`
-	Muted     bool   `json:"muted"`
-	Deafened  bool   `json:"deafened"`
-}
-
-type spamEntry struct {
-	Content string
-	Time    int64
 }
 
 type Hub struct {
@@ -270,6 +266,15 @@ func (h *Hub) ChannelCount() int {
 }
 
 func (h *Hub) Run() {
+	// Background goroutine: check for pending scheduled messages every 30 seconds
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			h.processScheduledMessages()
+		}
+	}()
+
 	for {
 		select {
 		case client := <-h.register:
@@ -568,6 +573,24 @@ func (h *Hub) handleMessage(client *Client, msg Message) {
 		h.handleProfileUpdate(client, msg)
 	case MsgAuditLog:
 		h.handleAuditLog(client, msg)
+	case MsgCategoryCreate:
+		h.handleCategoryCreate(client, msg)
+	case MsgCategoryList:
+		h.handleCategoryList(client)
+	case MsgCategoryDelete:
+		h.handleCategoryDelete(client, msg)
+	case MsgCategoryReorder:
+		h.handleCategoryReorder(client, msg)
+	case MsgCategoryRename:
+		h.handleCategoryRename(client, msg)
+	case MsgChannelSetCategory:
+		h.handleChannelSetCategory(client, msg)
+	case MsgScheduleSend:
+		h.handleScheduleSend(client, msg)
+	case MsgScheduleList:
+		h.handleScheduleList(client)
+	case MsgScheduleDelete:
+		h.handleScheduleDelete(client, msg)
 	}
 }
 
@@ -848,6 +871,7 @@ func (h *Hub) handleUserList(client *Client) {
 
 func (h *Hub) handleChannelList(client *Client) {
 	channels, _ := h.chat.GetChannels()
+	categories, _ := h.chat.GetCategories()
 	var list []map[string]interface{}
 	for _, ch := range channels {
 		h.mu.RLock()
@@ -863,6 +887,16 @@ func (h *Hub) handleChannelList(client *Client) {
 			"hasPassword":     ch.Password != "",
 			"slowmode":        ch.SlowmodeSeconds,
 			"description":     ch.Description,
+			"categoryId":      ch.CategoryID,
+		})
+	}
+
+	var catList []map[string]interface{}
+	for _, cat := range categories {
+		catList = append(catList, map[string]interface{}{
+			"id":       cat.ID,
+			"name":     cat.Name,
+			"position": cat.Position,
 		})
 	}
 
@@ -870,7 +904,7 @@ func (h *Hub) handleChannelList(client *Client) {
 		Type:      MsgChannelList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"channels": list}),
+		Payload:   mustMarshal(map[string]interface{}{"channels": list, "categories": catList}),
 	})
 }
 
@@ -950,6 +984,7 @@ func (h *Hub) broadcastUserLeft(client *Client) {
 
 func (h *Hub) broadcastChannelList() {
 	channels, _ := h.chat.GetChannels()
+	categories, _ := h.chat.GetCategories()
 	var list []map[string]interface{}
 	for _, ch := range channels {
 		h.mu.RLock()
@@ -965,6 +1000,16 @@ func (h *Hub) broadcastChannelList() {
 			"hasPassword":     ch.Password != "",
 			"slowmode":        ch.SlowmodeSeconds,
 			"description":     ch.Description,
+			"categoryId":      ch.CategoryID,
+		})
+	}
+
+	var catList []map[string]interface{}
+	for _, cat := range categories {
+		catList = append(catList, map[string]interface{}{
+			"id":       cat.ID,
+			"name":     cat.Name,
+			"position": cat.Position,
 		})
 	}
 
@@ -972,7 +1017,7 @@ func (h *Hub) broadcastChannelList() {
 		Type:      MsgChannelList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"channels": list}),
+		Payload:   mustMarshal(map[string]interface{}{"channels": list, "categories": catList}),
 	}
 	h.broadcastAll(msg)
 }
@@ -1037,146 +1082,6 @@ func (h *Hub) sendError(client *Client, message string) {
 	})
 }
 
-func (h *Hub) handleKick(client *Client, msg Message) {
-	if !h.permissions.CanKick(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		UserId string `json:"userId"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	h.mu.RLock()
-	target := h.pubKeyIndex[payload.UserId]
-	h.mu.RUnlock()
-
-	var targetNick string
-	if target != nil {
-		targetNick = target.Nickname
-		h.sendToClient(target, Message{
-			Type:      MsgError,
-			ID:        uuid.New().String(),
-			Timestamp: time.Now().UnixMilli(),
-			Payload:   mustMarshal(map[string]interface{}{"code": "kicked", "message": "You have been kicked"}),
-		})
-		target.Conn.Close()
-	}
-
-	h.chat.AddAuditLog("kick", client.PublicKey, client.Nickname, payload.UserId, targetNick, "")
-}
-
-func (h *Hub) handleBan(client *Client, msg Message) {
-	if !h.permissions.CanBan(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		UserId string `json:"userId"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	h.permissions.SetRole(payload.UserId, permissions.RoleGuest)
-
-	// Find nickname via index and persist ban
-	h.mu.RLock()
-	target := h.pubKeyIndex[payload.UserId]
-	var targetNick string
-	if target != nil {
-		targetNick = target.Nickname
-	}
-	h.mu.RUnlock()
-
-	h.chat.AddBan(payload.UserId, targetNick, client.PublicKey, "")
-
-	if target != nil {
-		h.sendToClient(target, Message{
-			Type:      MsgError,
-			ID:        uuid.New().String(),
-			Timestamp: time.Now().UnixMilli(),
-			Payload:   mustMarshal(map[string]interface{}{"code": "banned", "message": "You have been banned"}),
-		})
-		target.Conn.Close()
-	}
-
-	h.chat.AddAuditLog("ban", client.PublicKey, client.Nickname, payload.UserId, targetNick, "")
-}
-
-func (h *Hub) handleOp(client *Client, msg Message) {
-	var payload struct {
-		UserId string `json:"userId"`
-		Role   string `json:"role"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if !h.permissions.CanSetRole(client.Role, payload.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	if err := h.permissions.SetRole(payload.UserId, payload.Role); err != nil {
-		h.sendError(client, "failed to set role")
-		return
-	}
-
-	// Use write lock since we're mutating c.Role
-	var targetNick string
-	h.mu.Lock()
-	if target := h.pubKeyIndex[payload.UserId]; target != nil {
-		target.Role = payload.Role
-		targetNick = target.Nickname
-	}
-	h.mu.Unlock()
-
-	h.broadcastAll(Message{
-		Type:      MsgUserRoleChanged,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"userId": payload.UserId,
-			"role":   payload.Role,
-		}),
-	})
-
-	h.chat.AddAuditLog("set_role", client.PublicKey, client.Nickname, payload.UserId, targetNick, payload.Role)
-}
-
-func (h *Hub) handleTopic(client *Client, msg Message) {
-	if !h.permissions.CanCreateChannel(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel string `json:"channel"`
-		Topic   string `json:"topic"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if err := h.chat.SetTopic(payload.Channel, payload.Topic); err != nil {
-		h.sendError(client, "failed to set topic")
-		return
-	}
-
-	h.broadcastChannelList()
-}
-
-func dmChannelKey(a, b string) string {
-	if a < b {
-		return "dm:" + a + ":" + b
-	}
-	return "dm:" + b + ":" + a
-}
 
 func (h *Hub) handleDMSend(client *Client, msg Message) {
 	if client.PublicKey == "" {
@@ -1301,140 +1206,6 @@ func (h *Hub) handleTyping(client *Client, msg Message) {
 		}
 		h.mu.RUnlock()
 	}
-}
-
-func (h *Hub) handleChannelDelete(client *Client, msg Message) {
-	if !h.permissions.CanCreateChannel(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if payload.Name == "lobby" {
-		h.sendError(client, "cannot delete lobby")
-		return
-	}
-
-	h.mu.Lock()
-	if members := h.channels[payload.Name]; members != nil {
-		for _, c := range members {
-			delete(c.Channels, payload.Name)
-		}
-		delete(h.channels, payload.Name)
-	}
-	h.mu.Unlock()
-
-	h.chat.DeleteChannel(payload.Name)
-	h.broadcastChannelList()
-
-	h.chat.AddAuditLog("channel_delete", client.PublicKey, client.Nickname, "", "", payload.Name)
-}
-
-func (h *Hub) handleAdminSettings(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		ServerName string `json:"serverName"`
-		Motd       string `json:"motd"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	h.mu.Lock()
-	if payload.ServerName != "" {
-		h.serverName = payload.ServerName
-	}
-	h.motd = payload.Motd
-	serverName := h.serverName
-	motd := h.motd
-	h.mu.Unlock()
-
-	h.chat.SetSetting("server_name", serverName)
-	h.chat.SetSetting("motd", motd)
-
-	// Broadcast updated info to all clients
-	h.broadcastAll(Message{
-		Type:      MsgServerSettingsUpdated,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"serverName": serverName,
-			"motd":       motd,
-		}),
-	})
-
-	h.chat.AddAuditLog("settings_update", client.PublicKey, client.Nickname, "", "", "serverName="+serverName)
-}
-
-func (h *Hub) handleBanList(client *Client) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	bans, err := h.chat.GetBans()
-	if err != nil {
-		h.sendError(client, "failed to get ban list")
-		return
-	}
-
-	var list []map[string]interface{}
-	for _, b := range bans {
-		list = append(list, map[string]interface{}{
-			"publicKey": b.PublicKey,
-			"nickname":  b.Nickname,
-			"bannedBy":  b.BannedBy,
-			"reason":    b.Reason,
-			"bannedAt":  b.BannedAt.UnixMilli(),
-		})
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgAdminBanlist,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"bans": list}),
-	})
-}
-
-func (h *Hub) handleUnban(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		PublicKey string `json:"publicKey"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if err := h.chat.RemoveBan(payload.PublicKey); err != nil {
-		h.sendError(client, "failed to unban")
-		return
-	}
-
-	h.permissions.SetRole(payload.PublicKey, permissions.RoleMember)
-
-	h.sendToClient(client, Message{
-		Type:      MsgAdminUnbanned,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"publicKey": payload.PublicKey}),
-	})
-
-	h.chat.AddAuditLog("unban", client.PublicKey, client.Nickname, payload.PublicKey, "", "")
 }
 
 func (h *Hub) handleChatEdit(client *Client, msg Message) {
@@ -1937,925 +1708,15 @@ func (h *Hub) handleChatRead(client *Client, msg Message) {
 	})
 }
 
-func (h *Hub) handleMute(client *Client, msg Message) {
-	if !h.permissions.CanMute(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-	var payload struct {
-		PublicKey string `json:"publicKey"`
-		Reason   string `json:"reason"`
-		Duration int    `json:"duration"` // minutes, 0 = permanent
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-	var expiresAt *time.Time
-	if payload.Duration > 0 {
-		t := time.Now().Add(time.Duration(payload.Duration) * time.Minute)
-		expiresAt = &t
-	}
-	if err := h.chat.AddMute(payload.PublicKey, client.PublicKey, payload.Reason, expiresAt); err != nil {
-		h.sendError(client, "failed to mute user")
-		return
-	}
-	// Notify the muted user if online
-	var targetNick string
-	h.mu.RLock()
-	if target := h.pubKeyIndex[payload.PublicKey]; target != nil {
-		targetNick = target.Nickname
-		reason := "You have been muted"
-		if payload.Reason != "" {
-			reason += ": " + payload.Reason
-		}
-		h.sendError(target, reason)
-	}
-	h.mu.RUnlock()
-	// Send updated mute list back
-	h.handleMuteList(client)
 
-	muteDetails := payload.Reason
-	if payload.Duration > 0 {
-		muteDetails += fmt.Sprintf(" (%dmin)", payload.Duration)
-	}
-	h.chat.AddAuditLog("mute", client.PublicKey, client.Nickname, payload.PublicKey, targetNick, muteDetails)
-}
 
-func (h *Hub) handleUnmute(client *Client, msg Message) {
-	if !h.permissions.CanMute(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-	var payload struct {
-		PublicKey string `json:"publicKey"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-	h.chat.RemoveMute(payload.PublicKey)
-	h.handleMuteList(client)
 
-	h.chat.AddAuditLog("unmute", client.PublicKey, client.Nickname, payload.PublicKey, "", "")
-}
 
-func (h *Hub) handleMuteList(client *Client) {
-	if !h.permissions.CanMute(client.Role) {
-		h.sendError(client, "permission denied")
-		return
-	}
-	mutes, err := h.chat.GetMutes()
-	if err != nil {
-		h.sendError(client, "failed to get mute list")
-		return
-	}
-	var list []map[string]interface{}
-	for _, m := range mutes {
-		entry := map[string]interface{}{
-			"publicKey": m.PublicKey,
-			"mutedBy":   m.MutedBy,
-			"reason":    m.Reason,
-			"mutedAt":   m.MutedAt.UnixMilli(),
-		}
-		if m.ExpiresAt != nil {
-			entry["expiresAt"] = m.ExpiresAt.UnixMilli()
-		}
-		list = append(list, entry)
-	}
-	h.sendToClient(client, Message{
-		Type:      MsgAdminMutelist,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"mutes": list}),
-	})
-}
 
-func (h *Hub) handleAdminUserList(client *Client) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-	users, err := h.chat.GetAllUsers()
-	if err != nil {
-		h.sendError(client, "failed to get user list")
-		return
-	}
-	h.mu.RLock()
-	var list []map[string]interface{}
-	for _, u := range users {
-		online := h.pubKeyIndex[u.PublicKey] != nil
-		list = append(list, map[string]interface{}{
-			"publicKey": u.PublicKey,
-			"nickname":  u.Nickname,
-			"role":      u.Role,
-			"online":    online,
-			"lastSeen":  u.LastSeen.UnixMilli(),
-		})
-	}
-	h.mu.RUnlock()
-	h.sendToClient(client, Message{
-		Type:      MsgAdminUserList,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"users": list}),
-	})
-}
 
-func (h *Hub) handleRenameChannel(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-	var payload struct {
-		OldName string `json:"oldName"`
-		NewName string `json:"newName"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-	if payload.OldName == "lobby" {
-		h.sendError(client, "cannot rename lobby")
-		return
-	}
-	if payload.NewName == "" || len(payload.NewName) > 30 {
-		h.sendError(client, "invalid channel name")
-		return
-	}
-	if err := h.chat.RenameChannel(payload.OldName, payload.NewName); err != nil {
-		h.sendError(client, "rename failed")
-		return
-	}
-	// Update in-memory channels
-	h.mu.Lock()
-	if members, ok := h.channels[payload.OldName]; ok {
-		h.channels[payload.NewName] = members
-		delete(h.channels, payload.OldName)
-		for _, c := range members {
-			delete(c.Channels, payload.OldName)
-			c.Channels[payload.NewName] = true
-		}
-	}
-	h.mu.Unlock()
-	h.broadcastChannelList()
 
-	h.chat.AddAuditLog("channel_rename", client.PublicKey, client.Nickname, "", "", payload.OldName+" → "+payload.NewName)
-}
 
-func (h *Hub) sendCustomEmojiList(client *Client) {
-	emojis, err := h.chat.GetCustomEmojis()
-	if err != nil {
-		return
-	}
-	var list []map[string]string
-	for _, e := range emojis {
-		list = append(list, map[string]string{
-			"name": e.Name,
-			"url":  "/files/emojis/" + e.Filename,
-		})
-	}
-	h.sendToClient(client, Message{
-		Type:      MsgCustomEmojiList,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"emojis": list}),
-	})
-}
 
-func (h *Hub) handleCustomEmojiList(client *Client) {
-	if client.PublicKey == "" {
-		return
-	}
-	h.sendCustomEmojiList(client)
-}
-
-func (h *Hub) handleCustomEmojiAdd(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-	var payload struct {
-		Name     string `json:"name"`
-		Filename string `json:"filename"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-	if payload.Name == "" || payload.Filename == "" {
-		h.sendError(client, "name and filename required")
-		return
-	}
-	// Sanitize: only allow alphanumeric, underscore, dash in name
-	for _, r := range payload.Name {
-		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
-			h.sendError(client, "invalid emoji name (lowercase alphanumeric, _, - only)")
-			return
-		}
-	}
-	if len(payload.Name) > 32 {
-		h.sendError(client, "emoji name too long (max 32)")
-		return
-	}
-	if err := h.chat.AddCustomEmoji(payload.Name, client.PublicKey, payload.Filename); err != nil {
-		h.sendError(client, "failed to add custom emoji")
-		return
-	}
-	// Broadcast updated list to all clients
-	h.broadcastCustomEmojiList()
-}
-
-func (h *Hub) handleCustomEmojiRemove(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-	var payload struct {
-		Name string `json:"name"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-	if payload.Name == "" {
-		return
-	}
-	if err := h.chat.RemoveCustomEmoji(payload.Name); err != nil {
-		h.sendError(client, "failed to remove custom emoji")
-		return
-	}
-	h.broadcastCustomEmojiList()
-}
-
-func (h *Hub) broadcastCustomEmojiList() {
-	emojis, err := h.chat.GetCustomEmojis()
-	if err != nil {
-		return
-	}
-	var list []map[string]string
-	for _, e := range emojis {
-		list = append(list, map[string]string{
-			"name": e.Name,
-			"url":  "/files/emojis/" + e.Filename,
-		})
-	}
-	h.broadcastAll(Message{
-		Type:      MsgCustomEmojiList,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"emojis": list}),
-	})
-}
-
-// ── Voice channel handlers ───────────────────────────────────────────
-
-func (h *Hub) handleVoiceJoin(client *Client, msg Message) {
-	if client.PublicKey == "" {
-		h.sendError(client, "not authenticated")
-		return
-	}
-
-	var payload struct {
-		Channel string `json:"channel"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if !client.Channels[payload.Channel] {
-		h.sendError(client, "not in channel")
-		return
-	}
-
-	h.mu.Lock()
-	// Remove from any existing voice channel (one voice channel at a time)
-	for ch, participants := range h.voiceChannels {
-		if _, inVoice := participants[client.PublicKey]; inVoice {
-			delete(participants, client.PublicKey)
-			if len(participants) == 0 {
-				delete(h.voiceChannels, ch)
-			}
-			break
-		}
-	}
-	// Join the requested voice channel
-	if h.voiceChannels[payload.Channel] == nil {
-		h.voiceChannels[payload.Channel] = make(map[string]*VoiceParticipant)
-	}
-	h.voiceChannels[payload.Channel][client.PublicKey] = &VoiceParticipant{
-		PublicKey: client.PublicKey,
-		Nickname:  client.Nickname,
-		Muted:     false,
-		Deafened:  false,
-	}
-	h.mu.Unlock()
-
-	h.broadcastVoiceState(payload.Channel)
-}
-
-func (h *Hub) handleVoiceLeave(client *Client, msg Message) {
-	if client.PublicKey == "" {
-		return
-	}
-
-	var payload struct {
-		Channel string `json:"channel"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	h.mu.Lock()
-	if participants := h.voiceChannels[payload.Channel]; participants != nil {
-		delete(participants, client.PublicKey)
-		if len(participants) == 0 {
-			delete(h.voiceChannels, payload.Channel)
-		}
-	}
-	h.mu.Unlock()
-
-	h.broadcastVoiceState(payload.Channel)
-}
-
-func (h *Hub) handleVoiceRelay(client *Client, msg Message, relayType string) {
-	if client.PublicKey == "" {
-		return
-	}
-
-	// Parse the full payload as a map so we can forward all fields (sdp/candidate)
-	var raw map[string]interface{}
-	if err := json.Unmarshal(msg.Payload, &raw); err != nil {
-		return
-	}
-	targetId, _ := raw["targetUserId"].(string)
-	if targetId == "" {
-		return
-	}
-
-	// Build relay payload: copy original fields and add fromUserId
-	raw["fromUserId"] = client.PublicKey
-	delete(raw, "targetUserId")
-
-	h.mu.RLock()
-	target := h.pubKeyIndex[targetId]
-	h.mu.RUnlock()
-
-	if target == nil {
-		return
-	}
-
-	h.sendToClient(target, Message{
-		Type:      relayType,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(raw),
-	})
-}
-
-func (h *Hub) handleVoiceMute(client *Client, msg Message) {
-	if client.PublicKey == "" {
-		return
-	}
-
-	var payload struct {
-		Muted    bool `json:"muted"`
-		Deafened bool `json:"deafened"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	var foundChannel string
-	h.mu.Lock()
-	for ch, participants := range h.voiceChannels {
-		if p, ok := participants[client.PublicKey]; ok {
-			p.Muted = payload.Muted
-			p.Deafened = payload.Deafened
-			foundChannel = ch
-			break
-		}
-	}
-	h.mu.Unlock()
-
-	if foundChannel != "" {
-		h.broadcastVoiceState(foundChannel)
-	}
-}
-
-func (h *Hub) broadcastVoiceState(channel string) {
-	h.mu.RLock()
-	var participants []*VoiceParticipant
-	for _, p := range h.voiceChannels[channel] {
-		participants = append(participants, p)
-	}
-	clients := h.channels[channel]
-	data, _ := json.Marshal(Message{
-		Type:      MsgVoiceState,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"channel":      channel,
-			"participants": participants,
-		}),
-	})
-	for _, c := range clients {
-		select {
-		case c.Send <- data:
-		default:
-		}
-	}
-	h.mu.RUnlock()
-}
-
-// ── Invite handlers ────────────────────────────────────────────────────
-
-func (h *Hub) handleInviteCreate(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		MaxUses     int `json:"maxUses"`
-		ExpireHours int `json:"expireHours"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	code, err := db.GenerateInviteCode()
-	if err != nil {
-		h.sendError(client, "failed to generate invite code")
-		return
-	}
-
-	var expiresAt *time.Time
-	if payload.ExpireHours > 0 {
-		t := time.Now().Add(time.Duration(payload.ExpireHours) * time.Hour)
-		expiresAt = &t
-	}
-
-	if err := h.chat.CreateInvite(code, client.PublicKey, payload.MaxUses, expiresAt); err != nil {
-		h.sendError(client, "failed to create invite")
-		return
-	}
-
-	h.sendInviteList(client)
-}
-
-func (h *Hub) handleInviteList(client *Client) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-	h.sendInviteList(client)
-}
-
-func (h *Hub) handleInviteDelete(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Code string `json:"code"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if err := h.chat.DeleteInvite(payload.Code); err != nil {
-		h.sendError(client, "failed to delete invite")
-		return
-	}
-
-	h.sendInviteList(client)
-}
-
-func (h *Hub) sendInviteList(client *Client) {
-	invites, err := h.chat.GetInvites()
-	if err != nil {
-		h.sendError(client, "failed to get invites")
-		return
-	}
-
-	var list []map[string]interface{}
-	for _, inv := range invites {
-		entry := map[string]interface{}{
-			"code":      inv.Code,
-			"createdBy": inv.CreatedBy,
-			"maxUses":   inv.MaxUses,
-			"uses":      inv.Uses,
-			"createdAt": inv.CreatedAt.UnixMilli(),
-		}
-		if inv.ExpiresAt != nil {
-			entry["expiresAt"] = inv.ExpiresAt.UnixMilli()
-		}
-		list = append(list, entry)
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgInviteList,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"invites": list}),
-	})
-}
-
-// ── Retention handlers ─────────────────────────────────────────────────
-
-func (h *Hub) handleRetentionPurge(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel      string `json:"channel"`
-		OlderThanDays int   `json:"olderThanDays"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		h.sendError(client, "invalid payload")
-		return
-	}
-
-	if payload.OlderThanDays <= 0 {
-		h.sendError(client, "olderThanDays must be positive")
-		return
-	}
-
-	beforeTs := time.Now().UnixMilli() - int64(payload.OlderThanDays)*86400*1000
-	count, err := h.chat.DeleteMessagesBefore(payload.Channel, beforeTs)
-	if err != nil {
-		h.sendError(client, "purge failed")
-		return
-	}
-
-	// Audit log
-	channelLabel := payload.Channel
-	if channelLabel == "" {
-		channelLabel = "all channels"
-	}
-	details := fmt.Sprintf("Purged %d messages from #%s older than %d days", count, channelLabel, payload.OlderThanDays)
-	h.chat.AddAuditLog("message_purge", client.PublicKey, client.Nickname, "", "", details)
-
-	// Return updated stats
-	h.sendRetentionStats(client)
-}
-
-func (h *Hub) handleRetentionStats(client *Client) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-	h.sendRetentionStats(client)
-}
-
-func (h *Hub) sendRetentionStats(client *Client) {
-	total, _ := h.chat.GetMessageCount()
-	byChannel, _ := h.chat.GetMessageCountByChannel()
-
-	var chList []map[string]interface{}
-	for _, c := range byChannel {
-		chList = append(chList, map[string]interface{}{
-			"channel": c.Channel,
-			"count":   c.Count,
-		})
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgRetentionStats,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"totalMessages": total,
-			"byChannel":     chList,
-		}),
-	})
-}
-
-func (h *Hub) handleRetentionExport(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel string `json:"channel"`
-		Limit   int    `json:"limit"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		h.sendError(client, "invalid payload")
-		return
-	}
-
-	if payload.Limit <= 0 || payload.Limit > 10000 {
-		payload.Limit = 10000
-	}
-
-	msgs, err := h.chat.ExportMessages(payload.Channel, payload.Limit)
-	if err != nil {
-		h.sendError(client, "export failed")
-		return
-	}
-
-	var list []map[string]string
-	for _, m := range msgs {
-		list = append(list, map[string]string{
-			"id":        m.ID,
-			"channel":   m.Channel,
-			"userId":    m.UserID,
-			"nickname":  m.Nickname,
-			"content":   m.Content,
-			"timestamp": m.Timestamp,
-		})
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgRetentionExport,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"messages": list}),
-	})
-}
-
-// ── Channel slowmode & description handlers ─────────────────────────
-
-func (h *Hub) handleChannelSlowmode(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel string `json:"channel"`
-		Seconds int    `json:"seconds"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if payload.Seconds < 0 || payload.Seconds > 3600 {
-		h.sendError(client, "slowmode must be 0-3600 seconds")
-		return
-	}
-
-	if err := h.chat.SetChannelSlowmode(payload.Channel, payload.Seconds); err != nil {
-		h.sendError(client, "failed to set slowmode")
-		return
-	}
-
-	h.broadcastChannelList()
-}
-
-func (h *Hub) handleChannelDescription(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel     string `json:"channel"`
-		Description string `json:"description"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if len(payload.Description) > 500 {
-		h.sendError(client, "description too long (max 500 characters)")
-		return
-	}
-
-	if err := h.chat.SetChannelDescription(payload.Channel, payload.Description); err != nil {
-		h.sendError(client, "failed to set description")
-		return
-	}
-
-	h.broadcastChannelList()
-}
-
-// ── Channel permission handlers ─────────────────────────────────────
-
-var validChannelPermissions = map[string]bool{
-	"chat": true, "upload": true, "react": true, "pin": true,
-}
-
-func (h *Hub) handleChannelPerms(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel string `json:"channel"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-	if payload.Channel == "" {
-		h.sendError(client, "channel required")
-		return
-	}
-
-	perms, err := h.chat.GetChannelPermissions(payload.Channel)
-	if err != nil {
-		h.sendError(client, "failed to get channel permissions")
-		return
-	}
-
-	var list []map[string]interface{}
-	for _, p := range perms {
-		list = append(list, map[string]interface{}{
-			"channel":    p.Channel,
-			"role":       p.Role,
-			"permission": p.Permission,
-			"allowed":    p.Allowed,
-		})
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgChannelPerms,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "permissions": list}),
-	})
-}
-
-func (h *Hub) handleChannelPermsSet(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		Channel    string `json:"channel"`
-		Role       string `json:"role"`
-		Permission string `json:"permission"`
-		Allowed    *bool  `json:"allowed"` // nil means delete (reset to default)
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if payload.Channel == "" || payload.Role == "" || payload.Permission == "" {
-		h.sendError(client, "channel, role, and permission required")
-		return
-	}
-
-	// Validate permission name
-	if !validChannelPermissions[payload.Permission] {
-		h.sendError(client, "invalid permission: "+payload.Permission)
-		return
-	}
-
-	// Validate role name
-	switch payload.Role {
-	case permissions.RoleAdmin, permissions.RoleOperator, permissions.RoleMember, permissions.RoleGuest:
-	default:
-		h.sendError(client, "invalid role: "+payload.Role)
-		return
-	}
-
-	if payload.Allowed == nil {
-		// Delete the override (reset to default)
-		if err := h.chat.DeleteChannelPermission(payload.Channel, payload.Role, payload.Permission); err != nil {
-			h.sendError(client, "failed to delete channel permission")
-			return
-		}
-	} else {
-		if err := h.chat.SetChannelPermission(payload.Channel, payload.Role, payload.Permission, *payload.Allowed); err != nil {
-			h.sendError(client, "failed to set channel permission")
-			return
-		}
-	}
-
-	// Return updated permissions to the admin
-	perms, err := h.chat.GetChannelPermissions(payload.Channel)
-	if err != nil {
-		h.sendError(client, "failed to get channel permissions")
-		return
-	}
-
-	var list []map[string]interface{}
-	for _, p := range perms {
-		list = append(list, map[string]interface{}{
-			"channel":    p.Channel,
-			"role":       p.Role,
-			"permission": p.Permission,
-			"allowed":    p.Allowed,
-		})
-	}
-
-	// Broadcast to all authenticated clients so permissions take effect immediately
-	h.broadcastAll(Message{
-		Type:      MsgChannelPerms,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"channel": payload.Channel, "permissions": list}),
-	})
-}
-
-// ── User note handlers ──────────────────────────────────────────────
-
-func (h *Hub) handleUserNoteAdd(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		TargetUserId string `json:"targetUserId"`
-		Content      string `json:"content"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if payload.TargetUserId == "" || payload.Content == "" {
-		h.sendError(client, "targetUserId and content required")
-		return
-	}
-	if len(payload.Content) > 500 {
-		h.sendError(client, "note too long (max 500 characters)")
-		return
-	}
-
-	if err := h.chat.AddUserNote(payload.TargetUserId, client.PublicKey, client.Nickname, payload.Content); err != nil {
-		h.sendError(client, "failed to add note")
-		return
-	}
-
-	h.sendUserNoteList(client, payload.TargetUserId)
-}
-
-func (h *Hub) handleUserNoteList(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		TargetUserId string `json:"targetUserId"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if payload.TargetUserId == "" {
-		h.sendError(client, "targetUserId required")
-		return
-	}
-
-	h.sendUserNoteList(client, payload.TargetUserId)
-}
-
-func (h *Hub) handleUserNoteDelete(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		NoteId       int    `json:"noteId"`
-		TargetUserId string `json:"targetUserId"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if err := h.chat.DeleteUserNote(payload.NoteId); err != nil {
-		h.sendError(client, "failed to delete note")
-		return
-	}
-
-	if payload.TargetUserId != "" {
-		h.sendUserNoteList(client, payload.TargetUserId)
-	}
-}
-
-func (h *Hub) sendUserNoteList(client *Client, targetUserId string) {
-	notes, err := h.chat.GetUserNotes(targetUserId)
-	if err != nil {
-		h.sendError(client, "failed to get notes")
-		return
-	}
-
-	var list []map[string]interface{}
-	for _, n := range notes {
-		list = append(list, map[string]interface{}{
-			"id":         n.ID,
-			"targetKey":  n.TargetKey,
-			"authorKey":  n.AuthorKey,
-			"authorName": n.AuthorName,
-			"content":    n.Content,
-			"createdAt":  n.CreatedAt,
-		})
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgUserNoteList,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"targetUserId": targetUserId, "notes": list}),
-	})
-}
 
 func (h *Hub) handlePing(client *Client, msg Message) {
 	var payload struct {
@@ -2875,185 +1736,72 @@ func (h *Hub) handlePing(client *Client, msg Message) {
 	})
 }
 
-func (h *Hub) handleWelcomeSet(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+
+
+
+
+// ── Channel category handlers ───────────────────────────────────────
+
+func (h *Hub) handleCategoryCreate(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
 		h.sendError(client, "permission denied")
 		return
 	}
 
 	var payload struct {
-		Channel string `json:"channel"`
-		Message string `json:"message"`
-		Enabled bool   `json:"enabled"`
+		Name string `json:"name"`
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		h.sendError(client, "invalid payload")
 		return
 	}
 
-	if len(payload.Message) > 500 {
-		h.sendError(client, "welcome message too long (max 500 characters)")
+	if payload.Name == "" || len(payload.Name) > 50 {
+		h.sendError(client, "category name must be 1-50 characters")
 		return
 	}
 
-	if err := h.chat.SetWelcomeMessage(payload.Channel, payload.Message, payload.Enabled); err != nil {
-		h.sendError(client, "failed to save welcome message")
-		return
-	}
+	// Get current max position
+	categories, _ := h.chat.GetCategories()
+	pos := len(categories)
 
-	// Return the updated list
-	h.handleWelcomeList(client, msg)
-}
-
-func (h *Hub) handleWelcomeList(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	messages, err := h.chat.GetAllWelcomeMessages()
+	_, err := h.chat.CreateCategory(payload.Name, pos)
 	if err != nil {
-		h.sendError(client, "failed to get welcome messages")
+		h.sendError(client, "failed to create category")
+		return
+	}
+
+	h.broadcastChannelList()
+}
+
+func (h *Hub) handleCategoryList(client *Client) {
+	if client.PublicKey == "" {
+		return
+	}
+	categories, err := h.chat.GetCategories()
+	if err != nil {
+		h.sendError(client, "failed to get categories")
 		return
 	}
 
 	var list []map[string]interface{}
-	for _, wm := range messages {
+	for _, cat := range categories {
 		list = append(list, map[string]interface{}{
-			"channel": wm.Channel,
-			"message": wm.Message,
-			"enabled": wm.Enabled,
+			"id":       cat.ID,
+			"name":     cat.Name,
+			"position": cat.Position,
 		})
 	}
 
 	h.sendToClient(client, Message{
-		Type:      MsgWelcomeList,
+		Type:      MsgCategoryList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"welcomeMessages": list}),
+		Payload:   mustMarshal(map[string]interface{}{"categories": list}),
 	})
 }
 
-// ── Automod handlers ──────────────────────────────────────────────────
-
-func (h *Hub) refreshAutomodRules() {
-	if rules, err := h.chat.GetAutomodRules(); err == nil {
-		h.automodRules = rules
-		// Rebuild regex cache: keep only patterns still referenced by active rules
-		activePatterns := make(map[string]bool)
-		for _, r := range rules {
-			if r.RuleType == "regex" {
-				activePatterns[r.Pattern] = true
-			}
-		}
-		for pattern := range h.regexCache {
-			if !activePatterns[pattern] {
-				delete(h.regexCache, pattern)
-			}
-		}
-	}
-}
-
-func (h *Hub) sendAutomodRuleList(client *Client) {
-	h.mu.RLock()
-	rules := h.automodRules
-	h.mu.RUnlock()
-
-	var list []map[string]interface{}
-	for _, r := range rules {
-		list = append(list, map[string]interface{}{
-			"id":        r.ID,
-			"ruleType":  r.RuleType,
-			"pattern":   r.Pattern,
-			"action":    r.Action,
-			"reason":    r.Reason,
-			"enabled":   r.Enabled,
-			"createdBy": r.CreatedBy,
-			"createdAt": r.CreatedAt,
-		})
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgAutomodRuleList,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload:   mustMarshal(map[string]interface{}{"rules": list}),
-	})
-}
-
-func (h *Hub) handleAutomodRuleAdd(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		RuleType string `json:"ruleType"`
-		Pattern  string `json:"pattern"`
-		Action   string `json:"action"`
-		Reason   string `json:"reason"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	switch payload.RuleType {
-	case "word", "regex", "spam", "caps", "links":
-	default:
-		h.sendError(client, "invalid rule type")
-		return
-	}
-
-	switch payload.Action {
-	case "warn", "block", "mute":
-	default:
-		h.sendError(client, "invalid action")
-		return
-	}
-
-	if payload.Pattern == "" && payload.RuleType != "spam" && payload.RuleType != "caps" && payload.RuleType != "links" {
-		h.sendError(client, "pattern required")
-		return
-	}
-
-	if payload.RuleType == "regex" {
-		if _, err := regexp.Compile(payload.Pattern); err != nil {
-			h.sendError(client, "invalid regex: "+err.Error())
-			return
-		}
-	}
-
-	rule := db.AutomodRule{
-		RuleType:  payload.RuleType,
-		Pattern:   payload.Pattern,
-		Action:    payload.Action,
-		Reason:    payload.Reason,
-		CreatedBy: client.PublicKey,
-		Enabled:   true,
-	}
-
-	if err := h.chat.AddAutomodRule(rule); err != nil {
-		h.sendError(client, "failed to add rule")
-		return
-	}
-
-	h.mu.Lock()
-	h.refreshAutomodRules()
-	h.mu.Unlock()
-
-	h.sendAutomodRuleList(client)
-}
-
-func (h *Hub) handleAutomodRuleList(client *Client) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-	h.sendAutomodRuleList(client)
-}
-
-func (h *Hub) handleAutomodRuleDelete(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
+func (h *Hub) handleCategoryDelete(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
 		h.sendError(client, "permission denied")
 		return
 	}
@@ -3065,363 +1813,232 @@ func (h *Hub) handleAutomodRuleDelete(client *Client, msg Message) {
 		return
 	}
 
-	if err := h.chat.DeleteAutomodRule(payload.ID); err != nil {
-		h.sendError(client, "failed to delete rule")
+	if err := h.chat.DeleteCategory(payload.ID); err != nil {
+		h.sendError(client, "failed to delete category")
 		return
 	}
 
-	h.mu.Lock()
-	h.refreshAutomodRules()
-	h.mu.Unlock()
-
-	h.sendAutomodRuleList(client)
+	h.broadcastChannelList()
 }
 
-func (h *Hub) handleAutomodRuleToggle(client *Client, msg Message) {
-	if client.Role != permissions.RoleAdmin && client.Role != permissions.RoleOperator {
-		h.sendError(client, "permission denied")
-		return
-	}
-
-	var payload struct {
-		ID      int  `json:"id"`
-		Enabled bool `json:"enabled"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	if err := h.chat.UpdateAutomodRule(payload.ID, payload.Enabled); err != nil {
-		h.sendError(client, "failed to toggle rule")
-		return
-	}
-
-	h.mu.Lock()
-	h.refreshAutomodRules()
-	h.mu.Unlock()
-
-	h.sendAutomodRuleList(client)
-}
-
-func (h *Hub) runAutomodChecks(client *Client, content string) bool {
-	h.mu.RLock()
-	rules := h.automodRules
-	h.mu.RUnlock()
-
-	contentLower := strings.ToLower(content)
-
-	for _, rule := range rules {
-		if !rule.Enabled {
-			continue
-		}
-
-		matched := false
-		switch rule.RuleType {
-		case "word":
-			matched = strings.Contains(contentLower, strings.ToLower(rule.Pattern))
-		case "regex":
-			re := h.getCompiledRegex(rule.Pattern)
-			if re != nil {
-				matched = re.MatchString(content)
-			}
-		case "spam":
-			matched = h.checkSpam(client.PublicKey, content)
-		case "caps":
-			matched = h.checkCaps(content)
-		case "links":
-			matched = h.checkLinks(contentLower)
-		}
-
-		if !matched {
-			continue
-		}
-
-		reason := rule.Reason
-		if reason == "" {
-			reason = "Message blocked by auto-moderation (" + rule.RuleType + ")"
-		}
-
-		switch rule.Action {
-		case "warn":
-			h.sendToClient(client, Message{
-				Type:      MsgAutomodWarning,
-				ID:        uuid.New().String(),
-				Timestamp: time.Now().UnixMilli(),
-				Payload:   mustMarshal(map[string]interface{}{"reason": reason}),
-			})
-			return false
-		case "block":
-			h.sendToClient(client, Message{
-				Type:      MsgAutomodWarning,
-				ID:        uuid.New().String(),
-				Timestamp: time.Now().UnixMilli(),
-				Payload:   mustMarshal(map[string]interface{}{"reason": reason}),
-			})
-			return true
-		case "mute":
-			expires := time.Now().Add(5 * time.Minute)
-			h.chat.AddMute(client.PublicKey, "automod", reason, &expires)
-			h.sendToClient(client, Message{
-				Type:      MsgAutomodWarning,
-				ID:        uuid.New().String(),
-				Timestamp: time.Now().UnixMilli(),
-				Payload:   mustMarshal(map[string]interface{}{"reason": reason + " (muted for 5 minutes)"}),
-			})
-			return true
-		}
-	}
-
-	h.mu.Lock()
-	now := time.Now().Unix()
-	h.spamTracker[client.PublicKey] = append(h.spamTracker[client.PublicKey], spamEntry{
-		Content: content,
-		Time:    now,
-	})
-	cutoff := now - 30
-	entries := h.spamTracker[client.PublicKey]
-	start := 0
-	for start < len(entries) && entries[start].Time < cutoff {
-		start++
-	}
-	h.spamTracker[client.PublicKey] = entries[start:]
-	h.mu.Unlock()
-
-	return false
-}
-
-func (h *Hub) getCompiledRegex(pattern string) *regexp.Regexp {
-	h.mu.RLock()
-	re, ok := h.regexCache[pattern]
-	h.mu.RUnlock()
-	if ok {
-		return re
-	}
-	compiled, err := regexp.Compile(pattern)
-	if err != nil {
-		return nil
-	}
-	h.mu.Lock()
-	h.regexCache[pattern] = compiled
-	h.mu.Unlock()
-	return compiled
-}
-
-func (h *Hub) checkSpam(publicKey, content string) bool {
-	h.mu.RLock()
-	entries := h.spamTracker[publicKey]
-	h.mu.RUnlock()
-
-	now := time.Now().Unix()
-	cutoff := now - 30
-	count := 0
-	for _, e := range entries {
-		if e.Time >= cutoff && e.Content == content {
-			count++
-		}
-	}
-	return count >= 3
-}
-
-func (h *Hub) checkCaps(content string) bool {
-	if len(content) <= 10 {
-		return false
-	}
-	upper := 0
-	total := 0
-	for _, r := range content {
-		if unicode.IsLetter(r) {
-			total++
-			if unicode.IsUpper(r) {
-				upper++
-			}
-		}
-	}
-	if total == 0 {
-		return false
-	}
-	return float64(upper)/float64(total) > 0.7
-}
-
-var linkPattern = regexp.MustCompile(`(?i)(https?://|www\.)`)
-
-func (h *Hub) checkLinks(contentLower string) bool {
-	return linkPattern.MatchString(contentLower)
-}
-
-// ── Profile handlers ────────────────────────────────────────────────
-
-func (h *Hub) handleProfileGet(client *Client, msg Message) {
-	if client.PublicKey == "" {
-		h.sendError(client, "not authenticated")
-		return
-	}
-
-	var payload struct {
-		UserId string `json:"userId"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		return
-	}
-
-	targetKey := payload.UserId
-	if targetKey == "" {
-		targetKey = client.PublicKey
-	}
-
-	profile, err := h.chat.GetUserProfile(targetKey)
-	if err != nil || profile == nil {
-		// Return empty profile
-		h.sendToClient(client, Message{
-			Type:      MsgProfileData,
-			ID:        uuid.New().String(),
-			Timestamp: time.Now().UnixMilli(),
-			Payload: mustMarshal(map[string]interface{}{
-				"userId":       targetKey,
-				"bio":          "",
-				"customStatus": "",
-				"pronouns":     "",
-				"timezone":     "",
-			}),
-		})
-		return
-	}
-
-	h.sendToClient(client, Message{
-		Type:      MsgProfileData,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"userId":       profile.PublicKey,
-			"bio":          profile.Bio,
-			"customStatus": profile.CustomStatus,
-			"pronouns":     profile.Pronouns,
-			"timezone":     profile.Timezone,
-		}),
-	})
-}
-
-func (h *Hub) handleProfileUpdate(client *Client, msg Message) {
-	if client.PublicKey == "" {
-		h.sendError(client, "not authenticated")
-		return
-	}
-
-	var payload struct {
-		Bio          string `json:"bio"`
-		CustomStatus string `json:"customStatus"`
-		Pronouns     string `json:"pronouns"`
-		Timezone     string `json:"timezone"`
-	}
-	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-		h.sendError(client, "invalid payload")
-		return
-	}
-
-	// Validation
-	if len(payload.Bio) > 500 {
-		h.sendError(client, "bio too long (max 500 characters)")
-		return
-	}
-	if len(payload.CustomStatus) > 100 {
-		h.sendError(client, "custom status too long (max 100 characters)")
-		return
-	}
-	if len(payload.Pronouns) > 50 {
-		h.sendError(client, "pronouns too long (max 50 characters)")
-		return
-	}
-	if len(payload.Timezone) > 50 {
-		h.sendError(client, "timezone too long (max 50 characters)")
-		return
-	}
-
-	profile := db.UserProfile{
-		PublicKey:    client.PublicKey,
-		Bio:          payload.Bio,
-		CustomStatus: payload.CustomStatus,
-		Pronouns:     payload.Pronouns,
-		Timezone:     payload.Timezone,
-	}
-
-	if err := h.chat.SetUserProfile(profile); err != nil {
-		h.sendError(client, "failed to update profile")
-		return
-	}
-
-	// Notify all clients that profile was updated
-	h.broadcastAll(Message{
-		Type:      MsgProfileUpdated,
-		ID:        uuid.New().String(),
-		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"userId":       client.PublicKey,
-			"bio":          payload.Bio,
-			"customStatus": payload.CustomStatus,
-			"pronouns":     payload.Pronouns,
-			"timezone":     payload.Timezone,
-		}),
-	})
-}
-
-// ── Audit log handler ───────────────────────────────────────────────
-
-func (h *Hub) handleAuditLog(client *Client, msg Message) {
+func (h *Hub) handleCategoryReorder(client *Client, msg Message) {
 	if client.Role != permissions.RoleAdmin {
 		h.sendError(client, "permission denied")
 		return
 	}
 
 	var payload struct {
-		Limit  int `json:"limit"`
-		Offset int `json:"offset"`
+		IDs []int `json:"ids"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.ReorderCategories(payload.IDs); err != nil {
+		h.sendError(client, "failed to reorder categories")
+		return
+	}
+
+	h.broadcastChannelList()
+}
+
+func (h *Hub) handleCategoryRename(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if payload.Name == "" || len(payload.Name) > 50 {
+		h.sendError(client, "category name must be 1-50 characters")
+		return
+	}
+
+	if err := h.chat.RenameCategory(payload.ID, payload.Name); err != nil {
+		h.sendError(client, "failed to rename category")
+		return
+	}
+
+	h.broadcastChannelList()
+}
+
+func (h *Hub) handleChannelSetCategory(client *Client, msg Message) {
+	if client.Role != permissions.RoleAdmin {
+		h.sendError(client, "permission denied")
+		return
+	}
+
+	var payload struct {
+		Channel    string `json:"channel"`
+		CategoryID int    `json:"categoryId"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return
+	}
+
+	if err := h.chat.SetChannelCategory(payload.Channel, payload.CategoryID); err != nil {
+		h.sendError(client, "failed to set channel category")
+		return
+	}
+
+	h.broadcastChannelList()
+}
+
+// ── Scheduled message handlers ──────────────────────────────────────
+
+func (h *Hub) handleScheduleSend(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		Channel string `json:"channel"`
+		Content string `json:"content"`
+		SendAt  int64  `json:"sendAt"` // unix ms
 	}
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 		h.sendError(client, "invalid payload")
 		return
 	}
 
-	if payload.Limit <= 0 || payload.Limit > 100 {
-		payload.Limit = 50
-	}
-	if payload.Offset < 0 {
-		payload.Offset = 0
-	}
-
-	entries, err := h.chat.GetAuditLog(payload.Limit, payload.Offset)
-	if err != nil {
-		h.sendError(client, "failed to get audit log")
+	if payload.Content == "" || len(payload.Content) > maxMessageLength {
+		h.sendError(client, "invalid message content")
 		return
 	}
 
-	total, _ := h.chat.GetAuditLogCount()
+	sendAt := time.UnixMilli(payload.SendAt)
+	if sendAt.Before(time.Now()) {
+		h.sendError(client, "scheduled time must be in the future")
+		return
+	}
+
+	exists, _ := h.chat.ChannelExists(payload.Channel)
+	if !exists {
+		h.sendError(client, "channel does not exist")
+		return
+	}
+
+	id, err := h.chat.AddScheduledMessage(payload.Channel, client.PublicKey, client.Nickname, payload.Content, sendAt)
+	if err != nil {
+		h.sendError(client, "failed to schedule message")
+		return
+	}
+
+	// Return updated list
+	h.sendScheduleList(client)
+
+	_ = id // id used implicitly via the list refresh
+}
+
+func (h *Hub) handleScheduleList(client *Client) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+	h.sendScheduleList(client)
+}
+
+func (h *Hub) handleScheduleDelete(client *Client, msg Message) {
+	if client.PublicKey == "" {
+		h.sendError(client, "not authenticated")
+		return
+	}
+
+	var payload struct {
+		ID int `json:"id"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		h.sendError(client, "invalid payload")
+		return
+	}
+
+	// Verify ownership
+	scheduled, err := h.chat.GetScheduledMessageById(payload.ID)
+	if err != nil {
+		h.sendError(client, "scheduled message not found")
+		return
+	}
+	if scheduled.UserKey != client.PublicKey {
+		h.sendError(client, "permission denied: not your scheduled message")
+		return
+	}
+
+	if err := h.chat.DeleteScheduledMessage(payload.ID); err != nil {
+		h.sendError(client, "failed to delete scheduled message")
+		return
+	}
+
+	h.sendScheduleList(client)
+}
+
+func (h *Hub) sendScheduleList(client *Client) {
+	msgs, err := h.chat.GetUserScheduledMessages(client.PublicKey)
+	if err != nil {
+		h.sendError(client, "failed to get scheduled messages")
+		return
+	}
 
 	var list []map[string]interface{}
-	for _, e := range entries {
+	for _, m := range msgs {
 		list = append(list, map[string]interface{}{
-			"id":         e.ID,
-			"action":     e.Action,
-			"actorKey":   e.ActorKey,
-			"actorName":  e.ActorName,
-			"targetKey":  e.TargetKey,
-			"targetName": e.TargetName,
-			"details":    e.Details,
-			"createdAt":  e.CreatedAt,
+			"id":            m.ID,
+			"channel":       m.Channel,
+			"content":       m.Content,
+			"scheduledTime": m.SendAt.UnixMilli(),
+			"createdAt":     m.CreatedAt.UnixMilli(),
 		})
 	}
 
 	h.sendToClient(client, Message{
-		Type:      MsgAuditLog,
+		Type:      MsgScheduleList,
 		ID:        uuid.New().String(),
 		Timestamp: time.Now().UnixMilli(),
-		Payload: mustMarshal(map[string]interface{}{
-			"entries": list,
-			"total":   total,
-			"offset":  payload.Offset,
-		}),
+		Payload:   mustMarshal(map[string]interface{}{"scheduledMessages": list}),
 	})
 }
 
-func mustMarshal(v interface{}) json.RawMessage {
-	data, _ := json.Marshal(v)
-	return data
+func (h *Hub) processScheduledMessages() {
+	pending, err := h.chat.GetPendingScheduledMessages()
+	if err != nil || len(pending) == 0 {
+		return
+	}
+
+	for _, sm := range pending {
+		// Delete from DB first
+		if err := h.chat.DeleteScheduledMessage(sm.ID); err != nil {
+			log.Printf("Failed to delete scheduled message %d: %v", sm.ID, err)
+			continue
+		}
+
+		// Save as a real message
+		msgID := uuid.New().String()
+		h.chat.SaveMessage(msgID, sm.Channel, sm.UserKey, sm.Nickname, sm.Content, "", "")
+
+		// Look up role for the user
+		role := h.permissions.GetRole(sm.UserKey)
+
+		// Broadcast to channel
+		chatMsg := Message{
+			Type:      MsgChatMessage,
+			ID:        msgID,
+			Timestamp: time.Now().UnixMilli(),
+			Payload: mustMarshal(map[string]interface{}{
+				"channel":  sm.Channel,
+				"userId":   sm.UserKey,
+				"nickname": sm.Nickname,
+				"content":  sm.Content,
+				"role":     role,
+			}),
+		}
+		h.broadcastToChannel(sm.Channel, chatMsg)
+	}
 }
+

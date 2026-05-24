@@ -4,7 +4,14 @@ import { useTranslation } from "react-i18next";
 import type { ChannelPermissionData } from "../hooks/useWebSocket";
 
 interface ChannelSettingsModalProps {
-  channel: { name: string; topic: string; userCount: number; hasPassword?: boolean; slowmode?: number; description?: string };
+  channel: {
+    name: string;
+    topic: string;
+    userCount: number;
+    hasPassword?: boolean;
+    slowmode?: number;
+    description?: string;
+  };
   onSetTopic: (channel: string, topic: string) => void;
   onClose: () => void;
   canEdit: boolean;
@@ -79,9 +86,8 @@ export function ChannelSettingsModal({
     onClose();
   };
 
-  const hasChanges = topic !== channel.topic
-    || description !== (channel.description || "")
-    || slowmode !== (channel.slowmode || 0);
+  const hasChanges =
+    topic !== channel.topic || description !== (channel.description || "") || slowmode !== (channel.slowmode || 0);
 
   const handlePermClick = (role: string, permission: string) => {
     if (!onSetChannelPermission || !channelPermissions) return;

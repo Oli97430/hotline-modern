@@ -13,6 +13,16 @@ export default defineConfig({
     target: ["es2021", "chrome100", "safari13"],
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': ['react', 'react-dom'],
+          'vendor-i18n': ['i18next', 'react-i18next'],
+          'vendor-crypto': ['tweetnacl', 'tweetnacl-util'],
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
   },
   test: {
     globals: true,

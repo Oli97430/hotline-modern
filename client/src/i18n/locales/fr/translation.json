@@ -393,5 +393,18 @@
   "automod.noRules": "Aucune règle de modération automatique configurée.",
   "automod.enable": "Activer",
   "automod.disable": "Désactiver",
-  "automod.warningPrefix": "Auto-mod"
+  "automod.warningPrefix": "Auto-mod",
+  "user.block": "Bloquer",
+  "user.unblock": "Débloquer",
+  "chat.blockedMessage": "Message bloqué",
+  "chat.clickToReveal": "Cliquer pour afficher",
+  "category.create": "Créer une catégorie",
+  "category.delete": "Supprimer la catégorie",
+  "category.rename": "Renommer la catégorie",
+  "category.uncategorized": "Non catégorisé",
+  "category.name": "Nom de la catégorie",
+  "chat.typingOne": "{{name}} écrit...",
+  "chat.typingTwo": "{{name1}} et {{name2}} écrivent...",
+  "chat.typingThree": "{{name1}}, {{name2}} et {{name3}} écrivent...",
+  "chat.typingMany": "Plusieurs personnes écrivent..."
 }

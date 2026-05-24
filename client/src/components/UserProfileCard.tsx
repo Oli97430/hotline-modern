@@ -1,4 +1,19 @@
-import { Copy, Edit3, Eye, Globe, MessageCircle, MessageSquare, Save, Shield, Star, StickyNote, Trash2, User, X } from "lucide-react";
+import {
+  Ban,
+  Copy,
+  Edit3,
+  Eye,
+  Globe,
+  MessageCircle,
+  MessageSquare,
+  Save,
+  Shield,
+  Star,
+  StickyNote,
+  Trash2,
+  User,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { UserNote, UserProfile } from "../hooks/useWebSocket";
@@ -23,6 +38,9 @@ interface UserProfileCardProps {
   onAddNote?: (targetUserId: string, content: string) => void;
   onDeleteNote?: (noteId: number, targetUserId: string) => void;
   onRequestNotes?: (targetUserId: string) => void;
+  isUserBlocked?: boolean;
+  onBlockUser?: (userId: string) => void;
+  onUnblockUser?: (userId: string) => void;
 }
 
 function RoleBadge({ role }: { role: string }) {
@@ -59,6 +77,9 @@ export function UserProfileCard({
   onAddNote,
   onDeleteNote,
   onRequestNotes,
+  isUserBlocked,
+  onBlockUser,
+  onUnblockUser,
 }: UserProfileCardProps) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -140,11 +161,7 @@ export function UserProfileCard({
             <span>{profile.timezone}</span>
           </div>
         )}
-        {profile?.bio && !editing && (
-          <div className="profile-bio">
-            {profile.bio}
-          </div>
-        )}
+        {profile?.bio && !editing && <div className="profile-bio">{profile.bio}</div>}
 
         <div className="profile-meta">
           <RoleBadge role={user.role} />
@@ -271,6 +288,31 @@ export function UserProfileCard({
                 </button>
               </>
             )}
+            {isUserBlocked
+              ? onUnblockUser && (
+                  <button
+                    className="profile-action-btn"
+                    onClick={() => {
+                      onUnblockUser(user.userId);
+                      onClose();
+                    }}
+                  >
+                    <Ban size={14} />
+                    {t("user.unblock")}
+                  </button>
+                )
+              : onBlockUser && (
+                  <button
+                    className="profile-action-btn danger"
+                    onClick={() => {
+                      onBlockUser(user.userId);
+                      onClose();
+                    }}
+                  >
+                    <Ban size={14} />
+                    {t("user.block")}
+                  </button>
+                )}
           </div>
         )}
 
@@ -280,18 +322,14 @@ export function UserProfileCard({
               <StickyNote size={12} />
               <span>{t("notes.title")}</span>
             </div>
-            {(!userNotes || userNotes.length === 0) && (
-              <div className="profile-notes-empty">{t("notes.empty")}</div>
-            )}
+            {(!userNotes || userNotes.length === 0) && <div className="profile-notes-empty">{t("notes.empty")}</div>}
             {userNotes && userNotes.length > 0 && (
               <div className="profile-notes-list">
                 {userNotes.map((note) => (
                   <div key={note.id} className="profile-note-item">
                     <div className="profile-note-meta">
                       <span className="profile-note-author">{t("notes.by", { name: note.authorName })}</span>
-                      <span className="profile-note-date">
-                        {new Date(note.createdAt).toLocaleDateString()}
-                      </span>
+                      <span className="profile-note-date">{new Date(note.createdAt).toLocaleDateString()}</span>
                       <button
                         className="profile-note-delete"
                         title={t("notes.delete")}

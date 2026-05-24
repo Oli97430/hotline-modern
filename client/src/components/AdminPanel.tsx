@@ -23,7 +23,15 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AdminBan, AdminMute, AdminUser, AuditEntry, AutomodRule, RetentionStats, WelcomeMessageConfig } from "../hooks/useWebSocket";
+import type {
+  AdminBan,
+  AdminMute,
+  AdminUser,
+  AuditEntry,
+  AutomodRule,
+  RetentionStats,
+  WelcomeMessageConfig,
+} from "../hooks/useWebSocket";
 
 type Tab = "settings" | "users" | "channels" | "bans" | "audit" | "retention" | "automod";
 
@@ -341,11 +349,7 @@ export function AdminPanel({
                 <Database size={13} /> {t("backup.title")}
               </div>
               <div className="backup-section">
-                <button
-                  className="admin-btn-sm accent"
-                  onClick={handleDownloadBackup}
-                  disabled={backupLoading}
-                >
+                <button className="admin-btn-sm accent" onClick={handleDownloadBackup} disabled={backupLoading}>
                   <Download size={12} />
                   {backupLoading ? t("backup.downloading") : t("backup.download")}
                 </button>
@@ -380,11 +384,7 @@ export function AdminPanel({
                       <div className="retention-confirm">
                         <p className="retention-confirm-text">{t("backup.confirmRestore")}</p>
                         <div className="retention-confirm-actions">
-                          <button
-                            className="admin-btn-sm danger"
-                            onClick={handleRestore}
-                            disabled={restoreLoading}
-                          >
+                          <button className="admin-btn-sm danger" onClick={handleRestore} disabled={restoreLoading}>
                             <Upload size={12} />
                             {restoreLoading ? t("backup.restoring") : t("backup.restoreBtn")}
                           </button>
@@ -394,9 +394,7 @@ export function AdminPanel({
                         </div>
                       </div>
                     )}
-                    {restoreResult && (
-                      <div className="backup-result">{restoreResult}</div>
-                    )}
+                    {restoreResult && <div className="backup-result">{restoreResult}</div>}
                   </div>
                 </div>
               </div>
@@ -537,18 +535,37 @@ export function AdminPanel({
                     </div>
                     {welcomeExpanded === ch.name && (
                       <div style={{ padding: "8px 0 4px", borderTop: "1px solid var(--border, #333)", marginTop: 6 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 4, color: "var(--text-secondary, #999)" }}>
+                        <div
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            marginBottom: 4,
+                            color: "var(--text-secondary, #999)",
+                          }}
+                        >
                           {t("welcome.title")}
                         </div>
                         <textarea
                           value={welcomeEditMsg}
                           onChange={(e) => setWelcomeEditMsg(e.target.value)}
                           placeholder={t("welcome.placeholder", { channel: ch.name })}
-                          style={{ width: "100%", minHeight: 60, resize: "vertical", padding: 6, borderRadius: 4, border: "1px solid var(--border, #444)", background: "var(--bg-input, #1a1a2e)", color: "var(--text, #eee)", fontSize: 12 }}
+                          style={{
+                            width: "100%",
+                            minHeight: 60,
+                            resize: "vertical",
+                            padding: 6,
+                            borderRadius: 4,
+                            border: "1px solid var(--border, #444)",
+                            background: "var(--bg-input, #1a1a2e)",
+                            color: "var(--text, #eee)",
+                            fontSize: 12,
+                          }}
                           maxLength={500}
                         />
                         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" }}>
+                          <label
+                            style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, cursor: "pointer" }}
+                          >
                             <input
                               type="checkbox"
                               checked={welcomeEditEnabled}
@@ -566,10 +583,25 @@ export function AdminPanel({
                           >
                             <Save size={12} /> {t("welcome.save")}
                           </button>
-                          {welcomeSaved && <span style={{ fontSize: 11, color: "var(--accent, #7c5cbf)" }}>{t("welcome.saved")}</span>}
+                          {welcomeSaved && (
+                            <span style={{ fontSize: 11, color: "var(--accent, #7c5cbf)" }}>{t("welcome.saved")}</span>
+                          )}
                         </div>
                         {welcomeEditMsg && (
-                          <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "var(--bg-hover, #222)", fontSize: 12, fontStyle: "italic", color: "var(--accent, #7c5cbf)", display: "flex", alignItems: "center", gap: 6 }}>
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: "6px 10px",
+                              borderRadius: 6,
+                              background: "var(--bg-hover, #222)",
+                              fontSize: 12,
+                              fontStyle: "italic",
+                              color: "var(--accent, #7c5cbf)",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                            }}
+                          >
                             <span style={{ opacity: 0.7 }}>{t("welcome.preview")}:</span> {welcomeEditMsg}
                           </div>
                         )}
@@ -691,8 +723,7 @@ export function AdminPanel({
                         </div>
                         <div className="audit-body">
                           <div className="audit-summary">
-                            <span className="admin-user-nick">{entry.actorName || entry.actorKey.slice(0, 12)}</span>
-                            {" "}
+                            <span className="admin-user-nick">{entry.actorName || entry.actorKey.slice(0, 12)}</span>{" "}
                             <span className="admin-text-muted">{t(`audit.${entry.action}`, entry.action)}</span>
                             {entry.targetName || entry.targetKey ? (
                               <>
@@ -780,7 +811,9 @@ export function AdminPanel({
                   >
                     <option value="">{t("retention.allChannels")}</option>
                     {channels.map((ch) => (
-                      <option key={ch.name} value={ch.name}>#{ch.name}</option>
+                      <option key={ch.name} value={ch.name}>
+                        #{ch.name}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -798,10 +831,7 @@ export function AdminPanel({
                   </select>
                 </div>
                 {!showPurgeConfirm ? (
-                  <button
-                    className="admin-btn-sm danger retention-purge-btn"
-                    onClick={() => setShowPurgeConfirm(true)}
-                  >
+                  <button className="admin-btn-sm danger retention-purge-btn" onClick={() => setShowPurgeConfirm(true)}>
                     <Trash2 size={12} />
                     {t("retention.purgeBtn")}
                   </button>
@@ -846,14 +876,13 @@ export function AdminPanel({
                   >
                     <option value="">{t("retention.allChannels")}</option>
                     {channels.map((ch) => (
-                      <option key={ch.name} value={ch.name}>#{ch.name}</option>
+                      <option key={ch.name} value={ch.name}>
+                        #{ch.name}
+                      </option>
                     ))}
                   </select>
                 </div>
-                <button
-                  className="admin-btn-sm accent"
-                  onClick={() => onExportMessages(exportChannel, 10000)}
-                >
+                <button className="admin-btn-sm accent" onClick={() => onExportMessages(exportChannel, 10000)}>
                   <Download size={12} />
                   {t("retention.exportBtn")}
                 </button>
@@ -920,9 +949,10 @@ export function AdminPanel({
                 <button
                   className="admin-btn-sm accent"
                   onClick={() => {
-                    const pat = (automodType === "spam" || automodType === "caps" || automodType === "links")
-                      ? automodType
-                      : automodPattern;
+                    const pat =
+                      automodType === "spam" || automodType === "caps" || automodType === "links"
+                        ? automodType
+                        : automodPattern;
                     if (!pat.trim()) return;
                     onAddAutomodRule(automodType, pat, automodAction, automodReason);
                     setAutomodPattern("");
@@ -945,10 +975,7 @@ export function AdminPanel({
                 >
                   {t("automod.presetProfanity")}
                 </button>
-                <button
-                  className="admin-btn-sm"
-                  onClick={() => onAddAutomodRule("spam", "spam", "mute", "Anti-spam")}
-                >
+                <button className="admin-btn-sm" onClick={() => onAddAutomodRule("spam", "spam", "mute", "Anti-spam")}>
                   {t("automod.presetSpam")}
                 </button>
                 <button
@@ -978,13 +1005,17 @@ export function AdminPanel({
                       <div className="admin-list-main">
                         <span className="automod-type-icon">
                           {rule.ruleType === "word" && <Type size={14} />}
-                          {rule.ruleType === "regex" && <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>.*</span>}
+                          {rule.ruleType === "regex" && (
+                            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11 }}>.*</span>
+                          )}
                           {rule.ruleType === "spam" && <Zap size={14} />}
                           {rule.ruleType === "caps" && <AlertTriangle size={14} />}
                           {rule.ruleType === "links" && <Link2 size={14} />}
                         </span>
                         <span className="automod-rule-pattern">{rule.pattern}</span>
-                        <span className={`admin-badge ${rule.action === "block" ? "danger-badge" : rule.action === "mute" ? "mute-badge" : ""}`}>
+                        <span
+                          className={`admin-badge ${rule.action === "block" ? "danger-badge" : rule.action === "mute" ? "mute-badge" : ""}`}
+                        >
                           {rule.action}
                         </span>
                       </div>
@@ -996,10 +1027,7 @@ export function AdminPanel({
                         >
                           {rule.enabled ? t("automod.disable") : t("automod.enable")}
                         </button>
-                        <button
-                          className="admin-btn-sm danger"
-                          onClick={() => onDeleteAutomodRule(rule.id)}
-                        >
+                        <button className="admin-btn-sm danger" onClick={() => onDeleteAutomodRule(rule.id)}>
                           <Trash2 size={12} />
                         </button>
                       </div>

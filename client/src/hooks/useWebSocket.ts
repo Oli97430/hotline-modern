@@ -191,6 +191,12 @@ export interface AutomodRule {
   createdAt: string;
 }
 
+export interface CategoryData {
+  id: number;
+  name: string;
+  position: number;
+}
+
 export interface RetentionStats {
   totalMessages: number;
   byChannel: ChannelMessageCount[];
@@ -210,6 +216,14 @@ export interface ExportedMessage {
   timestamp: string;
 }
 
+export interface ScheduledMessageData {
+  id: number;
+  channel: string;
+  content: string;
+  scheduledTime: number;
+  createdAt: number;
+}
+
 export interface UseWebSocketReturn {
   status: ConnectionStatus;
   latency: number | null;
@@ -217,7 +231,16 @@ export interface UseWebSocketReturn {
   messages: ChatMessage[];
   dmMessages: DMMessage[];
   typingUsers: TypingUser[];
-  channels: { name: string; topic: string; userCount: number; hasPassword: boolean; slowmode?: number; description?: string }[];
+  channels: {
+    name: string;
+    topic: string;
+    userCount: number;
+    hasPassword: boolean;
+    slowmode?: number;
+    description?: string;
+    categoryId?: number;
+  }[];
+  categories: CategoryData[];
   users: {
     userId: string;
     nickname: string;
@@ -248,6 +271,14 @@ export interface UseWebSocketReturn {
   welcomeMessages: WelcomeMessageConfig[];
   automodRules: AutomodRule[];
   automodWarning: string | null;
+  /** Per-channel last-read message ID for unread markers */
+  channelLastReadIds: Record<string, string>;
+  /** Set of channel names that have unread messages */
+  unreadChannels: Set<string>;
+  /** Mark all messages in a channel as read (update lastReadId to latest) */
+  markChannelRead: (channel: string) => void;
+  /** Freeze the last-read marker when leaving a channel */
+  freezeChannelRead: (channel: string) => void;
   wsRef: React.RefObject<WebSocket | null>;
   connect: (address: string, nickname: string) => void;
   disconnect: () => void;
@@ -313,6 +344,14 @@ export interface UseWebSocketReturn {
   toggleAutomodRule: (id: number, enabled: boolean) => void;
   requestAutomodRules: () => void;
   dismissAutomodWarning: () => void;
+  createCategory: (name: string) => void;
+  deleteCategory: (id: number) => void;
+  setChannelCategory: (channel: string, categoryId: number) => void;
+  renameCategory: (id: number, name: string) => void;
+  scheduledMessages: ScheduledMessageData[];
+  scheduleMessage: (channel: string, content: string, sendAt: number) => void;
+  requestScheduledMessages: () => void;
+  deleteScheduledMessage: (id: number) => void;
 }
 
 /** Append a message to an array with dedup, conditional sort, and cap. */
@@ -338,11 +377,20 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [dmMessages, setDmMessages] = useState<DMMessage[]>([]);
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
-  const [channels, setChannels] = useState<{ name: string; topic: string; userCount: number; hasPassword: boolean }[]>(
-    [],
-  );
+  const [channels, setChannels] = useState<
+    { name: string; topic: string; userCount: number; hasPassword: boolean; categoryId?: number }[]
+  >([]);
+  const [categories, setCategories] = useState<CategoryData[]>([]);
   const [users, setUsers] = useState<
-    { userId: string; nickname: string; role: string; status: string; boxPublicKey?: string; connectedAt?: number; customStatus?: string }[]
+    {
+      userId: string;
+      nickname: string;
+      role: string;
+      status: string;
+      boxPublicKey?: string;
+      connectedAt?: number;
+      customStatus?: string;
+    }[]
   >([]);
   const usersRef = useRef(users);
   usersRef.current = users;
@@ -367,6 +415,45 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
   const [welcomeMessages, setWelcomeMessages] = useState<WelcomeMessageConfig[]>([]);
   const [automodRules, setAutomodRules] = useState<AutomodRule[]>([]);
   const [automodWarning, setAutomodWarning] = useState<string | null>(null);
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessageData[]>([]);
+
+  // --- Per-channel unread tracking ---
+  const [channelLastReadIds, setChannelLastReadIds] = useState<Record<string, string>>({});
+  const [unreadChannels, setUnreadChannels] = useState<Set<string>>(new Set());
+  const activeChannelForUnread = useRef<string>("");
+
+  const markChannelRead = useCallback((channel: string) => {
+    activeChannelForUnread.current = channel;
+    setMessages((msgs) => {
+      const chMsgs = msgs.filter((m) => m.channel === channel && !m.system);
+      if (chMsgs.length > 0) {
+        const lastId = chMsgs[chMsgs.length - 1].id;
+        setChannelLastReadIds((prev) => ({ ...prev, [channel]: lastId }));
+      }
+      return msgs;
+    });
+    setUnreadChannels((prev) => {
+      if (!prev.has(channel)) return prev;
+      const next = new Set(prev);
+      next.delete(channel);
+      return next;
+    });
+  }, []);
+
+  const freezeChannelRead = useCallback((channel: string) => {
+    // Snapshot the current last message ID for this channel
+    setMessages((msgs) => {
+      const chMsgs = msgs.filter((m) => m.channel === channel && !m.system);
+      if (chMsgs.length > 0) {
+        const lastId = chMsgs[chMsgs.length - 1].id;
+        setChannelLastReadIds((prev) => ({ ...prev, [channel]: lastId }));
+      }
+      return msgs;
+    });
+    if (activeChannelForUnread.current === channel) {
+      activeChannelForUnread.current = "";
+    }
+  }, []);
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -410,28 +497,38 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
         case "chat.message": {
           const payload = msg.payload as ChatMessagePayload & { replyTo?: string; msgType?: string };
-          setMessages((prev) =>
-            insertAndCap(
-              prev,
-              {
-                id: msg.id,
-                channel: payload.channel,
-                userId: payload.userId,
-                nickname: payload.nickname,
-                content: payload.content,
-                role: payload.role,
-                timestamp: msg.timestamp,
-                replyTo: payload.replyTo,
-                msgType: payload.msgType,
-              },
-              2000,
-            ),
-          );
+          const newChatMsg: ChatMessage = {
+            id: msg.id,
+            channel: payload.channel,
+            userId: payload.userId,
+            nickname: payload.nickname,
+            content: payload.content,
+            role: payload.role,
+            timestamp: msg.timestamp,
+            replyTo: payload.replyTo,
+            msgType: payload.msgType,
+          };
+          setMessages((prev) => insertAndCap(prev, newChatMsg, 2000));
+          // Unread tracking: if user is viewing this channel, auto-advance lastReadId;
+          // otherwise mark channel as having unreads
+          if (activeChannelForUnread.current === payload.channel) {
+            setChannelLastReadIds((prev) => ({ ...prev, [payload.channel]: msg.id }));
+          } else if (payload.channel !== "__system__") {
+            setUnreadChannels((prev) => {
+              if (prev.has(payload.channel)) return prev;
+              const next = new Set(prev);
+              next.add(payload.channel);
+              return next;
+            });
+          }
           break;
         }
         case "channel.list": {
-          const { channels: ch } = msg.payload as ChannelListPayload;
-          setChannels(ch || []);
+          const payload = msg.payload as ChannelListPayload & { categories?: CategoryData[] };
+          setChannels(payload.channels || []);
+          if (payload.categories) {
+            setCategories(payload.categories);
+          }
           break;
         }
         case "user.list": {
@@ -445,7 +542,13 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
             const filtered = prev.filter((u) => u.userId !== payload.userId);
             return [
               ...filtered,
-              { ...payload, status: "online", boxPublicKey: payload.boxPublicKey, connectedAt: payload.connectedAt, customStatus: payload.customStatus },
+              {
+                ...payload,
+                status: "online",
+                boxPublicKey: payload.boxPublicKey,
+                connectedAt: payload.connectedAt,
+                customStatus: payload.customStatus,
+              },
             ];
           });
           setMessages((prev) =>
@@ -707,7 +810,9 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
         }
         case "profile.updated": {
           const payload = msg.payload as { userId: string; customStatus: string };
-          setUsers((prev) => prev.map((u) => (u.userId === payload.userId ? { ...u, customStatus: payload.customStatus } : u)));
+          setUsers((prev) =>
+            prev.map((u) => (u.userId === payload.userId ? { ...u, customStatus: payload.customStatus } : u)),
+          );
           setProfileCache((prev) => {
             if (prev[payload.userId]) {
               return { ...prev, [payload.userId]: { ...prev[payload.userId], customStatus: payload.customStatus } };
@@ -811,6 +916,16 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
           setAutomodWarning(payload.reason || "Message blocked by auto-moderation");
           break;
         }
+        case "category.list": {
+          const payload = msg.payload as { categories: CategoryData[] };
+          setCategories(payload.categories || []);
+          break;
+        }
+        case "schedule.list": {
+          const payload = msg.payload as { scheduledMessages: ScheduledMessageData[] };
+          setScheduledMessages(payload.scheduledMessages || []);
+          break;
+        }
         case "error": {
           const payload = msg.payload as ErrorPayload;
           onError?.(payload.message);
@@ -910,6 +1025,7 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setDmMessages([]);
     setTypingUsers([]);
     setChannels([]);
+    setCategories([]);
     setUsers([]);
     setReadReceipts({});
     setCustomEmojis([]);
@@ -921,6 +1037,10 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setWelcomeMessages([]);
     setAutomodRules([]);
     setAutomodWarning(null);
+    setScheduledMessages([]);
+    setChannelLastReadIds({});
+    setUnreadChannels(new Set());
+    activeChannelForUnread.current = "";
   }, []);
 
   const wsSend = useCallback((type: string, payload: Record<string, unknown>) => {
@@ -1346,6 +1466,52 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     setAutomodWarning(null);
   }, []);
 
+  const createCategory = useCallback(
+    (name: string) => {
+      wsSend("category.create", { name });
+    },
+    [wsSend],
+  );
+
+  const deleteCategory = useCallback(
+    (id: number) => {
+      wsSend("category.delete", { id });
+    },
+    [wsSend],
+  );
+
+  const setChannelCategoryFn = useCallback(
+    (channel: string, categoryId: number) => {
+      wsSend("channel.set_category", { channel, categoryId });
+    },
+    [wsSend],
+  );
+
+  const renameCategoryFn = useCallback(
+    (id: number, name: string) => {
+      wsSend("category.rename", { id, name });
+    },
+    [wsSend],
+  );
+
+  const scheduleMessage = useCallback(
+    (channel: string, content: string, sendAt: number) => {
+      wsSend("schedule.send", { channel, content, sendAt });
+    },
+    [wsSend],
+  );
+
+  const requestScheduledMessages = useCallback(() => {
+    wsSend("schedule.list", {});
+  }, [wsSend]);
+
+  const deleteScheduledMessage = useCallback(
+    (id: number) => {
+      wsSend("schedule.delete", { id });
+    },
+    [wsSend],
+  );
+
   const requestProfile = useCallback(
     (userId: string) => {
       wsSend("profile.get", { userId });
@@ -1489,6 +1655,19 @@ export function useWebSocket({ identity, onError }: UseWebSocketOptions): UseWeb
     toggleAutomodRule,
     requestAutomodRules,
     dismissAutomodWarning,
+    categories,
+    createCategory,
+    deleteCategory,
+    setChannelCategory: setChannelCategoryFn,
+    renameCategory: renameCategoryFn,
+    scheduledMessages,
+    scheduleMessage,
+    requestScheduledMessages,
+    deleteScheduledMessage,
+    channelLastReadIds,
+    unreadChannels,
+    markChannelRead,
+    freezeChannelRead,
     wsRef,
   };
 }

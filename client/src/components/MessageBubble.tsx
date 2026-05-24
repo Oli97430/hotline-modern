@@ -14,53 +14,161 @@ const LINK_IN_BRACKETS = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
 const CODE_BLOCK_REGEX = /```(\w*)\n([\s\S]*?)```/g;
 const BARE_URL_REGEX = /\bhttps?:\/\/[^\s]+/g;
 
-function formatMessage(text: string): (string | JSX.Element)[] {
-  const parts: (string | JSX.Element)[] = [];
-  let key = 0;
-  const regex =
-    /(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(`[^`]+`)|(\*\*[^*]+\*\*)|(\*[^*]+\*)|(~~[^~]+~~)|(@\w+)|(\b(https?:\/\/[^\s]+))/g;
-  let last = 0;
-  let match;
-  while ((match = regex.exec(text)) !== null) {
-    if (match.index > last) parts.push(text.slice(last, match.index));
-    if (match[1]) {
-      // [text](url) markdown link
-      parts.push(
-        <a key={key++} className="msg-link" href={match[3]} target="_blank" rel="noopener noreferrer">
-          {match[2]}
-        </a>,
-      );
-    } else if (match[4]) {
-      parts.push(
-        <code key={key++} className="msg-code">
-          {match[4].slice(1, -1)}
-        </code>,
-      );
-    } else if (match[5]) {
-      parts.push(<strong key={key++}>{match[5].slice(2, -2)}</strong>);
-    } else if (match[6]) {
-      parts.push(<em key={key++}>{match[6].slice(1, -1)}</em>);
-    } else if (match[7]) {
-      // ~~strikethrough~~
-      parts.push(<del key={key++}>{match[7].slice(2, -2)}</del>);
-    } else if (match[8]) {
-      // @mention
-      parts.push(
-        <span key={key++} className="msg-mention">
-          {match[8]}
-        </span>,
-      );
-    } else if (match[10]) {
-      parts.push(
-        <a key={key++} className="msg-link" href={match[10]} target="_blank" rel="noopener noreferrer">
-          {match[10]}
-        </a>,
-      );
+/** Escape HTML entities to prevent XSS */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Render markdown text to safe HTML string.
+ * Escapes HTML first, then applies markdown transformations.
+ * Supports: bold, italic, strikethrough, inline code, code blocks,
+ * links, blockquotes, bullet/ordered lists, headings, @mentions.
+ */
+function renderMarkdown(text: string, currentNickname?: string): string {
+  // Step 1: Extract code blocks before escaping, replace with placeholders
+  const codeBlockStore: string[] = [];
+  let processed = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
+    const escaped = escapeHtml(code.trimEnd());
+    const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : "";
+    codeBlockStore.push(
+      `<pre style="background:var(--bg-tertiary);padding:12px;border-radius:var(--radius);overflow-x:auto;margin:6px 0;font-size:12px;"><code${langClass}>${escaped}</code></pre>`,
+    );
+    return `\x00CODEBLOCK_${codeBlockStore.length - 1}\x00`;
+  });
+
+  // Step 2: Extract inline code before escaping
+  const inlineCodeStore: string[] = [];
+  processed = processed.replace(/`([^`\n]+)`/g, (_match, code) => {
+    const escaped = escapeHtml(code);
+    inlineCodeStore.push(
+      `<code style="font-family:var(--font-mono);font-size:12px;background:var(--bg-tertiary);padding:2px 6px;border-radius:var(--radius-sm);color:var(--accent);">${escaped}</code>`,
+    );
+    return `\x00INLINECODE_${inlineCodeStore.length - 1}\x00`;
+  });
+
+  // Step 3: Escape remaining HTML
+  processed = escapeHtml(processed);
+
+  // Step 4: Process block-level elements line by line
+  const lines = processed.split("\n");
+  const outputLines: string[] = [];
+  let inList: "ul" | "ol" | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Close list if current line is not a list item
+    const isUnorderedItem = /^(?:[-*])\s+(.+)/.test(line);
+    const isOrderedItem = /^\d+\.\s+(.+)/.test(line);
+
+    if (inList && !isUnorderedItem && !isOrderedItem) {
+      outputLines.push(inList === "ul" ? "</ul>" : "</ol>");
+      inList = null;
     }
-    last = match.index + match[0].length;
+
+    // Headings (# H1 through ### H3)
+    const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const sizes = ["1.4em", "1.2em", "1.05em"];
+      const content = applyInlineFormatting(headingMatch[2], currentNickname);
+      outputLines.push(`<div style="font-size:${sizes[level - 1]};font-weight:700;margin:8px 0 4px;">${content}</div>`);
+      continue;
+    }
+
+    // Blockquotes
+    if (line.startsWith("&gt; ")) {
+      const content = applyInlineFormatting(line.slice(5), currentNickname);
+      outputLines.push(
+        `<div style="border-left:3px solid var(--accent);padding-left:10px;margin:4px 0;color:var(--text-secondary);font-style:italic;font-size:13px;">${content}</div>`,
+      );
+      continue;
+    }
+
+    // Unordered list items
+    if (isUnorderedItem) {
+      const itemContent = line.replace(/^[-*]\s+/, "");
+      if (inList !== "ul") {
+        if (inList) outputLines.push("</ol>");
+        outputLines.push('<ul style="margin:4px 0;padding-left:24px;">');
+        inList = "ul";
+      }
+      outputLines.push(`<li>${applyInlineFormatting(itemContent, currentNickname)}</li>`);
+      continue;
+    }
+
+    // Ordered list items
+    if (isOrderedItem) {
+      const itemContent = line.replace(/^\d+\.\s+/, "");
+      if (inList !== "ol") {
+        if (inList) outputLines.push("</ul>");
+        outputLines.push('<ol style="margin:4px 0;padding-left:24px;">');
+        inList = "ol";
+      }
+      outputLines.push(`<li>${applyInlineFormatting(itemContent, currentNickname)}</li>`);
+      continue;
+    }
+
+    // Regular line
+    outputLines.push(applyInlineFormatting(line, currentNickname));
   }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
+
+  // Close any open list
+  if (inList) {
+    outputLines.push(inList === "ul" ? "</ul>" : "</ol>");
+  }
+
+  let result = outputLines.join("\n");
+
+  // Step 5: Restore code blocks and inline code
+  result = result.replace(/\x00CODEBLOCK_(\d+)\x00/g, (_m, idx) => codeBlockStore[parseInt(idx)]);
+  result = result.replace(/\x00INLINECODE_(\d+)\x00/g, (_m, idx) => inlineCodeStore[parseInt(idx)]);
+
+  return result;
+}
+
+/** Apply inline formatting: bold, italic, strikethrough, links, mentions, bare URLs */
+function applyInlineFormatting(text: string, currentNickname?: string): string {
+  let result = text;
+
+  // Markdown links: [text](url)
+  result = result.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a class="msg-link" href="$2" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:450;">$1</a>',
+  );
+
+  // Bold: **text** or __text__
+  result = result.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+  result = result.replace(/__(.+?)__/g, "<strong>$1</strong>");
+
+  // Italic: *text* or _text_ (single, not preceded/followed by space for _ variant)
+  result = result.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, "<em>$1</em>");
+  result = result.replace(/(?<![_\w])_(?!_)(.+?)(?<!_)_(?![_\w])/g, "<em>$1</em>");
+
+  // Strikethrough: ~~text~~
+  result = result.replace(/~~(.+?)~~/g, "<del>$1</del>");
+
+  // @mentions: detect @nickname and apply special styling
+  result = result.replace(/@(\w+)/g, (_match, nick) => {
+    if (currentNickname && nick.toLowerCase() === currentNickname.toLowerCase()) {
+      return `<span class="mention mention-self">@${nick}</span>`;
+    }
+    return `<span class="mention">@${nick}</span>`;
+  });
+
+  // Bare URLs (not already inside an href)
+  result = result.replace(
+    /(?<!href="|">)(https?:\/\/[^\s<]+)/g,
+    '<a class="msg-link" href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:450;">$1</a>',
+  );
+
+  return result;
 }
 
 function hasCodeBlock(text: string): boolean {
@@ -119,6 +227,7 @@ interface MessageBubbleProps {
   edited?: boolean;
   reactions?: MessageReaction[];
   currentUserId: string;
+  currentNickname?: string;
   canModerate?: boolean;
   system?: boolean;
   msgType?: string;
@@ -137,6 +246,9 @@ interface MessageBubbleProps {
   onQuote?: (text: string, nickname: string) => void;
   onThreadOpen?: (messageId: string) => void;
   onForward?: (messageId: string) => void;
+  isBlocked?: (userId: string) => boolean;
+  onBlockUser?: (userId: string) => void;
+  onUnblockUser?: (userId: string) => void;
 }
 
 function formatRelativeTime(ts: number, t: (key: string, opts?: Record<string, unknown>) => string): string {
@@ -164,6 +276,7 @@ export function MessageBubble({
   edited,
   reactions,
   currentUserId,
+  currentNickname,
   canModerate,
   system,
   msgType,
@@ -182,6 +295,9 @@ export function MessageBubble({
   onQuote,
   onThreadOpen,
   onForward,
+  isBlocked,
+  onBlockUser,
+  onUnblockUser,
 }: MessageBubbleProps) {
   const { t, i18n } = useTranslation();
 
@@ -212,7 +328,20 @@ export function MessageBubble({
             opacity: 0.9,
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 16v-4" />
+            <path d="M12 8h.01" />
+          </svg>
           {content}
         </span>
       </div>
@@ -249,6 +378,7 @@ export function MessageBubble({
   const roleColor = `var(--role-${role})`;
   const codeBlocks = useMemo(() => extractCodeBlocks(content), [content]);
   const textContent = useMemo(() => (hasCodeBlock(content) ? getTextWithoutCodeBlocks(content) : content), [content]);
+  const renderedHtml = useMemo(() => renderMarkdown(textContent, currentNickname), [textContent, currentNickname]);
   const images = useMemo(() => extractImages(content), [content]);
   const previewUrls = useMemo(() => extractPreviewUrls(content), [content]);
   const embedUrls = useMemo(() => extractEmbedUrls(content), [content]);
@@ -343,31 +473,16 @@ export function MessageBubble({
             return voiceUrl ? (
               <AudioMessage src={voiceUrl} />
             ) : (
-              <div className="message-content">{formatMessage(content)}</div>
+              <div
+                className="message-content"
+                dangerouslySetInnerHTML={{ __html: renderMarkdown(content, currentNickname) }}
+              />
             );
           })()}
         </>
       ) : (
         <>
-          {textContent && (
-            <div className="message-content">
-              {textContent.split("\n").map((line, i) => {
-                if (line.startsWith("> ")) {
-                  return (
-                    <div key={i} className="msg-blockquote">
-                      {formatMessage(line.slice(2))}
-                    </div>
-                  );
-                }
-                return (
-                  <span key={i}>
-                    {i > 0 && "\n"}
-                    {formatMessage(line)}
-                  </span>
-                );
-              })}
-            </div>
-          )}
+          {textContent && <div className="message-content" dangerouslySetInnerHTML={{ __html: renderedHtml }} />}
           {codeBlocks.map((block, i) => (
             <CodeBlock key={`cb-${i}`} code={block.code} language={block.language} />
           ))}
@@ -500,6 +615,10 @@ export function MessageBubble({
             setContextMenu(null);
           }}
           onForward={onForward}
+          userId={userId}
+          userIsBlocked={isBlocked?.(userId) || false}
+          onBlockUser={!isOwn ? onBlockUser : undefined}
+          onUnblockUser={!isOwn ? onUnblockUser : undefined}
         />
       )}
 
@@ -709,7 +828,7 @@ export function MessageBubble({
         .msg-link:hover {
           text-decoration: underline;
         }
-        .msg-mention {
+        .msg-mention, .mention {
           color: var(--accent);
           background: var(--accent-dim);
           padding: 1px 4px;
@@ -717,8 +836,16 @@ export function MessageBubble({
           font-weight: 500;
           cursor: pointer;
         }
-        .msg-mention:hover {
+        .msg-mention:hover, .mention:hover {
           background: rgba(var(--accent-rgb), 0.15);
+        }
+        .mention-self {
+          background: rgba(var(--accent-rgb), 0.2);
+          font-weight: 600;
+          border: 1px solid rgba(var(--accent-rgb), 0.3);
+        }
+        .mention-self:hover {
+          background: rgba(var(--accent-rgb), 0.3);
         }
         .message-images {
           margin-top: 8px;
