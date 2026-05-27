@@ -72,7 +72,9 @@ function getDefaultTracker(): string {
     if (lastIp) return `http://${lastIp}:9998`;
     return "";
   }
-  const host = typeof window !== "undefined" ? window.location.hostname : "localhost";
+  let host = typeof window !== "undefined" ? window.location.hostname : "127.0.0.1";
+  // Use 127.0.0.1 instead of localhost to avoid IPv6 DNS resolution issues
+  if (host === "localhost") host = "127.0.0.1";
   return `http://${host}:9998`;
 }
 
@@ -83,8 +85,10 @@ function loadTrackerUrls(): string[] {
   try {
     const saved = localStorage.getItem(TRACKER_URLS_KEY);
     if (saved) {
-      const parsed = JSON.parse(saved);
+      let parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        // Fix localhost → 127.0.0.1 to avoid IPv6 DNS issues
+        parsed = parsed.map((url: string) => url.replace("//localhost:", "//127.0.0.1:"));
         if (isRemote || isNativeApp()) {
           const target = isRemote ? currentHost : localStorage.getItem(LAST_SERVER_IP_KEY) || "";
           if (target) {
