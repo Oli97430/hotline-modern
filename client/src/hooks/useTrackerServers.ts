@@ -31,18 +31,36 @@ async function fetchBootstrapConfig(): Promise<string | null> {
     });
     if (!resp.ok) return null;
     const config = await resp.json();
-    if (config.tracker) {
-      // Cache it locally for offline/fast startup
+    // Only use if tracker URL is non-empty
+    if (config.tracker && typeof config.tracker === "string" && config.tracker.trim() !== "") {
+      // Verify the tracker is reachable before caching
+      try {
+        const check = await fetch(`${config.tracker.replace(/\/$/, "")}/servers`, {
+          signal: AbortSignal.timeout(3000),
+        });
+        if (!check.ok) return null;
+      } catch {
+        return null; // Tunnel is dead, don't use it
+      }
       localStorage.setItem(BOOTSTRAP_CONFIG_KEY, JSON.stringify(config));
       return config.tracker;
     }
   } catch {}
-  // Fallback to cached config
+  // Fallback to cached config — but verify it's still reachable
   try {
     const cached = localStorage.getItem(BOOTSTRAP_CONFIG_KEY);
     if (cached) {
       const config = JSON.parse(cached);
-      if (config.tracker) return config.tracker;
+      if (config.tracker && config.tracker.trim() !== "") {
+        try {
+          const check = await fetch(`${config.tracker.replace(/\/$/, "")}/servers`, {
+            signal: AbortSignal.timeout(3000),
+          });
+          if (check.ok) return config.tracker;
+        } catch {}
+        // Cached tracker is dead — remove stale cache
+        localStorage.removeItem(BOOTSTRAP_CONFIG_KEY);
+      }
     }
   } catch {}
   return null;
@@ -107,13 +125,32 @@ export function useTrackerServers() {
     bootstrapDone.current = true;
 
     fetchBootstrapConfig().then((publicTracker) => {
-      if (!publicTracker) return;
+      if (!publicTracker) {
+        // No valid public tracker — clean up any stale tunnel URLs
+        setTrackerUrls((prev) => {
+          const cleaned = prev.filter((u) => !u.includes("trycloudflare.com"));
+          if (cleaned.length !== prev.length) {
+            // Ensure we still have at least the local tracker
+            if (cleaned.length === 0) {
+              const def = getDefaultTracker();
+              if (def) cleaned.push(def);
+            }
+            saveTrackerUrls(cleaned);
+            return cleaned;
+          }
+          return prev;
+        });
+        return;
+      }
 
       setTrackerUrls((prev) => {
         const normalized = publicTracker.replace(/\/$/, "");
         if (prev.some((u) => u === normalized)) return prev;
         // Replace any existing trycloudflare URLs (stale tunnel) instead of accumulating
-        const withoutOldTunnels = prev.filter((u) => !u.includes("trycloudflare.com"));
+        // But NEVER remove local tracker URLs
+        const withoutOldTunnels = prev.filter(
+          (u) => !u.includes("trycloudflare.com") || u === normalized,
+        );
         const updated = [...withoutOldTunnels, normalized];
         saveTrackerUrls(updated);
         return updated;
